@@ -1,0 +1,30 @@
+name: Weekly data update
+
+on:
+  schedule:
+    - cron: '0 1 * * 1'   # Monday 01:00 UTC
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas pyarrow huggingface_hub
+      - run: python scripts/fetch_latest.py
+        env:
+          HF_DATASET_ID: ${{ secrets.HF_DATASET_ID }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      - run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add csv/ parquet/
+          if git diff --cached --quiet; then
+            echo "No new data."
+            exit 0
+          fi
+          git commit -m "data: weekly update $(date -u +%Y-%m-%d)"
+          git push

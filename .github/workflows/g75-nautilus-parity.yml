@@ -7,6 +7,12 @@ on:
       - 'research/g75_nautilus/**'
       - '.github/workflows/g75-nautilus-parity.yml'
       - 'csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'research/g75_nautilus/**'
+      - '.github/workflows/g75-nautilus-parity.yml'
+      - 'csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv'
   workflow_dispatch:
 
 jobs:

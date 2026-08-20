@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, StrategyConfig
+from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, BarType
+from nautilus_trader.model.enums import AccountType, OmsType
 from nautilus_trader.model.identifiers import InstrumentId, Venue
+from nautilus_trader.model.objects import Money
 from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.trading.strategy import Strategy
@@ -53,8 +57,6 @@ class G75Core:
                 self.anchor = float(c)
                 return ev
 
-            # Recovered G75 General Measurement rule: choose direction from bar close
-            # once the anchor threshold has been crossed; execute theoretical trigger level.
             self.side = 1 if c >= self.anchor else -1
             self.cycle_id += 1
             self.active = True
@@ -136,11 +138,15 @@ class G75ParityStrategy(Strategy):
 
     def on_bar(self, bar: Bar):
         self.bar_count += 1
-        o = float(bar.open)
-        h = float(bar.high)
-        l = float(bar.low)
-        c = float(bar.close)
-        self.events.extend(self.core.on_bar(o, h, l, c, bar.ts_event))
+        self.events.extend(
+            self.core.on_bar(
+                float(bar.open),
+                float(bar.high),
+                float(bar.low),
+                float(bar.close),
+                bar.ts_event,
+            )
+        )
 
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -155,14 +161,10 @@ def load_df(path: Path) -> pd.DataFrame:
         "low": pd.to_numeric(df[lower["low"]], errors="coerce"),
         "close": pd.to_numeric(df[lower["close"]], errors="coerce"),
     })
-    if "volume" in lower:
-        out["volume"] = pd.to_numeric(df[lower["volume"]], errors="coerce").fillna(0.0)
-    else:
-        out["volume"] = 0.0
+    out["volume"] = pd.to_numeric(df[lower["volume"]], errors="coerce").fillna(0.0) if "volume" in lower else 0.0
     idx = pd.to_datetime(df[tcol], errors="coerce", utc=True)
     out.index = idx
     out = out[~out.index.isna()].dropna(subset=["open", "high", "low", "close"]).sort_index()
-    # Nautilus bar ts_init represents bar close. Source timestamps are bar-open M1 timestamps.
     out.index = out.index + pd.Timedelta(minutes=1)
     return out
 
@@ -175,13 +177,20 @@ def main():
     try:
         instrument = TestInstrumentProvider.default_fx_ccy("XAU/USD", sim)
     except Exception:
-        # Event parity does not submit orders; instrument is only a Nautilus data envelope.
         instrument = TestInstrumentProvider.default_fx_ccy("EUR/USD", sim)
 
     bar_type = BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL")
     bars = BarDataWrangler(bar_type, instrument).process(df)
 
     engine = BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR")))
+    engine.add_venue(
+        venue=sim,
+        oms_type=OmsType.NETTING,
+        account_type=AccountType.MARGIN,
+        starting_balances=[Money(1_000_000, USD)],
+        base_currency=USD,
+        default_leverage=Decimal(1),
+    )
     engine.add_instrument(instrument)
     engine.add_data(bars)
     strategy = G75ParityStrategy(G75ParityConfig(instrument_id=instrument.id, bar_type=bar_type))

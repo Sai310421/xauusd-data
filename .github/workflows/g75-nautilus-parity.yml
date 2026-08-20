@@ -1,0 +1,32 @@
+name: G75 Nautilus Parity
+
+on:
+  push:
+    branches: [g75-nautilus-parity]
+    paths:
+      - 'research/g75_nautilus/**'
+      - '.github/workflows/g75-nautilus-parity.yml'
+      - 'csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          pip install nautilus_trader pandas
+      - name: Run 90d G75 Nautilus event parity
+        run: python research/g75_nautilus/g75_event_parity.py
+      - name: Upload parity result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-nautilus-event-parity
+          path: research/g75_nautilus/results/

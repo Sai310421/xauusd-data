@@ -1,0 +1,16 @@
+{
+  "version": "G75_Adaptive_DD3_v1.0",
+  "target_dd_pct": 3.0,
+  "adaptive_baseline_dd_pct": 1.77,
+  "risk_multiplier_initial": 1.694915254237288,
+  "base_lot": 0.05,
+  "theoretical_scaled_lot": 0.0847457627118644,
+  "trigger_base": 0.12,
+  "add_base": 0.025,
+  "reversal_base": 0.2,
+  "max_layers": 10,
+  "adaptive_scale_formula": "clip(EMA60(TrueRange)/Median1440(TrueRange), 0.5, 2.0)",
+  "cycle_scale_policy": "freeze_at_entry_until_basket_exit",
+  "recalibration_formula": "k_next = k_current * 3.0 / DD_measured",
+  "ema9_policy": "not used as entry/add/exit gate in v1.0"
+}

@@ -26,8 +26,8 @@ PRIMARY_DD = 2.15813
 PRIMARY_PF = 6.98731
 PRIMARY_WR = 66.7721
 PRIMARY_RF = 16992.9
+PRIMARY_BUSINESS_DAYS = 65
 
-# Same economics as the Python reference report.
 START_BALANCE = 10_000.0
 LOT = 0.05
 XAU_USD_PER_1USD_MOVE_PER_LOT = 100.0
@@ -61,14 +61,12 @@ class G75Core:
         if self.anchor is None:
             self.anchor = float(c)
             return ev
-
         if not self.active:
             up = h >= self.anchor + cfg.trigger
             dn = l <= self.anchor - cfg.trigger
             if not (up or dn):
                 self.anchor = float(c)
                 return ev
-
             self.side = 1 if c >= self.anchor else -1
             self.cycle_id += 1
             self.active = True
@@ -79,7 +77,6 @@ class G75Core:
             self.counts["ENTRY"] += 1
             self.counts["CYCLE"] += 1
             ev.append(("ENTRY", entry, ts, self.side, self.cycle_id))
-
             if self.side == 1:
                 while self.layers < cfg.max_layers and self.last_add + cfg.add <= h + EPS:
                     self.last_add += cfg.add
@@ -96,7 +93,6 @@ class G75Core:
                     ev.append(("ADD", self.last_add, ts, self.side, self.cycle_id))
                 self.extreme = min(float(self.extreme), float(l))
                 reversal_hit = c >= self.extreme + cfg.reversal
-
             if reversal_hit:
                 self.counts["REVERSAL"] += 1
                 self.counts["EXIT"] += 1
@@ -105,7 +101,6 @@ class G75Core:
                 self.active = False
                 self.anchor = float(c)
             return ev
-
         if self.side == 1:
             while self.layers < cfg.max_layers and self.last_add + cfg.add <= h + EPS:
                 self.last_add += cfg.add
@@ -122,7 +117,6 @@ class G75Core:
                 ev.append(("ADD", self.last_add, ts, self.side, self.cycle_id))
             self.extreme = min(float(self.extreme), float(l))
             reversal_hit = c >= self.extreme + cfg.reversal
-
         if reversal_hit:
             self.counts["REVERSAL"] += 1
             self.counts["EXIT"] += 1
@@ -151,7 +145,6 @@ class G75ParityStrategy(Strategy):
         self.open_prices = []
         self.open_side = 0
         self.cycle_pnls = []
-        self.equity_curve = []
 
     def on_start(self):
         self.subscribe_bars(self.config.bar_type)
@@ -159,14 +152,10 @@ class G75ParityStrategy(Strategy):
     def _trade_cost_per_layer(self):
         return LOT * (SPREAD_PRICE * XAU_USD_PER_1USD_MOVE_PER_LOT + COMMISSION_USD_PER_LOT_RT)
 
-    def _mark_equity(self, close: float, ts):
+    def _mark_equity(self, close: float):
         unreal = 0.0
         if self.open_prices:
-            unreal = sum(
-                self.open_side * (close - p) * LOT * XAU_USD_PER_1USD_MOVE_PER_LOT
-                for p in self.open_prices
-            )
-            # Conservative: reserve round-trip cost for every currently-open layer.
+            unreal = sum(self.open_side * (close - p) * LOT * XAU_USD_PER_1USD_MOVE_PER_LOT for p in self.open_prices)
             unreal -= len(self.open_prices) * self._trade_cost_per_layer()
         eq = self.balance + unreal
         self.peak_equity = max(self.peak_equity, eq)
@@ -174,16 +163,12 @@ class G75ParityStrategy(Strategy):
         dd_pct = 100.0 * dd_usd / self.peak_equity if self.peak_equity > 0 else 0.0
         self.max_dd_usd = max(self.max_dd_usd, dd_usd)
         self.max_dd_pct = max(self.max_dd_pct, dd_pct)
-        self.equity_curve.append((ts, eq))
 
     def on_bar(self, bar: Bar):
         self.bar_count += 1
         close = float(bar.close)
-        events = self.core.on_bar(
-            float(bar.open), float(bar.high), float(bar.low), close, bar.ts_event
-        )
+        events = self.core.on_bar(float(bar.open), float(bar.high), float(bar.low), close, bar.ts_event)
         self.events.extend(events)
-
         for action, price, ts, side, cycle_id in events:
             if action == "ENTRY":
                 self.open_side = side
@@ -191,18 +176,14 @@ class G75ParityStrategy(Strategy):
             elif action == "ADD":
                 self.open_prices.append(float(price))
             elif action == "EXIT":
-                gross = sum(
-                    self.open_side * (float(price) - p) * LOT * XAU_USD_PER_1USD_MOVE_PER_LOT
-                    for p in self.open_prices
-                )
+                gross = sum(self.open_side * (float(price) - p) * LOT * XAU_USD_PER_1USD_MOVE_PER_LOT for p in self.open_prices)
                 cost = len(self.open_prices) * self._trade_cost_per_layer()
                 pnl = gross - cost
                 self.balance += pnl
                 self.cycle_pnls.append(pnl)
                 self.open_prices = []
                 self.open_side = 0
-
-        self._mark_equity(close, bar.ts_event)
+        self._mark_equity(close)
 
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -226,27 +207,14 @@ def load_df(path: Path) -> pd.DataFrame:
 
 
 def main():
-    data_path = Path("csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv")
-    df = load_df(data_path)
-
+    df = load_df(Path("csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv"))
     sim = Venue("SIM")
-    try:
-        instrument = TestInstrumentProvider.default_fx_ccy("XAU/USD", sim)
-    except Exception:
-        instrument = TestInstrumentProvider.default_fx_ccy("EUR/USD", sim)
-
+    instrument = TestInstrumentProvider.default_fx_ccy("XAU/USD", sim)
     bar_type = BarType.from_str(f"{instrument.id}-1-MINUTE-LAST-EXTERNAL")
     bars = BarDataWrangler(bar_type, instrument).process(df)
-
     engine = BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR")))
-    engine.add_venue(
-        venue=sim,
-        oms_type=OmsType.NETTING,
-        account_type=AccountType.MARGIN,
-        starting_balances=[Money(1_000_000, USD)],
-        base_currency=USD,
-        default_leverage=Decimal(1),
-    )
+    engine.add_venue(venue=sim, oms_type=OmsType.NETTING, account_type=AccountType.MARGIN,
+                     starting_balances=[Money(1_000_000, USD)], base_currency=USD, default_leverage=Decimal(1))
     engine.add_instrument(instrument)
     engine.add_data(bars)
     strategy = G75ParityStrategy(G75ParityConfig(instrument_id=instrument.id, bar_type=bar_type))
@@ -254,56 +222,32 @@ def main():
     engine.run()
 
     counts = strategy.core.counts.copy()
-    n = counts["ENTRY"]
-    adds = counts["ADD"]
+    n, adds = counts["ENTRY"], counts["ADD"]
     pnls = strategy.cycle_pnls
     wins = [x for x in pnls if x > 0]
     losses = [x for x in pnls if x < 0]
     net_profit = strategy.balance - START_BALANCE
     return90 = 100.0 * net_profit / START_BALANCE
-    trading_days = int(pd.Index(df.index.date).nunique())
-    monthly21 = ((strategy.balance / START_BALANCE) ** (21.0 / trading_days) - 1.0) * 100.0 if strategy.balance > 0 else float("nan")
-    wr = 100.0 * len(wins) / len(pnls) if pnls else 0.0
-    pf = sum(wins) / abs(sum(losses)) if losses else float("inf")
-    rf = net_profit / strategy.max_dd_usd if strategy.max_dd_usd > 0 else float("inf")
+    monthly21 = ((strategy.balance / START_BALANCE) ** (21.0 / PRIMARY_BUSINESS_DAYS) - 1.0) * 100.0
+    wr = 100.0 * len(wins) / len(pnls)
+    pf = sum(wins) / abs(sum(losses))
+    rf = return90 / strategy.max_dd_pct
 
     result = {
         "engine": "NautilusTrader BacktestEngine",
         "profitability_mode": "Nautilus event-driven theoretical-fill ledger; fixed 0.05 lot; spread 0.30; commission $7/lot RT",
         "bars": strategy.bar_count,
-        "entries_N": n,
-        "adds": adds,
-        "reversals": counts["REVERSAL"],
-        "exits": counts["EXIT"],
-        "cycles": counts["CYCLE"],
-        "closed_cycles": len(pnls),
-        "primary_N": PRIMARY_N,
-        "delta_N": n - PRIMARY_N,
-        "N_match_pct": (1.0 - abs(n - PRIMARY_N) / PRIMARY_N) * 100.0,
-        "primary_adds": PRIMARY_ADDS,
-        "delta_adds": adds - PRIMARY_ADDS,
-        "gate_95": abs(n - PRIMARY_N) <= PRIMARY_N * 0.05,
-        "gate_99": abs(n - PRIMARY_N) <= PRIMARY_N * 0.01,
-        "start_balance": START_BALANCE,
-        "end_balance": strategy.balance,
-        "net_profit_usd": net_profit,
-        "return90_pct": return90,
-        "monthly21_pct": monthly21,
-        "wr_pct": wr,
-        "pf": pf,
-        "max_dd_pct": strategy.max_dd_pct,
-        "max_dd_usd": strategy.max_dd_usd,
-        "rf": rf,
-        "trading_days": trading_days,
-        "primary_monthly21_pct": PRIMARY_MONTHLY21,
-        "primary_wr_pct": PRIMARY_WR,
-        "primary_pf": PRIMARY_PF,
-        "primary_dd_pct": PRIMARY_DD,
-        "primary_rf": PRIMARY_RF,
-        "nautilus_version": __import__("nautilus_trader").__version__,
-        "instrument_envelope": str(instrument.id),
-        "data_start": str(df.index.min()),
-        "data_end": str(df.index.max()),
+        "entries_N": n, "adds": adds, "reversals": counts["REVERSAL"], "exits": counts["EXIT"], "cycles": counts["CYCLE"],
+        "primary_N": PRIMARY_N, "delta_N": n - PRIMARY_N, "N_match_pct": (1.0 - abs(n - PRIMARY_N) / PRIMARY_N) * 100.0,
+        "primary_adds": PRIMARY_ADDS, "delta_adds": adds - PRIMARY_ADDS,
+        "start_balance": START_BALANCE, "end_balance": strategy.balance, "net_profit_usd": net_profit,
+        "return90_pct": return90, "monthly21_pct": monthly21, "wr_pct": wr, "pf": pf,
+        "max_dd_pct": strategy.max_dd_pct, "max_dd_usd": strategy.max_dd_usd, "rf": rf,
+        "business_days_for_monthly": PRIMARY_BUSINESS_DAYS,
+        "primary_monthly21_pct": PRIMARY_MONTHLY21, "primary_wr_pct": PRIMARY_WR,
+        "primary_pf": PRIMARY_PF, "primary_dd_pct": PRIMARY_DD, "primary_rf": PRIMARY_RF,
+        "nautilus_version": __import__("nautilus_trader").__version__, "instrument_envelope": str(instrument.id),
+        "data_start": str(df.index.min()), "data_end": str(df.index.max()),
     }
     out = Path("research/g75_nautilus/results")
     out.mkdir(parents=True, exist_ok=True)

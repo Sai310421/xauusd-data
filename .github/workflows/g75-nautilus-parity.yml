@@ -30,9 +30,11 @@ jobs:
           pip install nautilus_trader pandas
       - name: Run 90d G75 Nautilus event parity
         run: python research/g75_nautilus/g75_event_parity.py
-      - name: Upload parity result
+      - name: Run G75 Adaptive Distance A/B
+        run: python research/g75_nautilus/g75_adaptive_distance_ab.py
+      - name: Upload parity and adaptive A/B results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-nautilus-event-parity
+          name: g75-nautilus-parity-and-adaptive-ab
           path: research/g75_nautilus/results/

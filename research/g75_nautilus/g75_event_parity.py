@@ -21,6 +21,18 @@ from nautilus_trader.trading.strategy import Strategy
 EPS = 1e-12
 PRIMARY_N = 67010
 PRIMARY_ADDS = 599223
+PRIMARY_MONTHLY21 = 574.315
+PRIMARY_DD = 2.15813
+PRIMARY_PF = 6.98731
+PRIMARY_WR = 66.7721
+PRIMARY_RF = 16992.9
+
+# Same economics as the Python reference report.
+START_BALANCE = 10_000.0
+LOT = 0.05
+XAU_USD_PER_1USD_MOVE_PER_LOT = 100.0
+SPREAD_PRICE = 0.30
+COMMISSION_USD_PER_LOT_RT = 7.0
 
 
 @dataclass
@@ -66,14 +78,14 @@ class G75Core:
             self.layers = 1
             self.counts["ENTRY"] += 1
             self.counts["CYCLE"] += 1
-            ev.append(("ENTRY", entry, ts))
+            ev.append(("ENTRY", entry, ts, self.side, self.cycle_id))
 
             if self.side == 1:
                 while self.layers < cfg.max_layers and self.last_add + cfg.add <= h + EPS:
                     self.last_add += cfg.add
                     self.layers += 1
                     self.counts["ADD"] += 1
-                    ev.append(("ADD", self.last_add, ts))
+                    ev.append(("ADD", self.last_add, ts, self.side, self.cycle_id))
                 self.extreme = max(float(self.extreme), float(h))
                 reversal_hit = c <= self.extreme - cfg.reversal
             else:
@@ -81,15 +93,15 @@ class G75Core:
                     self.last_add -= cfg.add
                     self.layers += 1
                     self.counts["ADD"] += 1
-                    ev.append(("ADD", self.last_add, ts))
+                    ev.append(("ADD", self.last_add, ts, self.side, self.cycle_id))
                 self.extreme = min(float(self.extreme), float(l))
                 reversal_hit = c >= self.extreme + cfg.reversal
 
             if reversal_hit:
                 self.counts["REVERSAL"] += 1
                 self.counts["EXIT"] += 1
-                ev.append(("REVERSAL", c, ts))
-                ev.append(("EXIT", c, ts))
+                ev.append(("REVERSAL", c, ts, self.side, self.cycle_id))
+                ev.append(("EXIT", c, ts, self.side, self.cycle_id))
                 self.active = False
                 self.anchor = float(c)
             return ev
@@ -99,7 +111,7 @@ class G75Core:
                 self.last_add += cfg.add
                 self.layers += 1
                 self.counts["ADD"] += 1
-                ev.append(("ADD", self.last_add, ts))
+                ev.append(("ADD", self.last_add, ts, self.side, self.cycle_id))
             self.extreme = max(float(self.extreme), float(h))
             reversal_hit = c <= self.extreme - cfg.reversal
         else:
@@ -107,15 +119,15 @@ class G75Core:
                 self.last_add -= cfg.add
                 self.layers += 1
                 self.counts["ADD"] += 1
-                ev.append(("ADD", self.last_add, ts))
+                ev.append(("ADD", self.last_add, ts, self.side, self.cycle_id))
             self.extreme = min(float(self.extreme), float(l))
             reversal_hit = c >= self.extreme + cfg.reversal
 
         if reversal_hit:
             self.counts["REVERSAL"] += 1
             self.counts["EXIT"] += 1
-            ev.append(("REVERSAL", c, ts))
-            ev.append(("EXIT", c, ts))
+            ev.append(("REVERSAL", c, ts, self.side, self.cycle_id))
+            ev.append(("EXIT", c, ts, self.side, self.cycle_id))
             self.active = False
             self.anchor = float(c)
         return ev
@@ -132,21 +144,65 @@ class G75ParityStrategy(Strategy):
         self.core = G75Core()
         self.events = []
         self.bar_count = 0
+        self.balance = START_BALANCE
+        self.peak_equity = START_BALANCE
+        self.max_dd_usd = 0.0
+        self.max_dd_pct = 0.0
+        self.open_prices = []
+        self.open_side = 0
+        self.cycle_pnls = []
+        self.equity_curve = []
 
     def on_start(self):
         self.subscribe_bars(self.config.bar_type)
 
+    def _trade_cost_per_layer(self):
+        return LOT * (SPREAD_PRICE * XAU_USD_PER_1USD_MOVE_PER_LOT + COMMISSION_USD_PER_LOT_RT)
+
+    def _mark_equity(self, close: float, ts):
+        unreal = 0.0
+        if self.open_prices:
+            unreal = sum(
+                self.open_side * (close - p) * LOT * XAU_USD_PER_1USD_MOVE_PER_LOT
+                for p in self.open_prices
+            )
+            # Conservative: reserve round-trip cost for every currently-open layer.
+            unreal -= len(self.open_prices) * self._trade_cost_per_layer()
+        eq = self.balance + unreal
+        self.peak_equity = max(self.peak_equity, eq)
+        dd_usd = self.peak_equity - eq
+        dd_pct = 100.0 * dd_usd / self.peak_equity if self.peak_equity > 0 else 0.0
+        self.max_dd_usd = max(self.max_dd_usd, dd_usd)
+        self.max_dd_pct = max(self.max_dd_pct, dd_pct)
+        self.equity_curve.append((ts, eq))
+
     def on_bar(self, bar: Bar):
         self.bar_count += 1
-        self.events.extend(
-            self.core.on_bar(
-                float(bar.open),
-                float(bar.high),
-                float(bar.low),
-                float(bar.close),
-                bar.ts_event,
-            )
+        close = float(bar.close)
+        events = self.core.on_bar(
+            float(bar.open), float(bar.high), float(bar.low), close, bar.ts_event
         )
+        self.events.extend(events)
+
+        for action, price, ts, side, cycle_id in events:
+            if action == "ENTRY":
+                self.open_side = side
+                self.open_prices = [float(price)]
+            elif action == "ADD":
+                self.open_prices.append(float(price))
+            elif action == "EXIT":
+                gross = sum(
+                    self.open_side * (float(price) - p) * LOT * XAU_USD_PER_1USD_MOVE_PER_LOT
+                    for p in self.open_prices
+                )
+                cost = len(self.open_prices) * self._trade_cost_per_layer()
+                pnl = gross - cost
+                self.balance += pnl
+                self.cycle_pnls.append(pnl)
+                self.open_prices = []
+                self.open_side = 0
+
+        self._mark_equity(close, bar.ts_event)
 
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -200,14 +256,27 @@ def main():
     counts = strategy.core.counts.copy()
     n = counts["ENTRY"]
     adds = counts["ADD"]
+    pnls = strategy.cycle_pnls
+    wins = [x for x in pnls if x > 0]
+    losses = [x for x in pnls if x < 0]
+    net_profit = strategy.balance - START_BALANCE
+    return90 = 100.0 * net_profit / START_BALANCE
+    trading_days = int(pd.Index(df.index.date).nunique())
+    monthly21 = ((strategy.balance / START_BALANCE) ** (21.0 / trading_days) - 1.0) * 100.0 if strategy.balance > 0 else float("nan")
+    wr = 100.0 * len(wins) / len(pnls) if pnls else 0.0
+    pf = sum(wins) / abs(sum(losses)) if losses else float("inf")
+    rf = net_profit / strategy.max_dd_usd if strategy.max_dd_usd > 0 else float("inf")
+
     result = {
         "engine": "NautilusTrader BacktestEngine",
+        "profitability_mode": "Nautilus event-driven theoretical-fill ledger; fixed 0.05 lot; spread 0.30; commission $7/lot RT",
         "bars": strategy.bar_count,
         "entries_N": n,
         "adds": adds,
         "reversals": counts["REVERSAL"],
         "exits": counts["EXIT"],
         "cycles": counts["CYCLE"],
+        "closed_cycles": len(pnls),
         "primary_N": PRIMARY_N,
         "delta_N": n - PRIMARY_N,
         "N_match_pct": (1.0 - abs(n - PRIMARY_N) / PRIMARY_N) * 100.0,
@@ -215,6 +284,22 @@ def main():
         "delta_adds": adds - PRIMARY_ADDS,
         "gate_95": abs(n - PRIMARY_N) <= PRIMARY_N * 0.05,
         "gate_99": abs(n - PRIMARY_N) <= PRIMARY_N * 0.01,
+        "start_balance": START_BALANCE,
+        "end_balance": strategy.balance,
+        "net_profit_usd": net_profit,
+        "return90_pct": return90,
+        "monthly21_pct": monthly21,
+        "wr_pct": wr,
+        "pf": pf,
+        "max_dd_pct": strategy.max_dd_pct,
+        "max_dd_usd": strategy.max_dd_usd,
+        "rf": rf,
+        "trading_days": trading_days,
+        "primary_monthly21_pct": PRIMARY_MONTHLY21,
+        "primary_wr_pct": PRIMARY_WR,
+        "primary_pf": PRIMARY_PF,
+        "primary_dd_pct": PRIMARY_DD,
+        "primary_rf": PRIMARY_RF,
         "nautilus_version": __import__("nautilus_trader").__version__,
         "instrument_envelope": str(instrument.id),
         "data_start": str(df.index.min()),
@@ -222,9 +307,9 @@ def main():
     }
     out = Path("research/g75_nautilus/results")
     out.mkdir(parents=True, exist_ok=True)
-    (out / "g75_nautilus_event_parity.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-    pd.DataFrame([result]).to_csv(out / "g75_nautilus_event_parity.csv", index=False)
-    print("G75_NAUTILUS_RESULT=" + json.dumps(result, ensure_ascii=False))
+    (out / "g75_nautilus_profitability.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    pd.DataFrame([result]).to_csv(out / "g75_nautilus_profitability.csv", index=False)
+    print("G75_NAUTILUS_PROFITABILITY=" + json.dumps(result, ensure_ascii=False))
     engine.dispose()
 
 

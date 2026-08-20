@@ -32,9 +32,11 @@ jobs:
         run: python research/g75_nautilus/g75_event_parity.py
       - name: Run G75 Adaptive Distance A/B
         run: python research/g75_nautilus/g75_adaptive_distance_ab.py
-      - name: Upload parity and adaptive A/B results
+      - name: Run G75 M1 M5 M15 H1 simultaneous
+        run: python research/g75_nautilus/g75_mtf_simultaneous.py
+      - name: Upload all G75 Nautilus results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-nautilus-parity-and-adaptive-ab
+          name: g75-nautilus-mtf-simultaneous
           path: research/g75_nautilus/results/

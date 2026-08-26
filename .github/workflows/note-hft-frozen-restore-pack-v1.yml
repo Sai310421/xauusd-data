@@ -1,0 +1,39 @@
+name: NOTE-HFT Frozen Restore Pack v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'restore/note_hft_frozen_v1/**'
+      - '.github/workflows/note-hft-frozen-restore-pack-v1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build restore pack
+        run: |
+          mkdir -p out/NOTE_HFT_FROZEN_RESTORE_PATCH_v1
+          cp restore/note_hft_frozen_v1/* out/NOTE_HFT_FROZEN_RESTORE_PATCH_v1/
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          root=Path('out/NOTE_HFT_FROZEN_RESTORE_PATCH_v1')
+          hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.iterdir()) if p.is_file()}
+          (root/'SHA256SUMS.json').write_text(json.dumps(hashes,indent=2),encoding='utf-8')
+          PY
+          cd out
+          zip -r NOTE_HFT_FROZEN_RESTORE_PATCH_v1.zip NOTE_HFT_FROZEN_RESTORE_PATCH_v1
+          sha256sum NOTE_HFT_FROZEN_RESTORE_PATCH_v1.zip > NOTE_HFT_FROZEN_RESTORE_PATCH_v1.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_FROZEN_RESTORE_PATCH_v1
+          path: |
+            out/NOTE_HFT_FROZEN_RESTORE_PATCH_v1.zip
+            out/NOTE_HFT_FROZEN_RESTORE_PATCH_v1.zip.sha256
+          retention-days: 30

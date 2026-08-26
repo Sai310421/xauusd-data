@@ -1,0 +1,40 @@
+name: NOTE-HFT Frozen Final v1
+
+on:
+  push:
+    paths:
+      - 'note_hft/final_v1/**'
+      - '.github/workflows/note-hft-final-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run fail-closed final gate
+        run: |
+          mkdir -p build
+          cd build
+          python ../note_hft/final_v1/final_gate.py || true
+          cp ../note_hft/final_v1/FINAL_MANIFEST.json .
+          cp ../note_hft/final_v1/FINAL_README.md .
+          cp ../note_hft/final_v1/final_gate.py .
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          out={}
+          for p in sorted(Path('.').glob('*')):
+              if p.is_file(): out[p.name]=hashlib.sha256(p.read_bytes()).hexdigest()
+          Path('SHA256SUMS.json').write_text(json.dumps(out,indent=2),encoding='utf-8')
+          PY
+          zip -r NOTE_HFT_FROZEN_FINAL_v1.zip FINAL_MANIFEST.json FINAL_README.md final_gate.py final_gate_result.json SHA256SUMS.json
+      - name: Upload final artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_FROZEN_FINAL_v1
+          path: build/NOTE_HFT_FROZEN_FINAL_v1.zip
+          if-no-files-found: error

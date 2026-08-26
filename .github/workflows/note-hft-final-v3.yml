@@ -35,16 +35,13 @@ jobs:
       - name: Verify fail-closed parity input
         run: |
           mkdir -p out
-          cd note_hft/final_v3
-          python parity_calibrate.py ../../../missing_udp_bidask.csv -o ../../../out/parity_v3.json || test $? -eq 3
-          cd ../../..
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/parity_calibrate.py missing_udp_bidask.csv -o out/parity_v3.json || test $? -eq 3
           cat out/parity_v3.json
       - name: Build final v3 pack
         run: |
           mkdir -p pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3
           find note_hft/final_v3 -maxdepth 1 -type f -exec cp {} pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/ \;
           cp out/parity_v3.json pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/
-          # Include proven v2 reality/parity gates when present.
           if [ -f note_hft/final_v2/reality_gate.py ]; then cp note_hft/final_v2/reality_gate.py pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/; fi
           if [ -f note_hft/final_v2/parity_gate.py ]; then cp note_hft/final_v2/parity_gate.py pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/; fi
           python - <<'PY'

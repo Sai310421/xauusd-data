@@ -1,0 +1,56 @@
+name: NOTE-HFT Restore v2 Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/note_hft_restore_v2/**'
+      - '.github/workflows/note-hft-restore-v2-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test restore layer
+        working-directory: research/note_hft_restore_v2
+        run: python test_restore_v2.py
+      - name: Build completion pack
+        run: |
+          mkdir -p dist/NOTE_HFT_FROZEN_RESTORE_v2
+          cp -r research/note_hft_restore_v2/* dist/NOTE_HFT_FROZEN_RESTORE_v2/
+          cat > dist/NOTE_HFT_FROZEN_RESTORE_v2/REALITY_NOISE_POLICY.md <<'EOF'
+          # Reality Noise Policy
+          Formal performance BT is invalid unless execution realism is enabled.
+
+          Required scenarios: NORMAL / STRESS / TAIL.
+          Include spread, slippage/latency, reject/fill degradation, commission and broker constraints.
+
+          NOTE-HFT special rule: the original execution premise requires spread == 0 for NEW ENTRY. Do not replace that Frozen gate with a wider synthetic spread allowance. Reality testing must instead model how often zero-spread entry opportunities actually occur, plus adverse latency/slippage after the decision.
+          EOF
+          cat > dist/NOTE_HFT_FROZEN_RESTORE_v2/STATUS.json <<'EOF'
+          {
+            "status": "STRUCTURAL_RESTORE_COMPLETE_SIGNAL_FORMULA_STILL_REDACTED",
+            "frozen_execution_changed": false,
+            "spread_gate": "sp_limit_cnt=0 INTENTIONAL",
+            "signal_policy": "authentic external payload or replay only; synthetic signal forbidden",
+            "parity_n": 176483,
+            "parity_wr_pct": 72.71,
+            "parity_pf": 1.74,
+            "parity_maxdd_pct": 3.97,
+            "parity_buy": 88223,
+            "parity_sell": 88260
+          }
+          EOF
+          (cd dist && zip -r NOTE_HFT_FROZEN_RESTORE_v2.zip NOTE_HFT_FROZEN_RESTORE_v2)
+          sha256sum dist/NOTE_HFT_FROZEN_RESTORE_v2.zip > dist/NOTE_HFT_FROZEN_RESTORE_v2.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_FROZEN_RESTORE_v2
+          path: |
+            dist/NOTE_HFT_FROZEN_RESTORE_v2.zip
+            dist/NOTE_HFT_FROZEN_RESTORE_v2.zip.sha256
+          retention-days: 30

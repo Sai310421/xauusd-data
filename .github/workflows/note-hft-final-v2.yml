@@ -1,0 +1,43 @@
+name: NOTE-HFT Frozen Final v2
+on:
+  push:
+    paths:
+      - 'note_hft/final_v2/**'
+      - '.github/workflows/note-hft-final-v2.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile final tools
+        run: |
+          python -m py_compile note_hft/final_v2/parity_gate.py
+          python -m py_compile note_hft/final_v2/reality_gate.py
+      - name: Fail-closed dry run
+        run: |
+          mkdir -p out
+          python note_hft/final_v2/parity_gate.py missing_authentic_signal.csv out/parity_report.json || test $? -eq 3
+          python note_hft/final_v2/reality_gate.py missing_bidask.csv out/reality_report.json || test $? -eq 3
+          cat out/parity_report.json
+          cat out/reality_report.json
+      - name: Build final pack
+        run: |
+          mkdir -p pack/NOTE_HFT_FROZEN_FINAL_v2
+          cp note_hft/final_v2/* pack/NOTE_HFT_FROZEN_FINAL_v2/
+          cp out/*.json pack/NOTE_HFT_FROZEN_FINAL_v2/
+          python - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('pack/NOTE_HFT_FROZEN_FINAL_v2')
+          d={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir() if p.is_file()}
+          (root/'SHA256SUMS.json').write_text(json.dumps(d,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_FROZEN_FINAL_v2
+          path: pack/NOTE_HFT_FROZEN_FINAL_v2
+          retention-days: 90

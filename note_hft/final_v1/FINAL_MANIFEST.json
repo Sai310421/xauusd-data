@@ -1,0 +1,36 @@
+{
+  "name": "NOTE_HFT_FROZEN_FINAL_v1",
+  "status_model": "FAIL_CLOSED",
+  "frozen_execution_core": true,
+  "authentic_signal_required": true,
+  "baseline_fingerprint": {
+    "trades": 176483,
+    "buy": 88223,
+    "sell": 88260,
+    "win_rate_pct": 72.71,
+    "profit_factor": 1.74,
+    "max_drawdown_pct": 3.97
+  },
+  "hard_invariants": [
+    "spread_zero_entry_gate_preserved",
+    "ct_permit_3s_preserved",
+    "close_first_preserved",
+    "static_qty_0_01_preserved",
+    "no_proxy_signal_logic",
+    "no_ideal_only_acceptance"
+  ],
+  "reality_noise": [
+    "latency",
+    "latency_slippage",
+    "order_reject",
+    "stale_or_missed_udp",
+    "position_ack_delay",
+    "broker_bid_ask_eligibility"
+  ],
+  "parity_gate": {
+    "n_retention_min": 0.99,
+    "buy_sell_balance_required": true,
+    "economic_metrics_checked_after_structural_parity": true
+  },
+  "completion_rule": "The pack is implementation-complete, but authentic performance BT remains BLOCKED until original a_cond_num/b_cond_num signal input or equivalent replay log is supplied."
+}

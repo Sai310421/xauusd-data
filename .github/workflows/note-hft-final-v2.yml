@@ -27,8 +27,9 @@ jobs:
           cat out/reality_report.json
       - name: Build final pack
         run: |
+          rm -rf note_hft/final_v2/__pycache__
           mkdir -p pack/NOTE_HFT_FROZEN_FINAL_v2
-          cp note_hft/final_v2/* pack/NOTE_HFT_FROZEN_FINAL_v2/
+          find note_hft/final_v2 -maxdepth 1 -type f -exec cp {} pack/NOTE_HFT_FROZEN_FINAL_v2/ \;
           cp out/*.json pack/NOTE_HFT_FROZEN_FINAL_v2/
           python - <<'PY'
           import hashlib,json,pathlib

@@ -1,0 +1,69 @@
+name: NOTE-HFT Reconstructed Final v3
+on:
+  push:
+    paths:
+      - 'note_hft/final_v3/**'
+      - '.github/workflows/note-hft-final-v3.yml'
+  workflow_dispatch:
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify reconstruction
+        run: |
+          python -m py_compile note_hft/final_v3/reconstructed_alpha.py
+          python -m py_compile note_hft/final_v3/parity_calibrate.py
+          PYTHONPATH=note_hft/final_v3 python - <<'PY'
+          from reconstructed_alpha import ReconstructedDirectionalAlpha
+          def run(xs):
+              e=ReconstructedDirectionalAlpha(window=5); o=None
+              for a,b in xs:o=e.update(a,b)
+              return o
+          u=run([(100+i,99+i) for i in range(5)])
+          d=run([(104-i,103-i) for i in range(5)])
+          f=run([(100,99)]*5)
+          assert u.signal==1 and u.a_cond_num<0 and u.b_cond_num>0
+          assert d.signal==-1 and d.a_cond_num>0 and d.b_cond_num<0
+          assert f.signal==0
+          print('RECONSTRUCTED_ALPHA_TESTS=PASS')
+          PY
+      - name: Verify fail-closed parity input
+        run: |
+          mkdir -p out
+          cd note_hft/final_v3
+          python parity_calibrate.py ../../../missing_udp_bidask.csv -o ../../../out/parity_v3.json || test $? -eq 3
+          cd ../../..
+          cat out/parity_v3.json
+      - name: Build final v3 pack
+        run: |
+          mkdir -p pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3
+          find note_hft/final_v3 -maxdepth 1 -type f -exec cp {} pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/ \;
+          cp out/parity_v3.json pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/
+          # Include proven v2 reality/parity gates when present.
+          if [ -f note_hft/final_v2/reality_gate.py ]; then cp note_hft/final_v2/reality_gate.py pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/; fi
+          if [ -f note_hft/final_v2/parity_gate.py ]; then cp note_hft/final_v2/parity_gate.py pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3/; fi
+          python - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3')
+          sums={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.iterdir()) if p.is_file()}
+          (root/'SHA256SUMS.json').write_text(json.dumps(sums,indent=2),encoding='utf-8')
+          manifest={
+            'name':'NOTE_HFT_RECONSTRUCTED_FINAL_v3',
+            'alpha_status':'RECONSTRUCTED_NOT_AUTHENTIC',
+            'default_window':5,
+            'frozen_core_modified':False,
+            'baseline':{'N':176483,'BUY':88223,'SELL':88260,'WR':72.71,'PF':1.74,'MaxDD':3.97},
+            'formal_bt_requires':'tick-level UDP/reference BidAsk + broker BidAsk/reality feed'
+          }
+          (root/'FINAL_MANIFEST.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_RECONSTRUCTED_FINAL_v3
+          path: pack/NOTE_HFT_RECONSTRUCTED_FINAL_v3
+          retention-days: 90

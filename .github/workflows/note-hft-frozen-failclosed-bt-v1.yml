@@ -1,0 +1,26 @@
+name: NOTE-HFT Frozen Fail-Closed BT v1
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/note_hft_frozen_failclosed_bt_v1.py'
+      - '.github/workflows/note-hft-frozen-failclosed-bt-v1.yml'
+permissions:
+  contents: read
+jobs:
+  bt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas
+      - name: Run Frozen fail-closed parity BT
+        run: python research/note_hft_frozen_failclosed_bt_v1.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: note-hft-frozen-failclosed-bt-v1
+          path: results/note-hft-frozen-failclosed-v1/
+          retention-days: 30

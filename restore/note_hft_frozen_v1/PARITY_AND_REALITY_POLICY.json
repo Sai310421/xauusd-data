@@ -1,0 +1,25 @@
+{
+  "baseline": {
+    "N": 176483,
+    "WR_pct": 72.71,
+    "PF": 1.74,
+    "MaxDD_pct": 3.97,
+    "BUY": 88223,
+    "SELL": 88260,
+    "N_retention_hard_gate": 0.99
+  },
+  "reality_noise": {
+    "mandatory": true,
+    "formal_profiles": ["NORMAL", "STRESS", "TAIL"],
+    "IDEAL": "diagnostic_only",
+    "components": ["variable_spread", "slippage", "latency", "reject_probability", "commission", "tail_shock", "margin_constraints"],
+    "rule": "No NOTE-HFT performance result is formal without Reality Noise. Raw Bid/Ask empirical broker data supersedes synthetic distributions when available."
+  },
+  "architecture": {
+    "NOTE_HFT": "Frozen fast spinal core",
+    "First_Passage_Trade_Radar": "Math Supervisor, shadow first",
+    "ONNX": "Directional probability observer",
+    "Vision": "Market regime observer",
+    "Nautilus": "Reality verifier"
+  }
+}

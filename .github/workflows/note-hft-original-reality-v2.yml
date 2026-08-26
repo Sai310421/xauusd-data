@@ -1,0 +1,46 @@
+name: NOTE-HFT Original Reality v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/note_hft_original_reality_v2.py'
+      - 'research/test_note_hft_original_reality_v2.py'
+      - '.github/workflows/note-hft-original-reality-v2.yml'
+
+jobs:
+  parity-invariants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test original execution invariants
+        working-directory: research
+        run: python test_note_hft_original_reality_v2.py
+      - name: Emit baseline fingerprint
+        run: |
+          python - <<'PY'
+          import json
+          out = {
+            'baseline_cycles': 176483,
+            'baseline_executions': 352966,
+            'baseline_buy': 88223,
+            'baseline_sell': 88260,
+            'baseline_wr_pct': 72.71,
+            'baseline_pf': 1.74,
+            'baseline_maxdd_pct': 3.97,
+            'reality_policy': 'ZERO_SPREAD_ENTRY_GATE + LATENCY/SLIPPAGE/REJECT/STALE_FEED',
+            'alpha_policy': 'AUTHENTIC_SIDECAR_ONLY; FAIL_CLOSED_IF_MISSING',
+          }
+          import pathlib
+          pathlib.Path('results').mkdir(exist_ok=True)
+          pathlib.Path('results/note_hft_original_reality_v2.json').write_text(json.dumps(out, indent=2))
+          print(json.dumps(out, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: note-hft-original-reality-v2
+          path: results/note_hft_original_reality_v2.json
+          retention-days: 30

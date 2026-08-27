@@ -1,0 +1,47 @@
+name: NOTE-HFT Two Week Parity
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/note-hft-two-week-parity.yml'
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone proven Dukascopy downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download two calendar weeks XAUUSD ticks
+        run: |
+          python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-03 --to 2026-08-14 \
+            --output-dir /tmp/duka_data --download-only --download-workers 64 --retries 1 --retry-sleep 0
+      - name: Analyze reconstructed Alpha under Frozen 3s permit
+        run: |
+          mkdir -p out
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/analyze_bi5_dir.py /tmp/duka_data --window 5 -o out/two_week_parity.json
+          python - <<'PY'
+          import json
+          p='out/two_week_parity.json'; d=json.load(open(p))
+          base=d['baseline']
+          d['parity']={
+            'N_ratio': d['permit3s_n']/base['N'] if base['N'] else None,
+            'N_error_pct': 100*(d['permit3s_n']-base['N'])/base['N'],
+            'BUY_ratio': d['permit3s_buy']/base['BUY'],
+            'SELL_ratio': d['permit3s_sell']/base['SELL'],
+            'buy_share': d['permit3s_buy']/d['permit3s_n'] if d['permit3s_n'] else None,
+            'baseline_buy_share': base['BUY']/base['N'],
+            'executions_entry_close': d['permit3s_n']*2,
+            'baseline_executions_entry_close': base['N']*2,
+          }
+          json.dump(d,open(p,'w'),indent=2)
+          print(json.dumps(d,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_TWO_WEEK_PARITY
+          path: out/two_week_parity.json
+          retention-days: 90

@@ -19,8 +19,6 @@ jobs:
         run: |
           python - <<'PY'
           from decimal import Decimal
-          from collections import deque
-
           def calc(asks,bids):
               if len(asks) >= 5 and len(bids) >= 5:
                   a=asks[0]-asks[-1]
@@ -30,13 +28,10 @@ jobs:
               buy=(b>0 and a<0)
               sell=(a>0 and b<0)
               return a,b,1 if buy else (-1 if sell else 0)
-
           D=Decimal
           assert calc(list(map(D,['100','101','102','103','104'])),list(map(D,['99','100','101','102','103'])))[2] == 1
           assert calc(list(map(D,['104','103','102','101','100'])),list(map(D,['103','102','101','100','99'])))[2] == -1
-          # spread widening only: ask up, bid down -> both recovered values negative -> no trade
           assert calc(list(map(D,['100','100','100','100','101'])),list(map(D,['99','99','99','99','98'])))[2] == 0
-          # spread narrowing only: ask down, bid up -> both positive -> no trade
           assert calc(list(map(D,['101','101','101','101','100'])),list(map(D,['98','98','98','98','99'])))[2] == 0
           assert calc(list(map(D,['100','101'])),list(map(D,['99','100'])))[2] == 0
           print('FOUR_SLOT_RECOVERY_TESTS=PASS')
@@ -46,7 +41,7 @@ jobs:
       - name: Build package
         run: |
           mkdir -p dist/NOTE_HFT_FINAL_BOT_v5
-          cp note_hft/final_bot_v5/* dist/NOTE_HFT_FINAL_BOT_v5/
+          find note_hft/final_bot_v5 -maxdepth 1 -type f -exec cp {} dist/NOTE_HFT_FINAL_BOT_v5/ \;
           cat > dist/NOTE_HFT_FINAL_BOT_v5/BASELINE_FINGERPRINT.json <<'JSON'
           {
             "N": 176483,

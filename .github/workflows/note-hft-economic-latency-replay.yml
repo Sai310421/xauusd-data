@@ -1,0 +1,30 @@
+name: NOTE-HFT Economic Latency Replay
+on:
+  push:
+    paths:
+      - 'note_hft/final_v3/economic_latency_replay.py'
+      - '.github/workflows/note-hft-economic-latency-replay.yml'
+  workflow_dispatch:
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download XAUUSD ticks
+        run: |
+          python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-03 --to 2026-08-14 --output-dir /tmp/duka_data --download-only --download-workers 8 --retries 6 --retry-sleep 1
+      - name: Replay economic sensitivity
+        run: |
+          mkdir -p out
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/economic_latency_replay.py /tmp/duka_data -o out/economic_latency_replay.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_ECONOMIC_LATENCY_REPLAY
+          path: out/
+          retention-days: 90

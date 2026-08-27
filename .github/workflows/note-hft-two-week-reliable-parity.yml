@@ -1,0 +1,72 @@
+name: NOTE-HFT Two Week Reliable Parity
+
+on:
+  push:
+    paths:
+      - '.github/workflows/note-hft-two-week-reliable-parity.yml'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Clone Dukascopy downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+
+      - name: Download XAUUSD two-week ticks reliably
+        run: |
+          python /tmp/duka/dukas_downloader.py \
+            --instrument XAUUSD \
+            --from 2026-08-03 \
+            --to 2026-08-14 \
+            --output-dir /tmp/duka_data \
+            --download-only \
+            --download-workers 8 \
+            --retries 6 \
+            --retry-sleep 1
+
+      - name: Analyze reconstructed Alpha under Frozen 3s permit
+        run: |
+          mkdir -p out
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/analyze_bi5_dir.py /tmp/duka_data --window 5 -o out/two_week_reliable_parity.json
+          python - <<'PY'
+          import json
+          p='out/two_week_reliable_parity.json'
+          d=json.load(open(p))
+          b=d['baseline']
+          h=d.get('bi5_files',0)
+          n=d.get('permit3s_n',0)
+          d['parity']={
+            'N_ratio_direct': n/b['N'] if b['N'] else None,
+            'N_error_pct_direct': 100*(n-b['N'])/b['N'],
+            'BUY_ratio_direct': d.get('permit3s_buy',0)/b['BUY'],
+            'SELL_ratio_direct': d.get('permit3s_sell',0)/b['SELL'],
+            'buy_share': d.get('permit3s_buy',0)/n if n else None,
+            'baseline_buy_share': b['BUY']/b['N'],
+            'trades_per_downloaded_hour': n/h if h else None,
+            'hours_required_for_baseline_at_observed_density': b['N']/(n/h) if h and n else None,
+            'executions_entry_close': n*2,
+            'baseline_executions_entry_close': b['N']*2,
+          }
+          json.dump(d,open(p,'w'),indent=2)
+          print(json.dumps(d,indent=2))
+          PY
+
+      - name: Preserve failed-hour diagnostics
+        if: always()
+        run: |
+          if [ -f /tmp/duka_data/failed_hours.csv ]; then cp /tmp/duka_data/failed_hours.csv out/failed_hours.csv; fi
+          find /tmp/duka_data -type f -name '*.bi5' | wc -l | tee out/bi5_file_count.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NOTE_HFT_TWO_WEEK_RELIABLE_PARITY
+          path: out/
+          retention-days: 90

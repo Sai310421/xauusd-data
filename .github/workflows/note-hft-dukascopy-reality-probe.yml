@@ -9,17 +9,17 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run 14-day reality probe
+      - name: Run 1-day transport diagnostic
         run: |
           mkdir -p out
           PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/dukascopy_reality_probe.py \
-            --start 2026-08-01T00:00:00 --days 14 --window 5 -o out/dukascopy_reality_probe.json
+            --start 2026-08-01T00:00:00 --days 1 --window 5 --workers 24 -o out/dukascopy_reality_probe.json
       - name: Print result
         run: cat out/dukascopy_reality_probe.json
       - uses: actions/upload-artifact@v4

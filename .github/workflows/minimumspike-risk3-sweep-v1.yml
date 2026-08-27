@@ -1,0 +1,35 @@
+name: MinimumSpike DD3 Risk Sweep v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/minimumspike_risk3_sweep_v1.py'
+      - '.github/workflows/minimumspike-risk3-sweep-v1.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  risk3-sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0'
+      - name: Run DD3 risk sweep
+        run: python research/minimumspike_risk3_sweep_v1.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimumspike-dd3-risk-sweep-v1
+          path: results/minimumspike-risk3-sweep-v1/
+          retention-days: 30

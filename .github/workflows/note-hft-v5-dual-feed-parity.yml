@@ -1,0 +1,36 @@
+name: NOTE-HFT v5 Dual Feed Parity
+on:
+  push:
+    paths:
+      - 'note_hft/final_bot_v5/dual_feed_economic_parity.py'
+      - '.github/workflows/note-hft-v5-dual-feed-parity.yml'
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile
+        run: python -m py_compile note_hft/final_bot_v5/dual_feed_economic_parity.py
+      - name: Synthetic dual-feed smoke test
+        run: |
+          python - <<'PY'
+          import csv
+          for fn,lag in [('ref.csv',0),('exe.csv',20)]:
+              with open(fn,'w',newline='') as f:
+                  w=csv.writer(f); w.writerow(['timestamp','bid','ask'])
+                  for i in range(2000):
+                      t=i*10+lag
+                      p=100.0+i*0.0001
+                      w.writerow([t,p,p])
+          PY
+          python note_hft/final_bot_v5/dual_feed_economic_parity.py --reference ref.csv --execution exe.csv --hold-ms 100 --spread-gate 0 -o result.json
+          cat result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_V5_DUAL_FEED_PARITY_SMOKE
+          path: result.json
+          retention-days: 30

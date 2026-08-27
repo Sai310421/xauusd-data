@@ -1,0 +1,33 @@
+name: NOTE-HFT Known Dukascopy Probe
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'note_hft/final_v3/analyze_bi5_dir.py'
+      - '.github/workflows/note-hft-known-duka-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone proven downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download XAUUSD Monday ticks
+        run: |
+          python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-03 --to 2026-08-03 --output-dir /tmp/duka_data --download-only --download-workers 24
+          find /tmp/duka_data -type f | head -50
+      - name: Analyze Frozen-compatible signal frequency
+        run: |
+          mkdir -p out
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/analyze_bi5_dir.py /tmp/duka_data --window 5 -o out/known_duka_probe.json
+          cat out/known_duka_probe.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_KNOWN_DUKA_PROBE
+          path: out/known_duka_probe.json
+          retention-days: 90

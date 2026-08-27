@@ -1,0 +1,132 @@
+name: AE Multi-Chat Nautilus BT Hub
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique ID: YYYYMMDD-HHMM-edge-agent-shortid'
+        required: true
+        type: string
+      edge:
+        description: 'Math EDGE variant'
+        required: true
+        default: baseline
+        type: choice
+        options:
+          - baseline
+          - residual_wasserstein
+          - ou_qvi
+          - sampled_data
+      dataset:
+        description: 'Dataset selector'
+        required: true
+        default: public
+        type: choice
+        options:
+          - public
+          - repository
+      seed:
+        description: 'Deterministic seed'
+        required: true
+        default: '42'
+        type: string
+      notes:
+        description: 'Agent/chat notes'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ae-bt-${{ inputs.experiment_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPERIMENT_ID: ${{ inputs.experiment_id }}
+      EDGE: ${{ inputs.edge }}
+      DATASET: ${{ inputs.dataset }}
+      SEED: ${{ inputs.seed }}
+      NOTES: ${{ inputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate experiment ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPERIMENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'Invalid experiment_id'; exit 2; }
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0'
+          python - <<'PY'
+          import nautilus_trader
+          print('nautilus_trader', nautilus_trader.__version__)
+          PY
+
+      - name: Create evidence envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="results/ae-bt/$EXPERIMENT_ID"
+          mkdir -p "$OUT"
+          python - <<'PY'
+          import json, os, subprocess, datetime
+          from pathlib import Path
+          out=Path('results/ae-bt')/os.environ['EXPERIMENT_ID']
+          manifest={
+            'experiment_id': os.environ['EXPERIMENT_ID'],
+            'verification_level': 'NAUTILUS_SMOKE',
+            'git_sha': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),
+            'nautilus_version': '1.230.0',
+            'edge': os.environ['EDGE'],
+            'dataset': os.environ['DATASET'],
+            'seed': int(os.environ['SEED']),
+            'notes': os.environ.get('NOTES',''),
+            'github_run_id': os.environ.get('GITHUB_RUN_ID'),
+            'started_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'status': 'STARTED'
+          }
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
+          PY
+
+      - name: Run canonical Nautilus smoke / compatibility gate
+        run: python research/note_hft_nautilus_smoke.py
+
+      - name: Collect canonical smoke evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="results/ae-bt/$EXPERIMENT_ID"
+          if [ -d results/note-hft ]; then cp -a results/note-hft/. "$OUT/" || true; fi
+          python - <<'PY'
+          import json, os, datetime
+          from pathlib import Path
+          p=Path('results/ae-bt')/os.environ['EXPERIMENT_ID']/'manifest.json'
+          m=json.loads(p.read_text(encoding='utf-8'))
+          m['finished_at_utc']=datetime.datetime.now(datetime.timezone.utc).isoformat()
+          m['status']='SMOKE_COMPLETED'
+          m['important']='This hub currently proves pinned Nautilus execution and evidence isolation. EDGE-specific runners must promote verification_level only after their actual strategy path executes.'
+          p.write_text(json.dumps(m,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload isolated experiment artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ae-nautilus-${{ inputs.experiment_id }}
+          path: results/ae-bt/${{ inputs.experiment_id }}/
+          if-no-files-found: error
+          retention-days: 90

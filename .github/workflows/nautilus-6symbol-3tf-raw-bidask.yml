@@ -1,0 +1,73 @@
+name: Nautilus 6Symbol x 3TF Raw BidAsk BT
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'raw6x3-manual'
+      catalog_artifact:
+        description: 'Raw BidAsk catalog artifact/dataset identifier'
+        required: true
+        default: 'raw-bidask-catalog'
+      runner:
+        description: 'Strategy runner module'
+        required: true
+        default: 'research.minimumspike_raw6x3_bt'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  EXPERIMENT_ID: ${{ inputs.experiment_id }}
+
+jobs:
+  raw-6x3-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+
+      - name: Load raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RAW_CATALOG"
+          echo "Catalog must already be present in repository workspace or restored by the dataset stage."
+          echo "Requested dataset: ${{ inputs.catalog_artifact }}"
+
+      - name: Fail-closed raw catalog gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+
+      - name: Run 6 symbols x 3 TF from raw quote catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m "${{ inputs.runner }}" \
+            --catalog "$RAW_CATALOG" \
+            --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF \
+            --timeframes M1 M5 M15 \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only
+
+      - name: Upload immutable BT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nautilus-raw6x3-${{ inputs.experiment_id }}
+          path: results/ae-bt/${{ inputs.experiment_id }}/
+          if-no-files-found: warn
+          retention-days: 90

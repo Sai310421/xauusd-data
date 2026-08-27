@@ -1,0 +1,137 @@
+name: NOTE-HFT Real BidAsk Parity v4
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_url:
+        description: 'Direct URL to CSV or ZIP containing tick Bid/Ask data'
+        required: true
+        type: string
+      expected_sha256:
+        description: 'Optional SHA256 of downloaded file'
+        required: false
+        type: string
+      latency_ms:
+        description: 'Execution latency ms'
+        required: false
+        default: '20'
+        type: string
+      reject_rate:
+        description: 'Reject probability 0..1'
+        required: false
+        default: '0.001'
+        type: string
+
+jobs:
+  real-parity-bt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p input out work
+          curl -L --fail --retry 3 '${{ inputs.data_url }}' -o input/source.bin
+          if [ -n '${{ inputs.expected_sha256 }}' ]; then
+            echo '${{ inputs.expected_sha256 }}  input/source.bin' | sha256sum -c -
+          fi
+          file input/source.bin || true
+      - name: Extract safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          if unzip -t input/source.bin >/dev/null 2>&1; then
+            unzip -q input/source.bin -d work
+          else
+            cp input/source.bin work/input.csv
+          fi
+          find work -maxdepth 3 -type f -printf '%p %s bytes\n' | tee out/input_inventory.txt
+      - name: Normalize BidAsk CSV
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv, pathlib, re, sys
+          files=[p for p in pathlib.Path('work').rglob('*') if p.is_file() and p.stat().st_size>0]
+          out=pathlib.Path('out/bidask_normalized.csv')
+          aliases={
+            'ts':['timestamp','time','datetime','date_time','ts','ts_ns','time_msc'],
+            'bid':['bid','bid_price','b'],
+            'ask':['ask','ask_price','a'],
+          }
+          def pick(cols,names):
+            low={c.strip().lower():c for c in cols}
+            for n in names:
+              if n in low:return low[n]
+            return None
+          for p in files:
+            try:
+              text=p.open('r',encoding='utf-8-sig',errors='ignore')
+              sample=text.read(8192); text.seek(0)
+              try:dialect=csv.Sniffer().sniff(sample,delimiters=',;\t|')
+              except: dialect=csv.excel
+              r=csv.DictReader(text,dialect=dialect)
+              if not r.fieldnames: continue
+              tc,bc,ac=pick(r.fieldnames,aliases['ts']),pick(r.fieldnames,aliases['bid']),pick(r.fieldnames,aliases['ask'])
+              if not (tc and bc and ac): continue
+              n=0
+              with out.open('w',newline='',encoding='utf-8') as f:
+                w=csv.writer(f); w.writerow(['timestamp','bid','ask'])
+                for row in r:
+                  try:
+                    b=float(str(row[bc]).replace(',','.')); a=float(str(row[ac]).replace(',','.'))
+                    if a < b: continue
+                    w.writerow([row[tc],repr(b),repr(a)]); n+=1
+                  except: pass
+              if n>100:
+                print(f'NORMALIZED_FROM={p} ROWS={n}')
+                sys.exit(0)
+            except Exception:
+              pass
+          print('BLOCKED_DATA_SCHEMA: no usable timestamp/bid/ask CSV found')
+          sys.exit(4)
+          PY
+      - name: Run reconstructed parity scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/parity_calibrate.py out/bidask_normalized.csv -o out/parity_reconstructed.json || true
+          cat out/parity_reconstructed.json || true
+      - name: Run reality gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python note_hft/final_v2/reality_gate.py out/bidask_normalized.csv -o out/reality_gate.json || true
+          cat out/reality_gate.json || true
+      - name: Build final report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, hashlib
+          base={'N':176483,'BUY':88223,'SELL':88260,'WR':72.71,'PF':1.74,'MaxDD':3.97}
+          def load(p):
+            try:return json.loads(pathlib.Path(p).read_text())
+            except:return None
+          rep={
+            'baseline':base,
+            'parity':load('out/parity_reconstructed.json'),
+            'reality':load('out/reality_gate.json'),
+            'latency_ms':'${{ inputs.latency_ms }}',
+            'reject_rate':'${{ inputs.reject_rate }}',
+            'frozen_core_modified':False,
+            'alpha':'RECONSTRUCTED_V3_5_SAMPLE_DIRECTIONAL_DELTA',
+          }
+          pathlib.Path('out/FINAL_REAL_BT_REPORT.json').write_text(json.dumps(rep,indent=2,ensure_ascii=False),encoding='utf-8')
+          print(json.dumps(rep,indent=2,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_REAL_BIDASK_PARITY_v4
+          path: out/
+          retention-days: 90

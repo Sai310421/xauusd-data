@@ -1,0 +1,29 @@
+name: NOTE-HFT Quick WR Probe
+on:
+  push:
+    paths:
+      - 'note_hft/final_bot_v5/quick_wr_probe.py'
+      - '.github/workflows/note-hft-quick-wr-probe.yml'
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q numpy
+      - name: Clone downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download one-day XAUUSD ticks
+        run: python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-10 --to 2026-08-10 --output-dir /tmp/duka_data --download-only --download-workers 12 --retries 3 --retry-sleep 1
+      - name: Probe exact OLS candidates
+        run: |
+          mkdir -p out
+          python note_hft/final_bot_v5/quick_wr_probe.py /tmp/duka_data -o out/quick_wr_probe.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_QUICK_WR_PROBE
+          path: out/quick_wr_probe.json
+          retention-days: 30

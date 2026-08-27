@@ -1,0 +1,53 @@
+[
+  {
+    "edge": "G75 Frozen Core",
+    "level": "PROXY_BT",
+    "initial": 1000,
+    "monthly21": 574.3148832960424,
+    "daily": 9.514003197841523,
+    "wr": 66.77212356364721,
+    "n21": 21649.38,
+    "pf": 6.98730702144005,
+    "rf": 16992.911378539284,
+    "dd": 2.1581276323461656,
+    "net21": 5743.148832960424,
+    "run_id": "legacy-baseline",
+    "sha": "reference",
+    "dataset": "90D reference",
+    "notes": "Historical reference baseline; not claimed as current GitHub Actions Nautilus verification."
+  },
+  {
+    "edge": "Residual-Wasserstein",
+    "level": "PROXY_BT",
+    "initial": 1000,
+    "monthly21": null,
+    "daily": null,
+    "wr": 65.41,
+    "n21": null,
+    "pf": 6.2708,
+    "rf": null,
+    "dd": null,
+    "net21": null,
+    "run_id": "proxy-oos",
+    "sha": "local-proxy",
+    "dataset": "M1 OOS",
+    "status": "CONDITIONAL_PASS"
+  },
+  {
+    "edge": "OU-QVI standalone",
+    "level": "PROXY_BT",
+    "initial": 1000,
+    "monthly21": null,
+    "daily": null,
+    "wr": null,
+    "n21": null,
+    "pf": null,
+    "rf": null,
+    "dd": null,
+    "net21": null,
+    "run_id": "proxy-reject",
+    "sha": "local-proxy",
+    "dataset": "M1 OOS",
+    "status": "REJECT"
+  }
+]

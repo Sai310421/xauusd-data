@@ -1,31 +1,15 @@
-name: MinimumSpike MTF Boost BT v1
+name: ARCHIVED - MinimumSpike MTF OHLC Proxy (BLOCKED)
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'research/minimumspike_mtf_boost_bt_v1.py'
-      - '.github/workflows/minimumspike-mtf-boost-bt-v1.yml'
 
 jobs:
-  mtf-boost-bt:
+  blocked:
     runs-on: ubuntu-24.04
-    env:
-      PYTHONPATH: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Nautilus runtime
+      - name: OHLC resample BT prohibited
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install 'nautilus_trader==1.230.0'
-      - name: Run MTF Boost BT
-        run: python research/minimumspike_mtf_boost_bt_v1.py
-      - name: Upload results
-        uses: actions/upload-artifact@v4
-        with:
-          name: minimumspike-mtf-boost-bt-v1
-          path: results/minimumspike-mtf-boost-v1/
-          retention-days: 30
+          echo 'BLOCKED: OHLC-resample-based backtests are prohibited for canonical Nautilus BT.'
+          echo 'Use .github/workflows/nautilus-6symbol-3tf-raw-bidask.yml instead.'
+          echo 'Policy: docs/RAW_BIDASK_ONLY_BT_POLICY.md'
+          exit 1

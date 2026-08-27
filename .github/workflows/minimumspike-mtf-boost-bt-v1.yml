@@ -1,0 +1,31 @@
+name: MinimumSpike MTF Boost BT v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/minimumspike_mtf_boost_bt_v1.py'
+      - '.github/workflows/minimumspike-mtf-boost-bt-v1.yml'
+
+jobs:
+  mtf-boost-bt:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0'
+      - name: Run MTF Boost BT
+        run: python research/minimumspike_mtf_boost_bt_v1.py
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimumspike-mtf-boost-bt-v1
+          path: results/minimumspike-mtf-boost-v1/
+          retention-days: 30

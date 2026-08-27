@@ -15,6 +15,13 @@ on:
         description: 'Strategy runner module'
         required: true
         default: 'research.minimumspike_raw6x3_bt'
+  push:
+    paths:
+      - 'bt_requests/raw6x3.request'
+      - 'catalog/raw_bidask/**'
+      - 'research/minimumspike_raw6x3_bt.py'
+      - 'research/raw_bidask_catalog_guard.py'
+      - '.github/workflows/nautilus-6symbol-3tf-raw-bidask.yml'
 
 permissions:
   contents: read
@@ -23,7 +30,9 @@ env:
   PYTHONPATH: ${{ github.workspace }}
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
-  EXPERIMENT_ID: ${{ inputs.experiment_id }}
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'raw6x3-push' }}
+  RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt' }}
+  CATALOG_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog_artifact || 'raw-bidask-catalog' }}
 
 jobs:
   raw-6x3-bt:
@@ -47,7 +56,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RAW_CATALOG"
           echo "Catalog must already be present in repository workspace or restored by the dataset stage."
-          echo "Requested dataset: ${{ inputs.catalog_artifact }}"
+          echo "Requested dataset: $CATALOG_ID"
 
       - name: Fail-closed raw catalog gate
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
@@ -56,7 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m "${{ inputs.runner }}" \
+          python -m "$RUNNER_MODULE" \
             --catalog "$RAW_CATALOG" \
             --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF \
             --timeframes M1 M5 M15 \
@@ -67,7 +76,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nautilus-raw6x3-${{ inputs.experiment_id }}
-          path: results/ae-bt/${{ inputs.experiment_id }}/
+          name: nautilus-raw6x3-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
           if-no-files-found: warn
           retention-days: 90

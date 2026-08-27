@@ -1,0 +1,14 @@
+InpMagic=17648301
+InpFixedLot=0.01
+InpAlphaWindow=5
+InpAlphaThreshold=0.0
+InpCreateCooldownMs=3000
+InpMinHoldMs=100
+InpTimerMs=10
+InpEntrySpreadMaxPts=0.0
+InpMinFreeMarginRatio=0.40
+InpEnableTrading=true
+InpWriteAuditCSV=true
+InpRejectProbability=0.0
+InpExtraEntryDelayMs=0
+InpExtraCloseDelayMs=0

@@ -1,0 +1,75 @@
+name: NOTE-HFT Two Week Parity Robust
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/note-hft-two-week-parity-robust.yml'
+
+jobs:
+  day:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        date: ['2026-08-03','2026-08-04','2026-08-05','2026-08-06','2026-08-07','2026-08-10','2026-08-11','2026-08-12','2026-08-13','2026-08-14']
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone proven downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download one trading day
+        run: |
+          python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from ${{ matrix.date }} --to ${{ matrix.date }} \
+            --output-dir /tmp/duka_data --download-only --download-workers 16 --retries 4 --retry-sleep 1
+      - name: Analyze day
+        run: |
+          mkdir -p out
+          PYTHONPATH=note_hft/final_v3 python note_hft/final_v3/analyze_bi5_dir.py /tmp/duka_data --window 5 -o out/${{ matrix.date }}.json
+          python - <<'PY'
+          import json,glob,os
+          p=glob.glob('out/*.json')[0]; d=json.load(open(p)); d['date']=os.path.basename(p)[:-5]; json.dump(d,open(p,'w'),indent=2); print(json.dumps(d,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_DAY_${{ matrix.date }}
+          path: out/${{ matrix.date }}.json
+          retention-days: 90
+
+  merge:
+    needs: day
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: NOTE_HFT_DAY_*
+          path: daily
+          merge-multiple: true
+      - name: Merge parity
+        run: |
+          mkdir -p out
+          python - <<'PY'
+          import json,glob
+          files=sorted(glob.glob('daily/*.json'))
+          ds=[json.load(open(p)) for p in files]
+          keys=['bi5_files','bad_files','ticks','zero_spread_ticks','raw_signal_buy','raw_signal_sell','raw_signal_n','permit3s_buy','permit3s_sell','permit3s_n']
+          s={k:sum(d.get(k,0) for d in ds) for k in keys}
+          base={'N':176483,'BUY':88223,'SELL':88260,'WR':72.71,'PF':1.74,'MaxDD':3.97}
+          n=s['permit3s_n']; b=s['permit3s_buy']; sell=s['permit3s_sell']
+          out={'status':'OK','days_requested':10,'days_returned':len(ds),'daily':ds,'totals':s,'baseline':base,
+               'coverage':{'bi5_files':s['bi5_files'],'expected_market_hours_approx':220,'hour_coverage_ratio_approx':s['bi5_files']/220 if 220 else None},
+               'parity':{'N_ratio':n/base['N'],'N_error_pct':100*(n-base['N'])/base['N'],
+                         'BUY_ratio':b/base['BUY'],'SELL_ratio':sell/base['SELL'],
+                         'buy_share':b/n if n else None,'baseline_buy_share':base['BUY']/base['N'],
+                         'executions_entry_close':2*n,'baseline_executions_entry_close':2*base['N']}}
+          json.dump(out,open('out/two_week_parity_robust.json','w'),indent=2)
+          print(json.dumps({k:v for k,v in out.items() if k!='daily'},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_TWO_WEEK_PARITY_ROBUST
+          path: out/two_week_parity_robust.json
+          retention-days: 90

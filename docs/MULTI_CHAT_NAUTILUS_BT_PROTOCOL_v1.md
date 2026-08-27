@@ -7,6 +7,53 @@ Purpose: make every ChatGPT/Grok/Claude/Gemini/Codex chat able to identify, run-
 - NautilusTrader: 1.230.0
 - canonical workflow: `.github/workflows/ae-nautilus-bt-hub.yml`
 - results root: `results/ae-bt/<experiment_id>/`
+- shared KPI registry: `results/ae-bt/shared_results.json`
+- shared dashboard: `docs/AE_BT_SHARED_DASHBOARD.html`
+
+## Common visualization basis
+Every comparable strategy result should expose the following normalized view:
+- Initial Equity: **$1,000**
+- Horizon: **21 business days**
+- Monthly21 %
+- Daily %
+- WR %
+- N / 21D
+- N / Day
+- PF
+- RF
+- MaxDD %
+- Net Profit $ on the $1,000 display basis
+
+Keep the original raw BT metrics in the run artifact as well. $1,000 normalization is a comparison/display layer and must never erase the original account size or execution assumptions.
+
+If Daily is derived from Monthly21, use the compound-consistent equation:
+`Daily = ((1 + Monthly21/100)^(1/21) - 1) * 100`.
+
+If N is normalized from another horizon, record the exact conversion method in the manifest. Never silently convert calendar days into business days.
+
+## Shared result record
+Each result promoted to the shared registry should contain at minimum:
+```json
+{
+  "edge": "...",
+  "level": "NAUTILUS_BT",
+  "initial": 1000,
+  "monthly21": 0.0,
+  "daily": 0.0,
+  "wr": 0.0,
+  "n21": 0.0,
+  "pf": 0.0,
+  "rf": 0.0,
+  "dd": 0.0,
+  "net21": 0.0,
+  "run_id": "...",
+  "sha": "...",
+  "dataset": "...",
+  "experiment_id": "..."
+}
+```
+
+Missing values must be `null`, never invented or backfilled from an unrelated run.
 
 ## Non-negotiable evidence rule
 Never call a result `NAUTILUS_VERIFIED` unless all of these exist:
@@ -51,6 +98,8 @@ Allowed initial edge values:
 ## Multi-chat concurrency
 Different chats MUST use different experiment_id values. They may run concurrently because each run writes only to its own result directory/artifact. Do not overwrite a shared `latest.csv` as primary evidence.
 
+The shared dashboard is a read/comparison surface. Primary evidence always remains the immutable run artifact + manifest + GitHub run metadata.
+
 ## Required output manifest
 Every runner should emit `manifest.json` containing at minimum:
 ```json
@@ -78,4 +127,4 @@ Compare BASE vs EDGE only when dataset hash, execution assumptions and baseline 
 A failure at a higher gate does not inherit a lower-gate PASS.
 
 ## Prompt for any new chat
-Use this repository as the source of truth. Read `docs/MULTI_CHAT_NAUTILUS_BT_PROTOCOL_v1.md`, `.github/workflows/ae-nautilus-bt-hub.yml`, and the experiment manifest before reporting results. Never describe local Python/proxy calculations as Nautilus BT. Return run_id + SHA + artifact/manifest evidence with every claimed Nautilus result.
+Use this repository as the source of truth. Read `docs/MULTI_CHAT_NAUTILUS_BT_PROTOCOL_v1.md`, `.github/workflows/ae-nautilus-bt-hub.yml`, `results/ae-bt/shared_results.json`, and the experiment manifest before reporting results. Never describe local Python/proxy calculations as Nautilus BT. Return run_id + SHA + artifact/manifest evidence with every claimed Nautilus result. For quick comparison, report the $1,000 / 21-business-day normalized KPI row: Monthly21, Daily, WR, N/21D, N/Day, PF, RF, MaxDD, Net$.

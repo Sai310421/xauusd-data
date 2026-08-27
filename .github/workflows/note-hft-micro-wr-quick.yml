@@ -1,0 +1,29 @@
+name: NOTE-HFT Micro WR Quick
+on:
+  push:
+    paths:
+      - 'note_hft/final_bot_v5/microstructure_wr_solver.py'
+      - '.github/workflows/note-hft-micro-wr-quick.yml'
+  workflow_dispatch:
+jobs:
+  solve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q numpy
+      - name: Clone downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download one-day XAUUSD ticks
+        run: python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-10 --to 2026-08-10 --output-dir /tmp/duka_data --download-only --download-workers 12 --retries 5 --retry-sleep 1
+      - name: Solve microstructure WR candidates
+        run: |
+          mkdir -p out
+          python note_hft/final_bot_v5/microstructure_wr_solver.py /tmp/duka_data -o out/micro_wr.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_MICRO_WR_QUICK
+          path: out/micro_wr.json
+          retention-days: 30

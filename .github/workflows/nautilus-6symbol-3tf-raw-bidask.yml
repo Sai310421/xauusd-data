@@ -30,6 +30,7 @@ env:
   RAW_DAYS: '30'
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'raw6x3-20260727-30d' }}
   RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt' }}
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
 
 jobs:
   raw-6x3-bt:
@@ -42,29 +43,78 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Prepare immutable evidence directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "experiment_id=${EXPERIMENT_ID}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+
       - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+          python - <<'PY'
+          import nautilus_trader
+          print('nautilus_trader', nautilus_trader.__version__)
+          PY
 
       - name: Restore immutable raw BidAsk catalog cache
-        uses: actions/cache@v4
+        id: raw-cache
+        uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask
-          key: raw-bidask-duka-6sym-${{ env.RAW_START }}-${{ env.RAW_DAYS }}d-v1
+          key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Build raw BidAsk Nautilus catalog if cache missing
+      - name: Self-healing Raw BidAsk catalog bootstrap
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
-          python research/build_raw_bidask_catalog_duka.py \
-            --start "$RAW_START" \
-            --days "$RAW_DAYS" \
-            --catalog "$RAW_CATALOG" \
-            --workers 32
+          set -u
+          ok=0
+          for attempt in 1 2 3; do
+            echo "RAW_CATALOG_BOOTSTRAP_ATTEMPT=$attempt"
+            if python research/build_raw_bidask_catalog_duka.py \
+              --start "$RAW_START" \
+              --days "$RAW_DAYS" \
+              --catalog "$RAW_CATALOG" \
+              --workers 32; then
+              ok=1
+              break
+            fi
+            echo "Bootstrap attempt $attempt failed; clearing partial catalog before retry"
+            rm -rf "$RAW_CATALOG"
+            mkdir -p "$RAW_CATALOG"
+            sleep $((attempt * 10))
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "RAW_CATALOG_BOOTSTRAP_EXHAUSTED"
+            exit 1
+          fi
 
-      - name: Fail-closed raw catalog gate
+      - name: Capture Raw Catalog preflight evidence
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          OUT="results/ae-bt/$EXPERIMENT_ID/preflight"
+          mkdir -p "$OUT"
+          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
+            cp "$RAW_CATALOG/catalog_manifest.json" "$OUT/catalog_manifest.json"
+          else
+            printf '%s\n' '{"status":"MISSING","reason":"catalog_manifest.json not produced after bootstrap retries","ohlc_resample_used":false}' > "$OUT/catalog_manifest.json"
+          fi
+          find "$RAW_CATALOG" -maxdepth 4 -type f -printf '%p %s bytes\n' 2>/dev/null | sort > "$OUT/catalog_inventory.txt" || true
+
+      - name: Fail-closed Raw BidAsk quality gate
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+
+      - name: Save verified Raw BidAsk catalog cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Run 6 symbols x 3 TF with Nautilus BacktestEngine
         shell: bash
@@ -83,5 +133,5 @@ jobs:
         with:
           name: nautilus-raw6x3-${{ env.EXPERIMENT_ID }}
           path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90

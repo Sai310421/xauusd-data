@@ -1,0 +1,30 @@
+name: NOTE-HFT Candidate A OLS WR Validation
+on:
+  push:
+    paths:
+      - 'note_hft/candidate_a_ols_wr_validate.py'
+      - '.github/workflows/note-hft-candidate-a-ols-wr.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Clone downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download XAUUSD ticks
+        run: |
+          python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-03 --to 2026-08-14 --output-dir /tmp/duka_data --download-only --download-workers 8 --retries 6 --retry-sleep 1
+      - name: Validate Candidate A WR
+        run: |
+          mkdir -p out
+          python note_hft/candidate_a_ols_wr_validate.py /tmp/duka_data -o out/candidate_a_ols_wr.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_CANDIDATE_A_OLS_WR
+          path: out/candidate_a_ols_wr.json
+          retention-days: 90

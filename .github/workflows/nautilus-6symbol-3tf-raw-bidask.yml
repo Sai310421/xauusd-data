@@ -7,10 +7,6 @@ on:
         description: 'Unique experiment id'
         required: true
         default: 'raw6x3-manual'
-      catalog_artifact:
-        description: 'Raw BidAsk catalog artifact/dataset identifier'
-        required: true
-        default: 'raw-bidask-catalog'
       runner:
         description: 'Strategy runner module'
         required: true
@@ -18,7 +14,7 @@ on:
   push:
     paths:
       - 'bt_requests/raw6x3.request'
-      - 'catalog/raw_bidask/**'
+      - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/minimumspike_raw6x3_bt.py'
       - 'research/raw_bidask_catalog_guard.py'
       - '.github/workflows/nautilus-6symbol-3tf-raw-bidask.yml'
@@ -30,14 +26,15 @@ env:
   PYTHONPATH: ${{ github.workspace }}
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
-  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'raw6x3-push' }}
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'raw6x3-20260727-30d' }}
   RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt' }}
-  CATALOG_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog_artifact || 'raw-bidask-catalog' }}
 
 jobs:
   raw-6x3-bt:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -50,18 +47,26 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
 
-      - name: Load raw BidAsk catalog
+      - name: Restore immutable raw BidAsk catalog cache
+        uses: actions/cache@v4
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-${{ env.RAW_START }}-${{ env.RAW_DAYS }}d-v1
+
+      - name: Build raw BidAsk Nautilus catalog if cache missing
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RAW_CATALOG"
-          echo "Catalog must already be present in repository workspace or restored by the dataset stage."
-          echo "Requested dataset: $CATALOG_ID"
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "$RAW_START" \
+            --days "$RAW_DAYS" \
+            --catalog "$RAW_CATALOG" \
+            --workers 32
 
       - name: Fail-closed raw catalog gate
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
 
-      - name: Run 6 symbols x 3 TF from raw quote catalog
+      - name: Run 6 symbols x 3 TF with Nautilus BacktestEngine
         shell: bash
         run: |
           set -euo pipefail

@@ -1,0 +1,29 @@
+name: NOTE-HFT WR Nonlinear Solver
+on:
+  push:
+    paths:
+      - 'note_hft/final_bot_v5/wr_nonlinear_solver.py'
+      - '.github/workflows/note-hft-wr-nonlinear.yml'
+  workflow_dispatch:
+jobs:
+  solve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -q numpy
+      - name: Clone downloader
+        run: git clone --depth 1 https://github.com/Mind2Money/dukasDataDownloader.git /tmp/duka
+      - name: Download XAUUSD ticks
+        run: python /tmp/duka/dukas_downloader.py --instrument XAUUSD --from 2026-08-10 --to 2026-08-14 --output-dir /tmp/duka_data --download-only --download-workers 8 --retries 6 --retry-sleep 1
+      - name: Solve nonlinear WR candidates
+        run: |
+          mkdir -p out
+          python note_hft/final_bot_v5/wr_nonlinear_solver.py /tmp/duka_data -o out/wr_nonlinear.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_WR_NONLINEAR
+          path: out/wr_nonlinear.json
+          retention-days: 90

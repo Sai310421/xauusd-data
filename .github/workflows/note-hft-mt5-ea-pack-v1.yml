@@ -1,0 +1,27 @@
+name: NOTE-HFT MT5 EA Pack v1
+
+on:
+  push:
+    paths:
+      - 'note_hft/mt5_ea_v1/**'
+      - '.github/workflows/note-hft-mt5-ea-pack-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: |
+          mkdir -p out/NOTE_HFT_RECONSTRUCTED_MT5_EA_v1
+          cp note_hft/mt5_ea_v1/* out/NOTE_HFT_RECONSTRUCTED_MT5_EA_v1/
+          (cd out && zip -r NOTE_HFT_RECONSTRUCTED_MT5_EA_v1.zip NOTE_HFT_RECONSTRUCTED_MT5_EA_v1)
+          sha256sum out/NOTE_HFT_RECONSTRUCTED_MT5_EA_v1.zip > out/NOTE_HFT_RECONSTRUCTED_MT5_EA_v1.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOTE_HFT_RECONSTRUCTED_MT5_EA_v1
+          path: |
+            out/NOTE_HFT_RECONSTRUCTED_MT5_EA_v1.zip
+            out/NOTE_HFT_RECONSTRUCTED_MT5_EA_v1.sha256
+          retention-days: 90

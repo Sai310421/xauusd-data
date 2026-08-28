@@ -44,11 +44,7 @@ SYMBOLS = {
 
 
 def default_fx_ccy(symbol: str, venue: Venue = SIM) -> CurrencyPair:
-    """Create the same minimal FX CurrencyPair previously supplied by testkit.
-
-    The production Raw Catalog builder must not depend on nautilus_trader.testkit,
-    because the pinned 1.230.0 wheel does not ship that test-only module.
-    """
+    """Create a minimal FX CurrencyPair without depending on Nautilus testkit."""
     base_currency = symbol[:3]
     quote_currency = symbol[-3:]
     price_precision = 3 if quote_currency == 'JPY' else 5
@@ -152,7 +148,7 @@ def main() -> None:
     for symbol, meta in SYMBOLS.items():
         inst = default_fx_ccy(meta['pair'], SIM)
         instruments[symbol] = inst
-    catalog.write_instruments(list(instruments.values()))
+    catalog.write_data(list(instruments.values()))
 
     stats = {}
     for symbol, meta in SYMBOLS.items():
@@ -178,7 +174,7 @@ def main() -> None:
             df = df.drop_duplicates('datetime', keep='last').set_index('datetime')
             ticks = wrangler.process(df)
             if ticks:
-                catalog.write_quote_ticks(ticks)
+                catalog.write_data(ticks)
                 total_ticks += len(ticks)
                 written_days += 1
 

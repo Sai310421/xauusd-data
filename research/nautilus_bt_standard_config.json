@@ -1,0 +1,59 @@
+{
+  "version": "NAUTILUS_BT_STANDARD_v1",
+  "nautilus_version": "1.230.0",
+  "data": {
+    "kind": "RAW_BIDASK",
+    "source": "Dukascopy BI5 QuoteTick Bid/Ask",
+    "symbol_selection_required": true,
+    "ohlc_resample_final_evidence": false,
+    "catalog_cache_scope": "symbol+start+days+source_version",
+    "fail_closed": true
+  },
+  "execution": {
+    "native_orders": true,
+    "state_updates_on_fill": true,
+    "signal_compute_policy": "bar-close cache; QuoteTick reads cached state only",
+    "parallel_strategy_matrix": true
+  },
+  "reality_profile": {
+    "native_bid_ask_spread": true,
+    "commission_required_for_production_gate": true,
+    "slippage_required_for_production_gate": true,
+    "latency_profile_required_for_production_gate": true,
+    "lot_step_and_min_size": true,
+    "reject_fill_model": true
+  },
+  "risk_and_equity": {
+    "closed_dd": true,
+    "floating_mark_to_market_dd_required": true,
+    "realized_risk_distribution": true
+  },
+  "reporting": {
+    "required_kpis": [
+      "N",
+      "WR_pct",
+      "PF",
+      "RF",
+      "NetProfit",
+      "Monthly21_pct",
+      "MaxClosedDD_pct",
+      "MaxFloatingDD_pct",
+      "MAE",
+      "MFE",
+      "execution_cost",
+      "long_short_breakdown",
+      "year_regime_breakdown"
+    ],
+    "immutable_artifact": true,
+    "automatic_ranking": true
+  },
+  "pipeline": [
+    "SELECT_SYMBOLS",
+    "PREPARE_OR_RESTORE_RAW_CATALOG",
+    "RAW_CATALOG_GATE",
+    "PARALLEL_BT_MATRIX",
+    "REALITY_GATE",
+    "KPI_AGGREGATION",
+    "IMMUTABLE_ARTIFACT"
+  ]
+}

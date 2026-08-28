@@ -55,7 +55,7 @@ jobs:
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
       - id: key
         shell: bash
-        run: echo "key=crystal-v10-usdjpy-${RAW_START}-${RAW_DAYS}-rawbidask-v1" >> "$GITHUB_OUTPUT"
+        run: echo "key=crystal-v10-usdjpy-${RAW_START}-${RAW_DAYS}-rawbidask-v2" >> "$GITHUB_OUTPUT"
       - name: Restore exact raw catalog cache
         id: cache
         uses: actions/cache/restore@v4
@@ -75,7 +75,7 @@ jobs:
             rm -rf "$RAW_CATALOG"; mkdir -p "$RAW_CATALOG"; sleep $((attempt*10))
           done
       - name: Fail-closed Raw BidAsk quality gate
-        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols USDJPY
       - name: Save verified immutable catalog cache
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -113,7 +113,7 @@ jobs:
           key: ${{ needs.prepare-raw-catalog.outputs.cache-key }}
           fail-on-cache-miss: true
       - name: Re-run fail-closed Raw Gate inside each cell
-        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols USDJPY
       - name: Run CRYSTAL-X lock frontier cell
         run: |
           python research/crystal_x_v10_lock_frontier.py \

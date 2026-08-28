@@ -26,6 +26,9 @@ on:
       - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/raw_bidask_catalog_guard.py'
       - 'research/nautilus_bt_standard_config.json'
+      - 'research/nautilus_reality_profile_v1.json'
+      - 'research/nautilus_reality_gate.py'
+      - 'research/write_nautilus_reality_evidence.py'
       - 'research/aggregate_nautilus_matrix.py'
       - '.github/workflows/arcana-goririn-fusion-raw-bt.yml'
 
@@ -48,32 +51,22 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Restore pip cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-py312-nautilus-${{ env.NAUTILUS_VERSION }}
-
       - name: Install pinned NautilusTrader
-        run: |
-          python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}"
-          python - <<'PY'
-          import nautilus_trader
-          print('nautilus_trader', nautilus_trader.__version__)
-          PY
-
+        run: python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}"
       - name: Restore selected-symbol Raw BidAsk catalog cache
         id: raw-cache
         uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask_usdjpy
           key: ${{ env.RAW_CACHE_KEY }}
-
       - name: Build selected-symbol Raw BidAsk catalog only when missing
         shell: bash
         run: |
@@ -88,18 +81,15 @@ jobs:
               --symbols $SYMBOLS \
               --workers 32
           fi
-
       - name: Fail-closed Raw BidAsk quality gate
         shell: bash
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols $SYMBOLS
-
       - name: Save verified Raw BidAsk catalog cache
         if: steps.raw-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: catalog/raw_bidask_usdjpy
           key: ${{ env.RAW_CACHE_KEY }}
-
       - name: Upload catalog manifest evidence
         uses: actions/upload-artifact@v4
         with:
@@ -116,39 +106,28 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        mode:
-          - PASS_THROUGH
-          - FILTER
-          - TIMING
-          - TIMING_APEX_EXIT
-
+        mode: [PASS_THROUGH, FILTER, TIMING, TIMING_APEX_EXIT]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Restore pip cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-py312-nautilus-${{ env.NAUTILUS_VERSION }}
-
       - name: Install pinned NautilusTrader
         run: python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}"
-
       - name: Restore verified Raw BidAsk catalog
         uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask_usdjpy
           key: ${{ env.RAW_CACHE_KEY }}
           fail-on-cache-miss: true
-
       - name: Re-run fail-closed catalog gate in each lane
         shell: bash
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols $SYMBOLS
-
       - name: Run one Nautilus strategy lane
         shell: bash
         env:
@@ -162,7 +141,27 @@ jobs:
             --symbol USDJPY \
             --modes "$MODE" \
             --raw-bidask-only
-
+      - name: Write explicit Reality evidence
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          LANE_ID="${EXPERIMENT_ID}-${MODE}"
+          python research/write_nautilus_reality_evidence.py \
+            --out "results/ae-bt/${LANE_ID}/reality_evidence.json" \
+            --runner research/arcana_goririn_fusion_raw_bt.py \
+            --verification-level RAW_SIGNAL_GATE \
+            --native-spread
+          cp research/nautilus_reality_profile_v1.json "results/ae-bt/${LANE_ID}/reality_profile.json"
+      - name: Reality gate (exploration may remain signal-gate only)
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          LANE_ID="${EXPERIMENT_ID}-${MODE}"
+          python research/nautilus_reality_gate.py \
+            --evidence "results/ae-bt/${LANE_ID}/reality_evidence.json" \
+            --allow-signal-gate-only
       - name: Upload immutable lane evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -178,14 +177,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
       - name: Download all strategy lane artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: arcana-goririn-${{ env.EXPERIMENT_ID }}-*
           path: matrix-artifacts
           merge-multiple: false
-
       - name: Aggregate and rank lane KPIs
         shell: bash
         run: |
@@ -194,7 +191,7 @@ jobs:
             --root matrix-artifacts \
             --out "results/ae-bt/${EXPERIMENT_ID}-AGGREGATE/ranking.json"
           cp research/nautilus_bt_standard_config.json "results/ae-bt/${EXPERIMENT_ID}-AGGREGATE/standard_config.json"
-
+          cp research/nautilus_reality_profile_v1.json "results/ae-bt/${EXPERIMENT_ID}-AGGREGATE/reality_profile.json"
       - name: Upload aggregate evidence
         uses: actions/upload-artifact@v4
         with:

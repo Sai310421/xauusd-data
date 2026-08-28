@@ -1,0 +1,21 @@
+name: Nautilus Lane CORE v1
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'core-manual'
+      runner:
+        description: 'Strategy runner module'
+        required: true
+        default: 'research.minimumspike_raw6x3_bt'
+
+jobs:
+  run:
+    uses: ./.github/workflows/nautilus-raw-bidask-reusable-v1.yml
+    with:
+      lane_class: CORE
+      experiment_id: ${{ inputs.experiment_id }}
+      runner: ${{ inputs.runner }}

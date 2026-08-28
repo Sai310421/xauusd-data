@@ -13,6 +13,7 @@ on:
     paths:
       - 'research/g75_multihorizon_fixed_debt_probe.py'
       - 'research/g75_6h_positive_exit_probe.py'
+      - 'research/g75_tail_independent_rescue_probe.py'
       - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/raw_bidask_catalog_guard.py'
       - '.github/workflows/g75-multihorizon-fixed-debt-probe-v1.yml'
@@ -28,7 +29,7 @@ env:
   RAW_DAYS: '30'
   RAW_SYMBOLS: 'XAUUSD'
   RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-07-27-30d-v1
-  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'g75-fixed-debt-24h-30d-v3-xauonly' }}
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'g75-fixed-debt-24h-30d-v4-tail-rescue' }}
 
 jobs:
   probe:
@@ -52,7 +53,7 @@ jobs:
             "git_sha=${GITHUB_SHA}" \
             "lane_class=MODULE_RECOVERY" \
             "experiment_id=${EXPERIMENT_ID}" \
-            "runner=research.g75_multihorizon_fixed_debt_probe+research.g75_6h_positive_exit_probe" \
+            "runner=research.g75_multihorizon_fixed_debt_probe+research.g75_6h_positive_exit_probe+research.g75_tail_independent_rescue_probe" \
             "raw_symbols=${RAW_SYMBOLS}" \
             > "$OUT/github_run.txt"
 
@@ -134,6 +135,16 @@ jobs:
         run: |
           set -euo pipefail
           python -m research.g75_6h_positive_exit_probe \
+            --catalog "$RAW_CATALOG" \
+            --symbol XAUUSD \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only
+
+      - name: Run independent 6h-tail Rescue 3/5/10 probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.g75_tail_independent_rescue_probe \
             --catalog "$RAW_CATALOG" \
             --symbol XAUUSD \
             --experiment-id "$EXPERIMENT_ID" \

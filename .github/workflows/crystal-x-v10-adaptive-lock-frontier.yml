@@ -154,6 +154,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: crystal-v10-frontier-${{ env.EXPERIMENT_ID }}
-          path: results/crystal-x-v10/${{ env.EXPERIMENT_ID }}/aggregate/
+          path: results/crystal-x-v10/${EXPERIMENT_ID}/aggregate/
           if-no-files-found: error
           retention-days: 90
+
+# trigger: 2026-08-29T05:14+09:00

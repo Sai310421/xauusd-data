@@ -1,0 +1,51 @@
+{
+  "version": "NAUTILUS_REALITY_PROFILE_v1",
+  "profile": "NORMAL",
+  "seed": 260829,
+  "data_requirements": {
+    "raw_bid_ask": true,
+    "ohlc_resample_allowed": false,
+    "utc_monotonic": true,
+    "bid_le_ask": true
+  },
+  "execution": {
+    "native_bid_ask_spread": true,
+    "commission": {
+      "enabled": true,
+      "model": "explicit_per_side_or_broker_profile",
+      "status": "REQUIRED_FOR_PRODUCTION"
+    },
+    "slippage": {
+      "enabled": true,
+      "model": "deterministic_seeded_tick_adverse",
+      "status": "REQUIRED_FOR_PRODUCTION"
+    },
+    "latency": {
+      "enabled": true,
+      "model": "quote_tick_delay",
+      "status": "REQUIRED_FOR_PRODUCTION"
+    },
+    "reject_fill": {
+      "enabled": true,
+      "model": "deterministic_seeded_probability",
+      "status": "REQUIRED_FOR_PRODUCTION"
+    },
+    "lot_constraints": {
+      "min_size": true,
+      "step": true,
+      "max_size_split": true
+    }
+  },
+  "risk": {
+    "closed_drawdown": true,
+    "floating_mark_to_market_drawdown": true,
+    "mae_mfe": true,
+    "risk_budget_conservation": true
+  },
+  "verification_levels": {
+    "RAW_SIGNAL_GATE": ["raw_bid_ask", "native_bid_ask_spread"],
+    "REALITY_GATE": ["commission", "slippage", "latency", "reject_fill", "floating_mark_to_market_drawdown"],
+    "PRODUCTION_CANDIDATE": ["RAW_SIGNAL_GATE", "REALITY_GATE"]
+  },
+  "policy": "Fail closed: a runner must not claim PRODUCTION_CANDIDATE unless every REALITY_GATE component reports implemented=true in its evidence."
+}

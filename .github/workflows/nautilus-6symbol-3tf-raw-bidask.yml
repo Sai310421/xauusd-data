@@ -1,6 +1,9 @@
 name: Nautilus 6Symbol x 3TF Raw BidAsk BT
 
 on:
+  workflow_run:
+    workflows: ['Raw BidAsk Catalog Factory']
+    types: [completed]
   workflow_dispatch:
     inputs:
       experiment_id:
@@ -17,10 +20,7 @@ on:
         default: '6'
   push:
     paths:
-      - 'bt_requests/raw6x3.request'
-      - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/minimumspike_raw6x3_bt.py'
-      - 'research/raw_bidask_catalog_guard.py'
       - 'research/select_top_cells.py'
       - '.github/workflows/nautilus-6symbol-3tf-raw-bidask.yml'
 
@@ -33,17 +33,20 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('raw6x3-{0}', github.run_id) }}
   RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt' }}
   TOP_K: ${{ github.event_name == 'workflow_dispatch' && inputs.top_k || '6' }}
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
 
 jobs:
   raw-6x3-bt:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -54,7 +57,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
-          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "experiment_id=${EXPERIMENT_ID}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          printf '%s\n' \
+            "run_id=${GITHUB_RUN_ID}" \
+            "git_sha=${GITHUB_SHA}" \
+            "source_sha=${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}" \
+            "experiment_id=${EXPERIMENT_ID}" \
+            "raw_cache_key=${RAW_CACHE_KEY}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
           sha256sum research/minimumspike_raw6x3_bt.py research/select_top_cells.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_and_selector_sha256.txt"
 
       - name: Install pinned NautilusTrader
@@ -66,62 +74,24 @@ jobs:
           print('nautilus_trader', nautilus_trader.__version__)
           PY
 
-      - name: Restore immutable raw BidAsk catalog cache
+      - name: Restore shared immutable Raw BidAsk catalog cache
         id: raw-cache
         uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Self-healing Raw BidAsk catalog bootstrap
-        continue-on-error: true
+      - name: Require factory-produced Raw BidAsk catalog
         shell: bash
         run: |
-          set -u
-          ok=0
-          for attempt in 1 2 3; do
-            echo "RAW_CATALOG_BOOTSTRAP_ATTEMPT=$attempt"
-            if python research/build_raw_bidask_catalog_duka.py \
-              --start "$RAW_START" \
-              --days "$RAW_DAYS" \
-              --catalog "$RAW_CATALOG" \
-              --workers 32; then
-              ok=1
-              break
-            fi
-            echo "Bootstrap attempt $attempt failed; clearing partial catalog before retry"
-            rm -rf "$RAW_CATALOG"
-            mkdir -p "$RAW_CATALOG"
-            sleep $((attempt * 10))
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "RAW_CATALOG_BOOTSTRAP_EXHAUSTED"
-            exit 1
+          set -euo pipefail
+          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != 'true' ]; then
+            echo 'RAW_FACTORY_CACHE_MISS: run Raw BidAsk Catalog Factory first'
+            exit 22
           fi
-
-      - name: Capture Raw Catalog preflight evidence
-        if: always()
-        shell: bash
-        run: |
-          set -u
-          OUT="results/ae-bt/$EXPERIMENT_ID/preflight"
-          mkdir -p "$OUT"
-          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
-            cp "$RAW_CATALOG/catalog_manifest.json" "$OUT/catalog_manifest.json"
-          else
-            printf '%s\n' '{"status":"MISSING","reason":"catalog_manifest.json not produced after bootstrap retries","ohlc_resample_used":false}' > "$OUT/catalog_manifest.json"
-          fi
-          find "$RAW_CATALOG" -maxdepth 4 -type f -printf '%p %s bytes\n' 2>/dev/null | sort > "$OUT/catalog_inventory.txt" || true
-
-      - name: Fail-closed Raw BidAsk quality gate
-        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-
-      - name: Save verified Raw BidAsk catalog cache
-        if: steps.raw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: catalog/raw_bidask
-          key: ${{ env.RAW_CACHE_KEY }}
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
 
       - name: Run 6 symbols x 3 TF screening with Nautilus BacktestEngine
         shell: bash

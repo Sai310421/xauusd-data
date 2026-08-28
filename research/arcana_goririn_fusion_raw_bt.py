@@ -12,13 +12,12 @@ import pandas as pd
 
 import nautilus_trader
 from nautilus_trader.backtest.engine import BacktestEngine
-from nautilus_trader.common import LogLevel
-from nautilus_trader.config import BacktestEngineConfig, LoggerConfig, RiskEngineConfig
+from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, RiskEngineConfig
 from nautilus_trader.model import BarType, Money, Venue
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, QuoteTick
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
-from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.identifiers import InstrumentId, TraderId
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
@@ -335,7 +334,7 @@ def main():
     if not args.raw_bidask_only:
         raise SystemExit('raw-bidask-only is mandatory')
 
-    catalog_path = Path(args.catalog)
+    catalog_path = Path(args.catalog).resolve()
     manifest = json.loads((catalog_path/'catalog_manifest.json').read_text(encoding='utf-8'))
     days = int(manifest['days'])
     catalog = ParquetDataCatalog(str(catalog_path))
@@ -353,8 +352,8 @@ def main():
 
     for mode in args.modes:
         engine = BacktestEngine(config=BacktestEngineConfig(
-            trader_id=f'ARCANA-GORIRIN-{mode}',
-            logging=LoggerConfig(stdout_level=LogLevel.ERROR),
+            trader_id=TraderId(f'FUSION-{mode}-001'),
+            logging=LoggingConfig(log_level='ERROR'),
             risk_engine=RiskEngineConfig(bypass=True),
         ))
         engine.add_venue(

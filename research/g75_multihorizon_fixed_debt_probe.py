@@ -9,6 +9,7 @@ import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 NS = 1_000_000_000
@@ -176,11 +177,20 @@ def dist(xs: list[float]) -> dict:
     }
 
 
+def first_crossing_index(px: np.ndarray, threshold: float, side: int) -> int | None:
+    mask = px >= threshold if side > 0 else px <= threshold
+    if not bool(mask.any()):
+        return None
+    return int(mask.argmax())
+
+
 def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
     shadow = run_shadow(qs, max_layers)
     cycles = extract_cycles(shadow)
     ts = [q.ts for q in qs]
     idx_by_ts = {q.ts: i for i, q in enumerate(qs)}
+    bid = np.fromiter((q.bid for q in qs), dtype=np.float64, count=len(qs))
+    ask = np.fromiter((q.ask for q in qs), dtype=np.float64, count=len(qs))
     rows: list[dict] = []
 
     for c in cycles:
@@ -189,32 +199,42 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
             continue
         side = int(c["side"])
         entries = [float(x) for x in c["entries"]]
+        n = len(entries)
+        entry_sum = sum(entries)
         q0 = qs[i0]
-
-        def basket_pnl(q: Q) -> float:
-            px = q.bid if side > 0 else q.ask
-            return sum(side * (px - e) for e in entries)
-
-        p0 = basket_pnl(q0)
+        p0 = side * ((q0.bid if side > 0 else q0.ask) * n - entry_sum)
         if p0 >= 0:
             continue
 
         debt = -p0
         max_end = bisect.bisect_right(ts, c["loss_state_ts"] + HORIZONS_S[-1] * NS, lo=i0)
-        tau_ebe = None
-        worst_additional_mae = 0.0
-        best_improvement = 0.0
-        for q in qs[i0:max_end]:
-            x = basket_pnl(q)
-            worst_additional_mae = max(worst_additional_mae, max(0.0, -x - debt))
-            best_improvement = max(best_improvement, x - p0)
-            if x >= 0:
-                tau_ebe = (q.ts - c["loss_state_ts"]) / NS
-                break
+        px = bid[i0:max_end] if side > 0 else ask[i0:max_end]
+        be_threshold = entry_sum / n
+        rel_hit = first_crossing_index(px, be_threshold, side)
+        if rel_hit is None:
+            tau_ebe = None
+            eval_px = px
+        else:
+            hit_idx = i0 + rel_hit
+            tau_ebe = (qs[hit_idx].ts - c["loss_state_ts"]) / NS
+            eval_px = px[: rel_hit + 1]
+
+        if len(eval_px):
+            if side > 0:
+                worst_pnl = n * float(eval_px.min()) - entry_sum
+                best_pnl = n * float(eval_px.max()) - entry_sum
+            else:
+                worst_pnl = entry_sum - n * float(eval_px.max())
+                best_pnl = entry_sum - n * float(eval_px.min())
+            worst_additional_mae = max(0.0, -worst_pnl - debt)
+            best_improvement = max(0.0, best_pnl - p0)
+        else:
+            worst_additional_mae = 0.0
+            best_improvement = 0.0
 
         row = {
             "side": side,
-            "layers": len(entries),
+            "layers": n,
             "loss_state_ts": c["loss_state_ts"],
             "entry_to_lock_s": (c["loss_state_ts"] - c["entry_ts"]) / NS,
             "locked_debt_distance": debt,
@@ -226,9 +246,9 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
         }
         for h in HORIZONS_S:
             row[f"be_le_{h}s"] = bool(tau_ebe is not None and tau_ebe <= h)
-        for n in RESCUE_SLOTS:
-            row[f"required_debt_per_{n}_rescue_slots"] = debt / n
-            row[f"required_be_plus10pct_per_{n}_rescue_slots"] = debt * 1.10 / n
+        for slots in RESCUE_SLOTS:
+            row[f"required_debt_per_{slots}_rescue_slots"] = debt / slots
+            row[f"required_be_plus10pct_per_{slots}_rescue_slots"] = debt * 1.10 / slots
         rows.append(row)
 
     unresolved_at_3600 = [r for r in rows if not r[f"be_le_{TAIL_BASE_S}s"]]
@@ -242,11 +262,15 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
 
     summary = {
         "classification": "G75_MULTI_HORIZON_FIXED_DEBT_RECOVERY_PROBE_V1",
+        "engine": "RAW_TICK_VECTORIZED_FIRST_PASSAGE_V2",
         "truth_boundary": (
             "Discovery probe on Nautilus Raw Bid/Ask QuoteTicks using verified G75 event ordering. "
-            "At the reversal/loss state, loss is treated as economically lockable FixedDebt. "
-            "No rescue trades are injected. 3/5/10 rescue-slot values are arithmetic debt-allocation requirements, not performance. "
-            "Spread is present; commission, hedge carry/swap, explicit slippage, execution delay, broker margin mechanics and actual rescue strategy costs are absent, therefore WR5=INVALID."
+            "First-passage is evaluated directly on every executable raw quote tick; no OHLC resampling, "
+            "time aggregation or tick thinning is used. At the reversal/loss state, loss is treated as "
+            "economically lockable FixedDebt. No rescue trades are injected. 3/5/10 rescue-slot values are "
+            "arithmetic debt-allocation requirements, not performance. Spread is present; commission, hedge "
+            "carry/swap, explicit slippage, execution delay, broker margin mechanics and actual rescue strategy "
+            "costs are absent, therefore WR5=INVALID."
         ),
         "max_layers": max_layers,
         "source_cycles": shadow["metrics"]["cycle_count"],
@@ -267,11 +291,11 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
         "unresolved_24h_count": sum(not r["recovered_within_24h"] for r in rows),
         "unresolved_24h_rate": (sum(not r["recovered_within_24h"] for r in rows) / len(rows) if rows else None),
         "rescue_slot_requirement_mean": {
-            str(n): {
-                "be": statistics.mean([r[f"required_debt_per_{n}_rescue_slots"] for r in rows]) if rows else None,
-                "be_plus10pct": statistics.mean([r[f"required_be_plus10pct_per_{n}_rescue_slots"] for r in rows]) if rows else None,
+            str(slots): {
+                "be": statistics.mean([r[f"required_debt_per_{slots}_rescue_slots"] for r in rows]) if rows else None,
+                "be_plus10pct": statistics.mean([r[f"required_be_plus10pct_per_{slots}_rescue_slots"] for r in rows]) if rows else None,
             }
-            for n in RESCUE_SLOTS
+            for slots in RESCUE_SLOTS
         },
         "wr5": "INVALID",
         "wr5_missing": [

@@ -1,0 +1,30 @@
+name: Nautilus Lane MODULE RECOVERY v1
+
+# Evidence/storage contract for this lane:
+# - Raw Bid/Ask only; OHLC resample is not accepted for promotion evidence.
+# - All outputs are isolated under results/ae-bt/<experiment_id>/.
+# - preflight/github_run.txt records run_id, git_sha, lane_class, experiment_id, and runner.
+# - Raw catalog manifest and inventory are captured before strategy execution.
+# - Artifact name: nautilus-MODULE_RECOVERY-<experiment_id>.
+# - Artifact retention: 90 days.
+# - Actual save/upload implementation is centralized in nautilus-raw-bidask-reusable-v1.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'module-recovery-manual'
+      runner:
+        description: 'Strategy runner module'
+        required: true
+        default: 'research.minimumspike_raw6x3_bt'
+
+jobs:
+  run:
+    uses: ./.github/workflows/nautilus-raw-bidask-reusable-v1.yml
+    with:
+      lane_class: MODULE_RECOVERY
+      experiment_id: ${{ inputs.experiment_id }}
+      runner: ${{ inputs.runner }}

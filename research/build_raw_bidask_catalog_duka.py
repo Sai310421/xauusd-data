@@ -10,14 +10,24 @@ import struct
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 
+from nautilus_trader.model import Currency
+try:
+    from nautilus_trader.model import CurrencyPair
+except ImportError:
+    from nautilus_trader.model.instruments import CurrencyPair
+from nautilus_trader.model import InstrumentId
+from nautilus_trader.model import Money
+from nautilus_trader.model import Price
+from nautilus_trader.model import Quantity
+from nautilus_trader.model import Symbol
 from nautilus_trader.model import Venue
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
-from nautilus_trader.testkit.providers import TestInstrumentProvider
 
 REC = struct.Struct('>3i2f')
 HEADERS = {'User-Agent': 'raw6x3-nautilus/1.0', 'Accept': '*/*', 'Connection': 'close'}
@@ -33,13 +43,41 @@ SYMBOLS = {
 }
 
 
+def default_fx_ccy(symbol: str, venue: Venue = SIM) -> CurrencyPair:
+    """Create a minimal FX CurrencyPair without depending on Nautilus testkit."""
+    base_currency = symbol[:3]
+    quote_currency = symbol[-3:]
+    price_precision = 3 if quote_currency == 'JPY' else 5
+    usd = Currency.from_str('USD')
+    return CurrencyPair(
+        instrument_id=InstrumentId(Symbol(symbol), venue),
+        raw_symbol=Symbol(symbol),
+        base_currency=Currency.from_str(base_currency),
+        quote_currency=Currency.from_str(quote_currency),
+        price_precision=price_precision,
+        size_precision=0,
+        price_increment=Price(1 / 10**price_precision, price_precision),
+        size_increment=Quantity.from_int(1),
+        ts_event=0,
+        ts_init=0,
+        lot_size=Quantity.from_str('1000'),
+        max_quantity=Quantity.from_str('1e7'),
+        min_quantity=Quantity.from_str('1000'),
+        max_notional=Money(50_000_000.00, usd),
+        min_notional=Money(1_000.00, usd),
+        margin_init=Decimal('0.03'),
+        margin_maint=Decimal('0.03'),
+        maker_fee=Decimal('0.00002'),
+        taker_fee=Decimal('0.00002'),
+    )
+
+
 def iter_days(start: dt.datetime, days: int):
     for i in range(days):
         yield start + dt.timedelta(days=i)
 
 
 def fetch_hour(symbol: str, scale: float, t: dt.datetime):
-    # Dukascopy month path is zero-based.
     urls = [
         f'https://datafeed.dukascopy.com/datafeed/{symbol}/{t.year}/{t.month-1:02d}/{t.day:02d}/{t.hour:02d}h_ticks.bi5',
         f'https://www.dukascopy.com/datafeed/{symbol}/{t.year}/{t.month-1:02d}/{t.day:02d}/{t.hour:02d}h_ticks.bi5',
@@ -99,7 +137,6 @@ def main() -> None:
         shutil.rmtree(catalog_path)
     catalog_path.mkdir(parents=True, exist_ok=True)
 
-    # If cache restored a complete manifest, do not redownload.
     if manifest_path.exists():
         m = json.loads(manifest_path.read_text(encoding='utf-8'))
         if m.get('status') == 'COMPLETE' and m.get('start') == args.start and m.get('days') == args.days:
@@ -109,9 +146,9 @@ def main() -> None:
     catalog = ParquetDataCatalog(str(catalog_path))
     instruments = {}
     for symbol, meta in SYMBOLS.items():
-        inst = TestInstrumentProvider.default_fx_ccy(meta['pair'], SIM)
+        inst = default_fx_ccy(meta['pair'], SIM)
         instruments[symbol] = inst
-    catalog.write_instruments(list(instruments.values()))
+    catalog.write_data(list(instruments.values()))
 
     stats = {}
     for symbol, meta in SYMBOLS.items():
@@ -137,7 +174,7 @@ def main() -> None:
             df = df.drop_duplicates('datetime', keep='last').set_index('datetime')
             ticks = wrangler.process(df)
             if ticks:
-                catalog.write_quote_ticks(ticks)
+                catalog.write_data(ticks)
                 total_ticks += len(ticks)
                 written_days += 1
 

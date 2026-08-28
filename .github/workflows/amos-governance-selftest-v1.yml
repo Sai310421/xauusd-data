@@ -1,0 +1,32 @@
+name: AMOS Governance Selftest v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - nautilus-parallel-lanes-v1
+    paths:
+      - 'research/amos_*.py'
+      - 'tests/test_amos_*.py'
+      - '.github/workflows/amos-governance-selftest-v1.yml'
+      - '.github/workflows/nautilus-raw-bidask-reusable-v1.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependency
+        run: python -m pip install pytest
+      - name: Run AMOS governance tests
+        run: pytest -q tests/test_amos_evidence_gate.py tests/test_amos_institutional_gates.py

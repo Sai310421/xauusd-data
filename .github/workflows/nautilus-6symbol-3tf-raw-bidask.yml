@@ -11,12 +11,17 @@ on:
         description: 'Strategy runner module'
         required: true
         default: 'research.minimumspike_raw6x3_bt'
+      top_k:
+        description: 'Number of symbol/TF cells selected for downstream validation'
+        required: true
+        default: '6'
   push:
     paths:
       - 'bt_requests/raw6x3.request'
       - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/minimumspike_raw6x3_bt.py'
       - 'research/raw_bidask_catalog_guard.py'
+      - 'research/select_top_cells.py'
       - '.github/workflows/nautilus-6symbol-3tf-raw-bidask.yml'
 
 permissions:
@@ -28,8 +33,9 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
-  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'raw6x3-20260727-30d' }}
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('raw6x3-{0}', github.run_id) }}
   RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt' }}
+  TOP_K: ${{ github.event_name == 'workflow_dispatch' && inputs.top_k || '6' }}
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
 
 jobs:
@@ -49,6 +55,7 @@ jobs:
           set -euo pipefail
           mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
           printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "experiment_id=${EXPERIMENT_ID}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/minimumspike_raw6x3_bt.py research/select_top_cells.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_and_selector_sha256.txt"
 
       - name: Install pinned NautilusTrader
         run: |
@@ -116,7 +123,7 @@ jobs:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Run 6 symbols x 3 TF with Nautilus BacktestEngine
+      - name: Run 6 symbols x 3 TF screening with Nautilus BacktestEngine
         shell: bash
         run: |
           set -euo pipefail
@@ -126,6 +133,29 @@ jobs:
             --timeframes M1 M5 M15 \
             --experiment-id "$EXPERIMENT_ID" \
             --raw-bidask-only
+
+      - name: Rank 18 cells and select downstream candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/select_top_cells.py \
+            --summary "results/ae-bt/$EXPERIMENT_ID/summary.json" \
+            --out "results/ae-bt/$EXPERIMENT_ID/selected_cells.json" \
+            --top-k "$TOP_K" \
+            --min-n 10 \
+            --min-pf 1.0 \
+            --max-dd 20 \
+            --max-per-symbol 2
+          python - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path('results/ae-bt') / os.environ['EXPERIMENT_ID']
+          x = json.loads((root / 'selected_cells.json').read_text())
+          cells = x.get('selected_cells', [])
+          if not cells:
+              raise SystemExit('CELL_SELECTION_FAIL_CLOSED: no eligible cells')
+          (root / 'selected_cells.txt').write_text('\n'.join(cells) + '\n')
+          print('SELECTED_CELLS=' + ','.join(cells))
+          PY
 
       - name: Upload immutable BT evidence
         if: always()

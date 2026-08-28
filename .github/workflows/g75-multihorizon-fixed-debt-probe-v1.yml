@@ -23,11 +23,12 @@ permissions:
 env:
   PYTHONPATH: ${{ github.workspace }}
   NAUTILUS_VERSION: '1.230.0'
-  RAW_CATALOG: catalog/raw_bidask
+  RAW_CATALOG: catalog/raw_bidask_g75_xauusd
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v3-testkitfree
-  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'g75-fixed-debt-24h-30d-v2' }}
+  RAW_SYMBOLS: 'XAUUSD'
+  RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-07-27-30d-v1
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'g75-fixed-debt-24h-30d-v3-xauonly' }}
 
 jobs:
   probe:
@@ -52,6 +53,7 @@ jobs:
             "lane_class=MODULE_RECOVERY" \
             "experiment_id=${EXPERIMENT_ID}" \
             "runner=research.g75_multihorizon_fixed_debt_probe+research.g75_6h_positive_exit_probe" \
+            "raw_symbols=${RAW_SYMBOLS}" \
             > "$OUT/github_run.txt"
 
       - name: Install pinned NautilusTrader
@@ -67,7 +69,7 @@ jobs:
         id: raw-cache
         uses: actions/cache/restore@v4
         with:
-          path: catalog/raw_bidask
+          path: ${{ env.RAW_CATALOG }}
           key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Self-healing Raw BidAsk catalog bootstrap
@@ -82,6 +84,7 @@ jobs:
               --start "$RAW_START" \
               --days "$RAW_DAYS" \
               --catalog "$RAW_CATALOG" \
+              --symbols "$RAW_SYMBOLS" \
               --workers 32; then
               ok=1
               break
@@ -96,7 +99,7 @@ jobs:
         if: steps.raw-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: catalog/raw_bidask
+          path: ${{ env.RAW_CATALOG }}
           key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Capture Raw Catalog preflight evidence
@@ -114,7 +117,7 @@ jobs:
           find "$RAW_CATALOG" -maxdepth 4 -type f -printf '%p %s bytes\n' 2>/dev/null | sort > "$OUT/catalog_inventory.txt" || true
 
       - name: Fail-closed Raw BidAsk quality gate
-        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols "$RAW_SYMBOLS"
 
       - name: Run G75 multi-horizon fixed-debt probe
         shell: bash

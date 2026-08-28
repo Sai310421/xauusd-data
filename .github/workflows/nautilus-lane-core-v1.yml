@@ -1,5 +1,14 @@
 name: Nautilus Lane CORE v1
 
+# Evidence/storage contract for this lane:
+# - Raw Bid/Ask only; OHLC resample is not accepted for promotion evidence.
+# - All outputs are isolated under results/ae-bt/<experiment_id>/.
+# - preflight/github_run.txt records run_id, git_sha, lane_class, experiment_id, and runner.
+# - Raw catalog manifest and inventory are captured before strategy execution.
+# - Artifact name: nautilus-CORE-<experiment_id>.
+# - Artifact retention: 90 days.
+# - Actual save/upload implementation is centralized in nautilus-raw-bidask-reusable-v1.yml.
+
 on:
   workflow_dispatch:
     inputs:

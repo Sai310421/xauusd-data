@@ -128,6 +128,58 @@ jobs:
             --experiment-id "${{ inputs.experiment_id }}" \
             --raw-bidask-only
 
+      - name: Assemble AMOS machine-readable evidence
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          OUT="results/ae-bt/${{ inputs.experiment_id }}"
+          python research/amos_evidence_assembler.py "$OUT" --output "$OUT/amos_evidence.json"
+
+      - name: Evaluate AMOS Evidence + WR5 gate
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          OUT="results/ae-bt/${{ inputs.experiment_id }}"
+          python research/amos_evidence_gate.py "$OUT/amos_evidence.json" --output "$OUT/amos_evidence_gate.json"
+
+      - name: Evaluate robustness evidence when present
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          OUT="results/ae-bt/${{ inputs.experiment_id }}"
+          if [ -f "$OUT/robustness.json" ]; then
+            python research/amos_robustness_gate.py "$OUT/robustness.json" --output "$OUT/amos_robustness_gate.json"
+          else
+            printf '%s\n' '{"schema":"amos-robustness-gate-v1","status":"INVALID","missing":["wfo","monte_carlo","parameter_stability","regime_segmentation","master_checker"]}' > "$OUT/amos_robustness_gate.json"
+          fi
+
+      - name: Evaluate shadow/live parity when present
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          OUT="results/ae-bt/${{ inputs.experiment_id }}"
+          if [ -f "$OUT/live_parity.json" ]; then
+            python research/amos_live_parity.py "$OUT/live_parity.json" --output "$OUT/amos_live_parity_gate.json"
+          else
+            printf '%s\n' '{"schema":"amos-live-parity-v1","status":"INVALID","missing":["return","pf","drawdown","slippage","fill_rate","exposure","unresolved_inventory","basket_age"]}' > "$OUT/amos_live_parity_gate.json"
+          fi
+
+      - name: Evaluate portfolio governance when present
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          OUT="results/ae-bt/${{ inputs.experiment_id }}"
+          if [ -f "$OUT/portfolio.json" ]; then
+            python research/amos_portfolio_gate.py "$OUT/portfolio.json" --output "$OUT/amos_portfolio_gate.json"
+          else
+            printf '%s\n' '{"schema":"amos-portfolio-gate-v1","status":"INVALID","missing":["engine_contribution","cross_engine_dependence","aggregate_exposure","event_budget","margin_stress","concentration"]}' > "$OUT/amos_portfolio_gate.json"
+          fi
+
       - name: Upload immutable BT evidence
         if: always()
         uses: actions/upload-artifact@v4

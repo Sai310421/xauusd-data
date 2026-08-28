@@ -1,5 +1,5 @@
 {
-  "version": "NAUTILUS_BT_STANDARD_v1",
+  "version": "NAUTILUS_BT_STANDARD_v1.1",
   "nautilus_version": "1.230.0",
   "data": {
     "kind": "RAW_BIDASK",
@@ -16,12 +16,17 @@
     "parallel_strategy_matrix": true
   },
   "reality_profile": {
+    "profile_file": "research/nautilus_reality_profile_v1.json",
+    "gate_script": "research/nautilus_reality_gate.py",
     "native_bid_ask_spread": true,
     "commission_required_for_production_gate": true,
     "slippage_required_for_production_gate": true,
     "latency_profile_required_for_production_gate": true,
     "lot_step_and_min_size": true,
-    "reject_fill_model": true
+    "reject_fill_model": true,
+    "fail_closed": true,
+    "signal_gate_label": "RAW_SIGNAL_GATE",
+    "production_label": "PRODUCTION_CANDIDATE"
   },
   "risk_and_equity": {
     "closed_dd": true,
@@ -45,7 +50,8 @@
       "year_regime_breakdown"
     ],
     "immutable_artifact": true,
-    "automatic_ranking": true
+    "automatic_ranking": true,
+    "reality_evidence_required": true
   },
   "pipeline": [
     "SELECT_SYMBOLS",

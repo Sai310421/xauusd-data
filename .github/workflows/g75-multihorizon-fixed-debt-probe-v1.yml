@@ -12,6 +12,8 @@ on:
       - nautilus-parallel-lanes-v1
     paths:
       - 'research/g75_multihorizon_fixed_debt_probe.py'
+      - 'research/build_raw_bidask_catalog_duka.py'
+      - 'research/raw_bidask_catalog_guard.py'
       - '.github/workflows/g75-multihorizon-fixed-debt-probe-v1.yml'
 
 permissions:
@@ -23,8 +25,8 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'g75-fixed-debt-24h-30d-v1' }}
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v3-testkitfree
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'g75-fixed-debt-24h-30d-v2' }}
 
 jobs:
   probe:
@@ -88,6 +90,13 @@ jobs:
             sleep $((attempt * 10))
           done
           test "$ok" -eq 1
+
+      - name: Save verified Raw BidAsk catalog cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Capture Raw Catalog preflight evidence
         if: always()

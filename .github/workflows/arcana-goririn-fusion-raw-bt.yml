@@ -1,0 +1,144 @@
+name: ARCANA x GORIRIN Fusion Raw BidAsk BT
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'arcana-goririn-fusion-manual'
+      raw_start:
+        description: 'Raw catalog start YYYY-MM-DD'
+        required: true
+        default: '2026-07-27'
+      raw_days:
+        description: 'Raw days'
+        required: true
+        default: '30'
+  push:
+    paths:
+      - 'bt_requests/arcana-goririn-fusion.request'
+      - 'research/arcana_goririn_fusion_raw_bt.py'
+      - 'research/build_raw_bidask_catalog_duka.py'
+      - 'research/raw_bidask_catalog_guard.py'
+      - '.github/workflows/arcana-goririn-fusion-raw-bt.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: ${{ github.event_name == 'workflow_dispatch' && inputs.raw_start || '2026-07-27' }}
+  RAW_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.raw_days || '30' }}
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'arcana-goririn-fusion-push' }}
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+
+jobs:
+  fusion-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare evidence directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' \
+            "run_id=${GITHUB_RUN_ID}" \
+            "git_sha=${GITHUB_SHA}" \
+            "experiment_id=${EXPERIMENT_ID}" \
+            "verification_level=FUSION_CANDIDATE" \
+            > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+          python - <<'PY'
+          import nautilus_trader
+          print('nautilus_trader', nautilus_trader.__version__)
+          PY
+
+      - name: Restore immutable raw BidAsk catalog cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Self-healing Raw BidAsk catalog bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
+            echo 'Using restored raw catalog cache'
+          else
+            ok=0
+            for attempt in 1 2 3; do
+              echo "RAW_CATALOG_BOOTSTRAP_ATTEMPT=$attempt"
+              if python research/build_raw_bidask_catalog_duka.py \
+                --start "$RAW_START" \
+                --days "$RAW_DAYS" \
+                --catalog "$RAW_CATALOG" \
+                --workers 32; then
+                ok=1
+                break
+              fi
+              rm -rf "$RAW_CATALOG"
+              mkdir -p "$RAW_CATALOG"
+              sleep $((attempt * 10))
+            done
+            [ "$ok" -eq 1 ] || { echo 'RAW_CATALOG_BOOTSTRAP_EXHAUSTED'; exit 1; }
+          fi
+
+      - name: Capture Raw Catalog evidence
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          OUT="results/ae-bt/$EXPERIMENT_ID/preflight"
+          mkdir -p "$OUT"
+          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
+            cp "$RAW_CATALOG/catalog_manifest.json" "$OUT/catalog_manifest.json"
+          else
+            printf '%s\n' '{"status":"MISSING","ohlc_resample_used":false}' > "$OUT/catalog_manifest.json"
+          fi
+          find "$RAW_CATALOG" -maxdepth 4 -type f -printf '%p %s bytes\n' 2>/dev/null | sort > "$OUT/catalog_inventory.txt" || true
+
+      - name: Fail-closed Raw BidAsk quality gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+
+      - name: Save verified Raw BidAsk cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Run ARCANA x GORIRIN fusion candidate on USDJPY
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/arcana_goririn_fusion_raw_bt.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --symbol USDJPY \
+            --modes PASS_THROUGH FILTER TIMING TIMING_APEX_EXIT \
+            --raw-bidask-only
+
+      - name: Upload immutable fusion BT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arcana-goririn-fusion-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

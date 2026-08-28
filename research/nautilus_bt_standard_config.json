@@ -1,5 +1,5 @@
 {
-  "version": "NAUTILUS_BT_STANDARD_v1.1",
+  "version": "NAUTILUS_BT_STANDARD_v1.2",
   "nautilus_version": "1.230.0",
   "data": {
     "kind": "RAW_BIDASK",
@@ -13,24 +13,35 @@
     "native_orders": true,
     "state_updates_on_fill": true,
     "signal_compute_policy": "bar-close cache; QuoteTick reads cached state only",
-    "parallel_strategy_matrix": true
+    "parallel_strategy_matrix": true,
+    "native_reality_api_probe_required": true,
+    "native_reality_api_probe": "research/probe_nautilus_native_reality.py"
   },
   "reality_profile": {
     "profile_file": "research/nautilus_reality_profile_v1.json",
     "gate_script": "research/nautilus_reality_gate.py",
     "native_bid_ask_spread": true,
-    "commission_required_for_production_gate": true,
-    "slippage_required_for_production_gate": true,
-    "latency_profile_required_for_production_gate": true,
+    "native_fee_model_required_for_production_gate": true,
+    "native_fill_slippage_model_required_for_production_gate": true,
+    "native_latency_model_required_for_production_gate": true,
     "lot_step_and_min_size": true,
     "reject_fill_model": true,
     "fail_closed": true,
     "signal_gate_label": "RAW_SIGNAL_GATE",
     "production_label": "PRODUCTION_CANDIDATE"
   },
+  "determinism": {
+    "fixed_random_seed_required": true,
+    "pythonhashseed_required": true,
+    "repeatability_replay_required": true,
+    "repeat_count": 2,
+    "compare": ["N", "NetProfit", "PF", "WR_pct", "MaxFloatingDD_pct", "fill_sequence_hash"],
+    "fail_closed_on_divergence": true
+  },
   "risk_and_equity": {
     "closed_dd": true,
     "floating_mark_to_market_dd_required": true,
+    "mae_mfe_required": true,
     "realized_risk_distribution": true
   },
   "reporting": {
@@ -47,7 +58,8 @@
       "MFE",
       "execution_cost",
       "long_short_breakdown",
-      "year_regime_breakdown"
+      "year_regime_breakdown",
+      "fill_sequence_hash"
     ],
     "immutable_artifact": true,
     "automatic_ranking": true,
@@ -57,8 +69,10 @@
     "SELECT_SYMBOLS",
     "PREPARE_OR_RESTORE_RAW_CATALOG",
     "RAW_CATALOG_GATE",
+    "NATIVE_REALITY_API_PROBE",
     "PARALLEL_BT_MATRIX",
     "REALITY_GATE",
+    "REPEATABILITY_GATE",
     "KPI_AGGREGATION",
     "IMMUTABLE_ARTIFACT"
   ]

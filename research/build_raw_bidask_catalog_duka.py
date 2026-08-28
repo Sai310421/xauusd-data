@@ -14,23 +14,39 @@ from pathlib import Path
 
 import pandas as pd
 
-from nautilus_trader.model import Venue
+from nautilus_trader.model import Currency, CurrencyPair, InstrumentId, Price, Quantity, Symbol, Venue
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
-from nautilus_trader.testkit.providers import TestInstrumentProvider
 
 REC = struct.Struct('>3i2f')
 HEADERS = {'User-Agent': 'raw6x3-nautilus/1.0', 'Accept': '*/*', 'Connection': 'close'}
 SIM = Venue('SIM')
 
 SYMBOLS = {
-    'XAUUSD': {'pair': 'XAU/USD', 'scale': 1000.0},
-    'EURUSD': {'pair': 'EUR/USD', 'scale': 100000.0},
-    'GBPUSD': {'pair': 'GBP/USD', 'scale': 100000.0},
-    'USDJPY': {'pair': 'USD/JPY', 'scale': 1000.0},
-    'AUDUSD': {'pair': 'AUD/USD', 'scale': 100000.0},
-    'USDCHF': {'pair': 'USD/CHF', 'scale': 100000.0},
+    'XAUUSD': {'pair': 'XAU/USD', 'scale': 1000.0, 'price_precision': 3},
+    'EURUSD': {'pair': 'EUR/USD', 'scale': 100000.0, 'price_precision': 5},
+    'GBPUSD': {'pair': 'GBP/USD', 'scale': 100000.0, 'price_precision': 5},
+    'USDJPY': {'pair': 'USD/JPY', 'scale': 1000.0, 'price_precision': 3},
+    'AUDUSD': {'pair': 'AUD/USD', 'scale': 100000.0, 'price_precision': 5},
+    'USDCHF': {'pair': 'USD/CHF', 'scale': 100000.0, 'price_precision': 5},
 }
+
+
+def make_instrument(symbol: str, meta: dict) -> CurrencyPair:
+    base, quote = meta['pair'].split('/')
+    precision = int(meta['price_precision'])
+    return CurrencyPair(
+        instrument_id=InstrumentId(Symbol(symbol), SIM),
+        raw_symbol=Symbol(symbol),
+        base_currency=Currency.from_str(base),
+        quote_currency=Currency.from_str(quote),
+        price_precision=precision,
+        size_precision=0,
+        price_increment=Price(10 ** (-precision), precision=precision),
+        size_increment=Quantity(1, precision=0),
+        ts_event=0,
+        ts_init=0,
+    )
 
 
 def iter_days(start: dt.datetime, days: int):
@@ -39,7 +55,6 @@ def iter_days(start: dt.datetime, days: int):
 
 
 def fetch_hour(symbol: str, scale: float, t: dt.datetime):
-    # Dukascopy month path is zero-based.
     urls = [
         f'https://datafeed.dukascopy.com/datafeed/{symbol}/{t.year}/{t.month-1:02d}/{t.day:02d}/{t.hour:02d}h_ticks.bi5',
         f'https://www.dukascopy.com/datafeed/{symbol}/{t.year}/{t.month-1:02d}/{t.day:02d}/{t.hour:02d}h_ticks.bi5',
@@ -99,7 +114,6 @@ def main() -> None:
         shutil.rmtree(catalog_path)
     catalog_path.mkdir(parents=True, exist_ok=True)
 
-    # If cache restored a complete manifest, do not redownload.
     if manifest_path.exists():
         m = json.loads(manifest_path.read_text(encoding='utf-8'))
         if m.get('status') == 'COMPLETE' and m.get('start') == args.start and m.get('days') == args.days:
@@ -107,10 +121,7 @@ def main() -> None:
             return
 
     catalog = ParquetDataCatalog(str(catalog_path))
-    instruments = {}
-    for symbol, meta in SYMBOLS.items():
-        inst = TestInstrumentProvider.default_fx_ccy(meta['pair'], SIM)
-        instruments[symbol] = inst
+    instruments = {symbol: make_instrument(symbol, meta) for symbol, meta in SYMBOLS.items()}
     catalog.write_instruments(list(instruments.values()))
 
     stats = {}
@@ -161,6 +172,7 @@ def main() -> None:
         'end_exclusive': (start + dt.timedelta(days=args.days)).date().isoformat(),
         'ohlc_resample_used': False,
         'bar_policy': 'Nautilus INTERNAL bars built directly from raw QuoteTick stream; execution remains QuoteTick based',
+        'instrument_provider': 'public-model CurrencyPair constructor; no nautilus_trader.testkit dependency',
         'stats': stats,
         'missing_symbols': missing,
     }

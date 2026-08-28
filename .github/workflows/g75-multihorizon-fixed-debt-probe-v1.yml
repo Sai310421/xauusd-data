@@ -12,6 +12,7 @@ on:
       - nautilus-parallel-lanes-v1
     paths:
       - 'research/g75_multihorizon_fixed_debt_probe.py'
+      - 'research/g75_6h_positive_exit_probe.py'
       - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/raw_bidask_catalog_guard.py'
       - '.github/workflows/g75-multihorizon-fixed-debt-probe-v1.yml'
@@ -50,7 +51,7 @@ jobs:
             "git_sha=${GITHUB_SHA}" \
             "lane_class=MODULE_RECOVERY" \
             "experiment_id=${EXPERIMENT_ID}" \
-            "runner=research.g75_multihorizon_fixed_debt_probe" \
+            "runner=research.g75_multihorizon_fixed_debt_probe+research.g75_6h_positive_exit_probe" \
             > "$OUT/github_run.txt"
 
       - name: Install pinned NautilusTrader
@@ -120,6 +121,16 @@ jobs:
         run: |
           set -euo pipefail
           python -m research.g75_multihorizon_fixed_debt_probe \
+            --catalog "$RAW_CATALOG" \
+            --symbol XAUUSD \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only
+
+      - name: Run G75 6h natural positive-exit probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.g75_6h_positive_exit_probe \
             --catalog "$RAW_CATALOG" \
             --symbol XAUUSD \
             --experiment-id "$EXPERIMENT_ID" \

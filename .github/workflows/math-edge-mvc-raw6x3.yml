@@ -1,0 +1,123 @@
+name: Math EDGE MVC Raw BidAsk A-B
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'math-edge-mvc-manual'
+  push:
+    paths:
+      - 'bt_requests/math_edge_mvc.request'
+      - 'research/math_edge_mvc_raw6x3_bt.py'
+      - 'research/math_edge_candidates.py'
+      - 'research/math_edge_ab_gate.py'
+      - '.github/workflows/math-edge-mvc-raw6x3.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'math-edge-mvc-20260727-30d' }}
+
+jobs:
+  mvc-ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+
+      - name: Restore raw BidAsk catalog cache
+        id: cache_raw
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-${{ env.RAW_START }}-${{ env.RAW_DAYS }}d-v2
+          restore-keys: |
+            raw-bidask-duka-6sym-${{ env.RAW_START }}-${{ env.RAW_DAYS }}d-
+
+      - name: Self-heal Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          ok=0
+          for attempt in 1 2 3; do
+            echo "RAW_CATALOG_ATTEMPT=$attempt"
+            if python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers 32; then
+              if python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then
+                ok=1
+                break
+              fi
+            fi
+            rm -rf "$RAW_CATALOG"
+            sleep $((attempt * 10))
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo 'RAW_BIDASK_SELF_HEAL_FAILED'
+            exit 21
+          fi
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
+          printf 'run_id=%s\ngit_sha=%s\nnautilus=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" "$NAUTILUS_VERSION" > "results/ae-bt/$EXPERIMENT_ID/preflight/run_identity.txt"
+
+      - name: Save healed Raw BidAsk catalog cache
+        if: steps.cache_raw.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-${{ env.RAW_START }}-${{ env.RAW_DAYS }}d-v2
+
+      - name: Run BASE vs MVC proxy on identical raw quotes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.math_edge_mvc_raw6x3_bt \
+            --catalog "$RAW_CATALOG" \
+            --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF \
+            --timeframes M1 M5 M15 \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only
+
+      - name: Build A-B gate inputs and decision
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, pathlib
+          root=pathlib.Path('results/ae-bt')/os.environ['EXPERIMENT_ID']
+          s=json.loads((root/'summary.json').read_text())
+          common={'data_kind':'RAW_BIDASK QuoteTick','ohlc_resample_used':False,'dataset_sha256':s.get('dataset_sha256')}
+          (root/'base_gate.json').write_text(json.dumps({**common,'metrics':s['baseline']},indent=2))
+          (root/'edge_gate.json').write_text(json.dumps({**common,'metrics':s['edge']},indent=2))
+          PY
+          python research/math_edge_ab_gate.py \
+            --base "results/ae-bt/$EXPERIMENT_ID/base_gate.json" \
+            --edge "results/ae-bt/$EXPERIMENT_ID/edge_gate.json" \
+            --out "results/ae-bt/$EXPERIMENT_ID/ab_gate.json" \
+            --max-n-drop-pct 20 \
+            --max-dd-worsen-pct 3
+
+      - name: Upload immutable A-B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: math-edge-mvc-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: warn
+          retention-days: 90

@@ -21,7 +21,7 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
 
 REC = struct.Struct('>3i2f')
-HEADERS = {'User-Agent': 'raw6x3-nautilus/1.0', 'Accept': '*/*', 'Connection': 'close'}
+HEADERS = {'User-Agent': 'raw6x3-nautilus/1.1', 'Accept': '*/*', 'Connection': 'close'}
 SIM = Venue('SIM')
 
 SYMBOLS = {
@@ -106,8 +106,17 @@ def main() -> None:
     ap.add_argument('--days', type=int, default=30)
     ap.add_argument('--catalog', default='catalog/raw_bidask')
     ap.add_argument('--workers', type=int, default=32)
+    ap.add_argument('--symbols', nargs='+', default=list(SYMBOLS))
     ap.add_argument('--fresh', action='store_true')
     args = ap.parse_args()
+
+    selected = []
+    for s in args.symbols:
+        s = s.upper()
+        if s not in SYMBOLS:
+            raise SystemExit(f'unsupported symbol: {s}')
+        if s not in selected:
+            selected.append(s)
 
     start = dt.datetime.fromisoformat(args.start).replace(tzinfo=dt.timezone.utc)
     catalog_path = Path(args.catalog)
@@ -119,16 +128,22 @@ def main() -> None:
 
     if manifest_path.exists():
         m = json.loads(manifest_path.read_text(encoding='utf-8'))
-        if m.get('status') == 'COMPLETE' and m.get('start') == args.start and m.get('days') == args.days:
+        if (
+            m.get('status') == 'COMPLETE'
+            and m.get('start') == args.start
+            and m.get('days') == args.days
+            and set(m.get('symbols', [])) == set(selected)
+        ):
             print(json.dumps({'status': 'CATALOG_CACHE_HIT', 'manifest': m}, indent=2))
             return
 
     catalog = ParquetDataCatalog(str(catalog_path))
-    instruments = {symbol: make_instrument(symbol, meta) for symbol, meta in SYMBOLS.items()}
+    instruments = {symbol: make_instrument(symbol, SYMBOLS[symbol]) for symbol in selected}
     catalog.write_data(list(instruments.values()))
 
     stats = {}
-    for symbol, meta in SYMBOLS.items():
+    for symbol in selected:
+        meta = SYMBOLS[symbol]
         instrument = instruments[symbol]
         wrangler = QuoteTickDataWrangler(instrument=instrument)
         total_ticks = 0
@@ -168,7 +183,7 @@ def main() -> None:
         'data_kind': 'RAW_BIDASK',
         'source': 'Dukascopy BI5 QuoteTick Bid/Ask',
         'venue': 'SIM',
-        'symbols': list(SYMBOLS),
+        'symbols': selected,
         'timeframes': ['M1', 'M5', 'M15'],
         'start': args.start,
         'days': args.days,

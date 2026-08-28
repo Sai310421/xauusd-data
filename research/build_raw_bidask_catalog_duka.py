@@ -16,7 +16,10 @@ from pathlib import Path
 import pandas as pd
 
 from nautilus_trader.model import Currency
-from nautilus_trader.model import CurrencyPair
+try:
+    from nautilus_trader.model import CurrencyPair
+except ImportError:
+    from nautilus_trader.model.instruments import CurrencyPair
 from nautilus_trader.model import InstrumentId
 from nautilus_trader.model import Money
 from nautilus_trader.model import Price

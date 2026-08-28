@@ -1,0 +1,125 @@
+name: Raw BidAsk Catalog Factory
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'bt_requests/raw6x3.request'
+      - 'bt_requests/math_edge_mvc.request'
+      - 'research/build_raw_bidask_catalog_duka.py'
+      - 'research/raw_bidask_catalog_guard.py'
+      - '.github/workflows/raw-bidask-catalog-factory.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  FACTORY_EVIDENCE: results/raw-factory/${{ github.run_id }}
+
+jobs:
+  raw-factory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare factory evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$FACTORY_EVIDENCE"
+          printf '%s\n' \
+            "factory_run_id=${GITHUB_RUN_ID}" \
+            "git_sha=${GITHUB_SHA}" \
+            "cache_key=${RAW_CACHE_KEY}" \
+            "nautilus=${NAUTILUS_VERSION}" > "$FACTORY_EVIDENCE/run_identity.txt"
+          sha256sum research/build_raw_bidask_catalog_duka.py research/raw_bidask_catalog_guard.py > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+
+      - name: Restore shared immutable Raw BidAsk catalog cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Validate restored cache
+        if: steps.raw-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          echo 'RAW_FACTORY_CACHE_HIT_VERIFIED=1'
+
+      - name: Build Raw BidAsk catalog once on cold cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in 1 2 3; do
+            echo "RAW_FACTORY_ATTEMPT=$attempt"
+            rm -rf "$RAW_CATALOG"
+            mkdir -p "$RAW_CATALOG"
+            if python research/build_raw_bidask_catalog_duka.py \
+              --start "$RAW_START" \
+              --days "$RAW_DAYS" \
+              --catalog "$RAW_CATALOG" \
+              --workers 32; then
+              if python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then
+                ok=1
+                break
+              fi
+            fi
+            sleep $((attempt * 10))
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo 'RAW_FACTORY_BUILD_FAILED'
+            exit 21
+          fi
+
+      - name: Capture verified catalog evidence
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
+            cp "$RAW_CATALOG/catalog_manifest.json" "$FACTORY_EVIDENCE/catalog_manifest.json"
+          else
+            printf '%s\n' '{"status":"MISSING","ohlc_resample_used":false}' > "$FACTORY_EVIDENCE/catalog_manifest.json"
+          fi
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' 2>/dev/null | sort > "$FACTORY_EVIDENCE/catalog_inventory.txt" || true
+
+      - name: Save verified shared Raw BidAsk catalog cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Upload factory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-bidask-factory-${{ github.run_id }}
+          path: results/raw-factory/${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 90

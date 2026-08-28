@@ -32,6 +32,26 @@ def describe(module_name: str, names: list[str]) -> dict:
     return out
 
 
+def describe_attrs(module_name: str, class_name: str, tokens: tuple[str, ...]) -> dict:
+    try:
+        mod = importlib.import_module(module_name)
+        cls = getattr(mod, class_name)
+    except Exception as exc:
+        return {"__error__": repr(exc)}
+    out = {}
+    for name in sorted(n for n in dir(cls) if any(t in n.lower() for t in tokens)):
+        obj = getattr(cls, name, None)
+        try:
+            sig = str(inspect.signature(obj))
+        except Exception as exc:
+            sig = f"UNAVAILABLE:{exc!r}"
+        out[name] = {
+            "signature": sig,
+            "doc": (inspect.getdoc(obj) or "")[:800],
+        }
+    return out
+
+
 def locate_backtest_engine() -> dict:
     candidates = [
         ("nautilus_trader.backtest", "BacktestEngine"),
@@ -83,6 +103,11 @@ def main() -> None:
             "trading_strategy": describe("nautilus_trader.trading.strategy", ["Strategy"]),
             "persistence_catalog": describe("nautilus_trader.persistence.catalog", ["ParquetDataCatalog"]),
         },
+        "catalog_read_api": describe_attrs(
+            "nautilus_trader.persistence.catalog",
+            "ParquetDataCatalog",
+            ("query", "quote", "instrument", "read"),
+        ),
         "execution": describe(
             "nautilus_trader.execution",
             [

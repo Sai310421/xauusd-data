@@ -14,7 +14,7 @@ from research.g75_multihorizon_fixed_debt_probe import (
     run_shadow,
 )
 
-HORIZONS_S = (300, 3600, 21600, 43200, 86400)
+HORIZONS_S = (300, 3600, 4000, 4500, 5400, 21600, 43200, 86400)
 POSITIVE_TARGETS = (0.10, 0.25, 0.50)
 
 
@@ -78,6 +78,15 @@ def analyze_positive_exit(qs: list[Q], max_layers: int) -> tuple[dict, list[dict
             return None
         return sum(bool(r[field]) for r in rows) / len(rows)
 
+    unresolved_be_3600 = [r for r in rows if not r["be_le_3600s"]]
+    post_3600_be = {
+        str(h): (
+            sum(bool(r[f"be_le_{h}s"]) for r in unresolved_be_3600) / len(unresolved_be_3600)
+            if unresolved_be_3600 else None
+        )
+        for h in (4000, 4500, 5400)
+    }
+
     summary = {
         "classification": "G75_NATURAL_POSITIVE_EXIT_PROBE_V1",
         "truth_boundary": (
@@ -99,6 +108,11 @@ def analyze_positive_exit(qs: list[Q], max_layers: int) -> tuple[dict, list[dict
                 for frac in POSITIVE_TARGETS
             }
             for h in HORIZONS_S
+        },
+        "post_3600_tail": {
+            "unresolved_at_3600_count": len(unresolved_be_3600),
+            "conditional_be_recovery_rate": post_3600_be,
+            "interpretation": "P(BE<=h | BE>3600s) for h in 4000/4500/5400s",
         },
         "six_hour": {
             "be_rate": rate("be_le_21600s"),

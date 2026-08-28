@@ -39,7 +39,7 @@ def load_catalog_quotes(catalog_path: Path, plain_symbol: str) -> tuple[list[Q],
     instrument = inst_by_plain.get(plain_symbol)
     if instrument is None:
         raise SystemExit(f"instrument missing from Nautilus catalog: {plain_symbol}")
-    ticks = catalog.query_quote_ticks(identifiers=[instrument.id.value])
+    ticks = catalog.quote_ticks(instrument_ids=[instrument.id.value])
     if not ticks:
         raise SystemExit(f"no raw QuoteTicks: {plain_symbol}")
     qs = [Q(int(t.ts_event), _f(t.bid_price), _f(t.ask_price)) for t in ticks]
@@ -47,12 +47,6 @@ def load_catalog_quotes(catalog_path: Path, plain_symbol: str) -> tuple[list[Q],
 
 
 def run_shadow(qs: list[Q], max_layers: int) -> dict:
-    """Verified latest-v3 G75 causal event semantics adapted to Nautilus QuoteTicks.
-
-    This is an event-replay probe, not a broker fill simulator. It preserves the
-    Trigger=0.12 / Add=0.025 / Reversal=0.20 ordering from the verified repository
-    implementation and uses current executable Bid/Ask for entry/add/exit marks.
-    """
     anchor = 0.0
     pending = 0
     active = 0
@@ -60,11 +54,9 @@ def run_shadow(qs: list[Q], max_layers: int) -> dict:
     trough = 0.0
     entries: list[float] = []
     latest_position_fill = 0.0
-
     current_minute: int | None = None
     current_close = 0.0
     previous_close: float | None = None
-
     events: list[dict[str, object]] = []
     cycle_count = 0
 
@@ -240,10 +232,10 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
     summary = {
         "classification": "G75_MULTI_HORIZON_FIXED_DEBT_RECOVERY_PROBE_V1",
         "truth_boundary": (
-            "Discovery probe on Nautilus Raw Bid/Ask QuoteTicks using the verified latest-v3 G75 event ordering. "
-            "At the G75 reversal/loss state, loss is treated as economically lockable FixedDebt. Post-lock price excursions do not terminate the path because a perfect hedge lock is assumed to cap directional PnL; the probe only measures when the original executable basket price would revisit Economic BE. "
+            "Discovery probe on Nautilus Raw Bid/Ask QuoteTicks using verified G75 event ordering. "
+            "At the reversal/loss state, loss is treated as economically lockable FixedDebt. "
             "No rescue trades are injected. 3/5/10 rescue-slot values are arithmetic debt-allocation requirements, not performance. "
-            "Spread is present in executable Bid/Ask marks; commission, hedge carry/swap, explicit slippage, execution delay, broker margin mechanics and actual rescue strategy costs are absent, therefore WR5=INVALID."
+            "Spread is present; commission, hedge carry/swap, explicit slippage, execution delay, broker margin mechanics and actual rescue strategy costs are absent, therefore WR5=INVALID."
         ),
         "max_layers": max_layers,
         "source_cycles": shadow["metrics"]["cycle_count"],
@@ -267,18 +259,10 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
         },
         "wr5": "INVALID",
         "wr5_missing": [
-            "round_trip_commission",
-            "explicit_slippage",
-            "execution_delay",
-            "swap_or_hedge_carry",
-            "cashback_assumptions",
-            "synchronized_mark_to_market_equity",
-            "floating_drawdown_under_actual_hedge",
-            "aggregate_exposure",
-            "broker_margin_level",
-            "actual_rescue_entry_policy",
-            "unresolved_inventory_accounting",
-            "event_price_pitch_budget",
+            "round_trip_commission", "explicit_slippage", "execution_delay", "swap_or_hedge_carry",
+            "cashback_assumptions", "synchronized_mark_to_market_equity", "floating_drawdown_under_actual_hedge",
+            "aggregate_exposure", "broker_margin_level", "actual_rescue_entry_policy",
+            "unresolved_inventory_accounting", "event_price_pitch_budget",
         ],
     }
     return summary, rows
@@ -301,11 +285,7 @@ def main() -> None:
         "verification_level": "NAUTILUS_RAW_BIDASK_G75_FIXED_DEBT_PROBE",
         "symbol": args.symbol,
         "quote_rows": len(qs),
-        "period": {
-            "start": manifest.get("start"),
-            "days": manifest.get("days"),
-            "end_exclusive": manifest.get("end_exclusive"),
-        },
+        "period": {"start": manifest.get("start"), "days": manifest.get("days"), "end_exclusive": manifest.get("end_exclusive")},
         "ohlc_resample_used": False,
     }
     for L in (10, 20):
@@ -317,9 +297,7 @@ def main() -> None:
                 w.writeheader()
                 w.writerows(rows)
 
-    (out / "g75_multihorizon_fixed_debt_summary.json").write_text(
-        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    (out / "g75_multihorizon_fixed_debt_summary.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     (out / "catalog_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2, ensure_ascii=False))
 

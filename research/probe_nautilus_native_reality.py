@@ -70,6 +70,19 @@ def main() -> None:
     report = {
         "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
         "backtest_engine": locate_backtest_engine(),
+        "fusion_imports": {
+            "common": describe("nautilus_trader.common", ["LogLevel"]),
+            "common_enums": describe("nautilus_trader.common.enums", ["LogLevel"]),
+            "config": describe("nautilus_trader.config", ["BacktestEngineConfig", "LoggerConfig", "LoggingConfig", "RiskEngineConfig"]),
+            "model": describe("nautilus_trader.model", ["BarType", "Money", "Venue", "TraderId", "AccountType", "OmsType", "OrderSide"]),
+            "model_data": describe("nautilus_trader.model.data", ["Bar", "QuoteTick", "BarType"]),
+            "model_enums": describe("nautilus_trader.model.enums", ["AccountType", "OmsType", "OrderSide"]),
+            "model_identifiers": describe("nautilus_trader.model.identifiers", ["InstrumentId", "TraderId", "Venue"]),
+            "model_objects": describe("nautilus_trader.model.objects", ["Money"]),
+            "trading_config": describe("nautilus_trader.trading.config", ["StrategyConfig"]),
+            "trading_strategy": describe("nautilus_trader.trading.strategy", ["Strategy"]),
+            "persistence_catalog": describe("nautilus_trader.persistence.catalog", ["ParquetDataCatalog"]),
+        },
         "execution": describe(
             "nautilus_trader.execution",
             [

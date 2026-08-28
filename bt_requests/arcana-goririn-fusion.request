@@ -1,0 +1,5 @@
+experiment_id=arcana-goririn-fusion-20260829-v1
+symbol=USDJPY
+modes=PASS_THROUGH,FILTER,TIMING,TIMING_APEX_EXIT
+raw_bidask_only=true
+note=ARCANA H1 clean-room candidate intent x GORIRIN M1 timing; fixed size signal-quality gate; no martingale/nanpin; no original ARCANA parity claim.

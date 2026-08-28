@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
+DEFAULT_SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
 TFS = ["M1", "M5", "M15"]
 
 
@@ -20,11 +20,13 @@ def sha256_file(path: Path) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", default="catalog/raw_bidask")
-    ap.add_argument("--manifest", default="catalog/raw_bidask/catalog_manifest.json")
+    ap.add_argument("--manifest", default=None)
+    ap.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     args = ap.parse_args()
 
     catalog = Path(args.catalog)
-    manifest_path = Path(args.manifest)
+    manifest_path = Path(args.manifest) if args.manifest else catalog / "catalog_manifest.json"
+    required = [s.upper() for s in args.symbols]
     errors: list[str] = []
 
     if not catalog.exists():
@@ -32,15 +34,22 @@ def main() -> None:
     if not manifest_path.exists():
         errors.append(f"manifest missing: {manifest_path}")
 
-    manifest = None
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("status") != "COMPLETE":
+            errors.append("catalog manifest status must be COMPLETE")
         if manifest.get("data_kind") != "RAW_BIDASK":
             errors.append("catalog manifest data_kind must be RAW_BIDASK")
+        if manifest.get("ohlc_resample_used") is not False:
+            errors.append("ohlc_resample_used must be false")
         present = set(manifest.get("symbols", []))
-        for symbol in SYMBOLS:
+        for symbol in required:
             if symbol not in present:
                 errors.append(f"missing symbol: {symbol}")
+        stats = manifest.get("stats", {})
+        for symbol in required:
+            if int(stats.get(symbol, {}).get("ticks", 0)) <= 0:
+                errors.append(f"no raw ticks recorded for: {symbol}")
 
     if errors:
         raise SystemExit("RAW_BIDASK_FAIL_CLOSED\n" + "\n".join(errors))
@@ -48,7 +57,7 @@ def main() -> None:
     out = {
         "status": "RAW_BIDASK_CATALOG_OK",
         "catalog": str(catalog),
-        "symbols": SYMBOLS,
+        "symbols": required,
         "timeframes": TFS,
         "manifest_sha256": sha256_file(manifest_path),
         "rule": "No OHLC-resample fallback permitted",

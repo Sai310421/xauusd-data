@@ -59,7 +59,6 @@ class FusionStrategy(Strategy):
         self.initial_risk = None
         self.mfe = 0.0
         self.exit_pending = False
-
         self.cached_atr = None
         self.cached_goririn = {1: (False, False, 0.0), -1: (False, False, 0.0)}
         self.entry_allowed_cache = False
@@ -172,7 +171,6 @@ class FusionStrategy(Strategy):
     def on_bar(self, bar: Bar):
         b = {'o': self._f(bar.open), 'h': self._f(bar.high), 'l': self._f(bar.low), 'c': self._f(bar.close), 'ts': int(bar.ts_event)}
         bt = str(bar.bar_type)
-
         if '60-MINUTE' in bt:
             self.h1.append(b)
             side = self._arcana_candidate_intent()
@@ -181,7 +179,6 @@ class FusionStrategy(Strategy):
             self.intent_count += 1
             self.intent_side, self.intent_ts = side, b['ts']
             self.entry_allowed_cache = False
-
             if self.config.mode == 'PASS_THROUGH':
                 self.entry_allowed_cache = True
             elif self.config.mode == 'FILTER':
@@ -193,12 +190,10 @@ class FusionStrategy(Strategy):
                     self.goririn_rejects += 1
                     self.intent_side, self.intent_ts = 0, None
             return
-
         if '1-MINUTE' not in bt:
             return
         self.m1.append(b)
         self._refresh_m1_cache()
-
         if self.intent_side == 0 or self.intent_ts is None:
             return
         age_min = (b['ts'] - self.intent_ts) / 60_000_000_000
@@ -206,7 +201,6 @@ class FusionStrategy(Strategy):
             self.intent_side, self.intent_ts = 0, None
             self.entry_allowed_cache = False
             return
-
         if self.config.mode in ('TIMING', 'TIMING_APEX_EXIT'):
             cand, _, _ = self.cached_goririn[self.intent_side]
             if cand and not self.entry_allowed_cache:
@@ -217,7 +211,6 @@ class FusionStrategy(Strategy):
 
     def on_quote_tick(self, tick: QuoteTick):
         bid, ask = self._f(tick.bid_price), self._f(tick.ask_price)
-
         if self.entry_ref is None and self.portfolio.is_net_flat(self.config.instrument_id) and self.entry_allowed_cache:
             atr = self.cached_atr
             if atr is None or self.intent_side == 0:
@@ -238,13 +231,11 @@ class FusionStrategy(Strategy):
             self.entries += 1
             self.intent_side, self.intent_ts, self.entry_allowed_cache = 0, None, False
             return
-
         if self.entry_ref is None or self.exit_pending:
             return
         exit_px = bid if self.side > 0 else ask
         self.mfe = max(self.mfe, self.side * (exit_px - self.entry_ref))
         active_stop = self.stop_ref
-
         if self.config.mode == 'TIMING_APEX_EXIT' and self.initial_risk and self.initial_risk > 0:
             if self.mfe >= self.config.apex_lock_trigger_r * self.initial_risk:
                 lock = self.entry_ref + self.side * self.config.apex_lock_r * self.initial_risk
@@ -253,7 +244,6 @@ class FusionStrategy(Strategy):
                 trail = exit_px - self.side * self.config.trail_atr_mult * self.cached_atr
                 active_stop = max(active_stop, trail) if self.side > 0 else min(active_stop, trail)
                 self.stop_ref = active_stop
-
         hit_stop = exit_px <= active_stop if self.side > 0 else exit_px >= active_stop
         hit_tp = exit_px >= self.tp_ref if self.side > 0 else exit_px <= self.tp_ref
         if hit_stop or hit_tp:
@@ -333,7 +323,6 @@ def main():
     args = ap.parse_args()
     if not args.raw_bidask_only:
         raise SystemExit('raw-bidask-only is mandatory')
-
     catalog_path = Path(args.catalog).resolve()
     manifest = json.loads((catalog_path/'catalog_manifest.json').read_text(encoding='utf-8'))
     days = int(manifest['days'])
@@ -342,17 +331,15 @@ def main():
     instrument = inst_by_plain.get(args.symbol)
     if instrument is None:
         raise SystemExit(f'instrument missing from Nautilus catalog: {args.symbol}')
-    ticks = catalog.query_quote_ticks(identifiers=[instrument.id.value])
+    ticks = catalog.quote_ticks(instrument_ids=[instrument.id.value])
     if not ticks:
         raise SystemExit(f'no raw QuoteTicks: {args.symbol}')
-
     outdir = Path('results/ae-bt')/args.experiment_id
     outdir.mkdir(parents=True, exist_ok=True)
     results, all_trades = {}, []
-
     for mode in args.modes:
         engine = BacktestEngine(config=BacktestEngineConfig(
-            trader_id=TraderId(f'FUSION-{mode}-001'),
+            trader_id=TraderId('FUSION-001'),
             logging=LoggingConfig(log_level='ERROR'),
             risk_engine=RiskEngineConfig(bypass=True),
         ))
@@ -382,7 +369,6 @@ def main():
             'quote_signal_recomputes': strat.quote_signal_recomputes,
         }
         engine.dispose()
-
     summary = {
         'verification_level': 'NAUTILUS_BT_RAW_BIDASK_FUSION_CANDIDATE',
         'engine': 'NautilusTrader BacktestEngine',

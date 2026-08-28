@@ -6,10 +6,12 @@ import csv
 import json
 from pathlib import Path
 
+import numpy as np
 from research.g75_multihorizon_fixed_debt_probe import (
     NS,
     Q,
     extract_cycles,
+    first_crossing_index,
     load_catalog_quotes,
     run_shadow,
 )
@@ -23,6 +25,8 @@ def analyze_positive_exit(qs: list[Q], max_layers: int) -> tuple[dict, list[dict
     cycles = extract_cycles(shadow)
     ts = [q.ts for q in qs]
     idx_by_ts = {q.ts: i for i, q in enumerate(qs)}
+    bid = np.fromiter((q.bid for q in qs), dtype=np.float64, count=len(qs))
+    ask = np.fromiter((q.ask for q in qs), dtype=np.float64, count=len(qs))
     rows: list[dict] = []
 
     for c in cycles:
@@ -32,37 +36,33 @@ def analyze_positive_exit(qs: list[Q], max_layers: int) -> tuple[dict, list[dict
 
         side = int(c["side"])
         entries = [float(x) for x in c["entries"]]
+        n = len(entries)
+        entry_sum = sum(entries)
         q0 = qs[i0]
-
-        def basket_pnl(q: Q) -> float:
-            px = q.bid if side > 0 else q.ask
-            return sum(side * (px - e) for e in entries)
-
-        p0 = basket_pnl(q0)
+        px0 = q0.bid if side > 0 else q0.ask
+        p0 = side * (px0 * n - entry_sum)
         if p0 >= 0:
             continue
 
         debt = -p0
         max_end = bisect.bisect_right(ts, c["loss_state_ts"] + HORIZONS_S[-1] * NS, lo=i0)
-        hit_times: dict[str, float | None] = {"be": None}
-        for frac in POSITIVE_TARGETS:
-            hit_times[f"plus_{int(frac * 100)}pct_debt"] = None
+        px = bid[i0:max_end] if side > 0 else ask[i0:max_end]
+        hit_times: dict[str, float | None] = {}
+        targets = [("be", 0.0)] + [
+            (f"plus_{int(frac * 100)}pct_debt", debt * frac) for frac in POSITIVE_TARGETS
+        ]
 
-        for q in qs[i0:max_end]:
-            pnl = basket_pnl(q)
-            elapsed = (q.ts - c["loss_state_ts"]) / NS
-            if hit_times["be"] is None and pnl >= 0:
-                hit_times["be"] = elapsed
-            for frac in POSITIVE_TARGETS:
-                key = f"plus_{int(frac * 100)}pct_debt"
-                if hit_times[key] is None and pnl >= debt * frac:
-                    hit_times[key] = elapsed
-            if all(v is not None for v in hit_times.values()):
-                break
+        for name, target_pnl in targets:
+            threshold = (entry_sum + target_pnl) / n if side > 0 else (entry_sum - target_pnl) / n
+            rel_hit = first_crossing_index(px, threshold, side)
+            if rel_hit is None:
+                hit_times[name] = None
+            else:
+                hit_times[name] = (qs[i0 + rel_hit].ts - c["loss_state_ts"]) / NS
 
         row: dict[str, object] = {
             "side": side,
-            "layers": len(entries),
+            "layers": n,
             "loss_state_ts": c["loss_state_ts"],
             "locked_debt_distance": debt,
             "spread_at_lock": q0.ask - q0.bid,
@@ -89,12 +89,14 @@ def analyze_positive_exit(qs: list[Q], max_layers: int) -> tuple[dict, list[dict
 
     summary = {
         "classification": "G75_NATURAL_POSITIVE_EXIT_PROBE_V1",
+        "engine": "RAW_TICK_VECTORIZED_FIRST_PASSAGE_V2",
         "truth_boundary": (
-            "Raw Bid/Ask discovery probe. It measures whether the original executable basket price revisits "
-            "Economic BE and positive PnL targets equal to +10%, +25% and +50% of the locked debt after the "
-            "loss/lock timestamp. It does not simulate hedge orders, rescue trades, commissions, slippage, "
-            "latency, swap/carry, margin or cashback. Therefore these are natural price-path opportunity rates, "
-            "not realized rescue performance, and WR5 remains INVALID."
+            "Raw Bid/Ask discovery probe. Every executable QuoteTick is preserved; no OHLC resampling, "
+            "time aggregation or tick thinning is used. It measures whether the original executable basket "
+            "price revisits Economic BE and positive PnL targets equal to +10%, +25% and +50% of the locked "
+            "debt after the loss/lock timestamp. It does not simulate hedge orders, rescue trades, commissions, "
+            "slippage, latency, swap/carry, margin or cashback. Therefore these are natural price-path opportunity "
+            "rates, not realized rescue performance, and WR5 remains INVALID."
         ),
         "max_layers": max_layers,
         "loss_lock_candidates": len(rows),

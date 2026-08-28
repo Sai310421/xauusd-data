@@ -10,6 +10,8 @@ on:
   push:
     paths:
       - 'bt_requests/math_edge_mvc.request'
+      - 'research/build_raw_bidask_catalog_duka.py'
+      - 'research/raw_bidask_catalog_guard.py'
       - 'research/math_edge_mvc_raw6x3_bt.py'
       - 'research/math_edge_candidates.py'
       - 'research/math_edge_ab_gate.py'

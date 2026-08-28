@@ -49,7 +49,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
       - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
@@ -105,7 +104,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
       - name: Install pinned runtime
         run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
       - name: Restore verified Raw BidAsk catalog
@@ -157,5 +155,3 @@ jobs:
           path: results/crystal-x-v10/${EXPERIMENT_ID}/aggregate/
           if-no-files-found: error
           retention-days: 90
-
-# trigger: 2026-08-29T05:14+09:00

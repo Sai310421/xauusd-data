@@ -44,7 +44,6 @@ SYMBOLS = {
 
 
 def default_fx_ccy(symbol: str, venue: Venue = SIM) -> CurrencyPair:
-    """Create a minimal FX CurrencyPair without depending on Nautilus testkit."""
     base_currency = symbol[:3]
     quote_currency = symbol[-3:]
     price_precision = 3 if quote_currency == 'JPY' else 5
@@ -120,15 +119,29 @@ def sha256_tree(root: Path) -> str:
     return h.hexdigest()
 
 
+def parse_symbols(raw: str | None) -> dict:
+    if not raw:
+        return SYMBOLS
+    names = [x.strip().upper() for x in raw.split(',') if x.strip()]
+    unknown = [x for x in names if x not in SYMBOLS]
+    if unknown:
+        raise SystemExit('unknown symbols: ' + ','.join(unknown))
+    if not names:
+        raise SystemExit('--symbols resolved to empty set')
+    return {name: SYMBOLS[name] for name in names}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument('--start', default='2026-07-27')
     ap.add_argument('--days', type=int, default=30)
     ap.add_argument('--catalog', default='catalog/raw_bidask')
     ap.add_argument('--workers', type=int, default=32)
+    ap.add_argument('--symbols', default=None, help='comma-separated subset; default is all six symbols')
     ap.add_argument('--fresh', action='store_true')
     args = ap.parse_args()
 
+    selected = parse_symbols(args.symbols)
     start = dt.datetime.fromisoformat(args.start).replace(tzinfo=dt.timezone.utc)
     catalog_path = Path(args.catalog)
     manifest_path = catalog_path / 'catalog_manifest.json'
@@ -139,19 +152,24 @@ def main() -> None:
 
     if manifest_path.exists():
         m = json.loads(manifest_path.read_text(encoding='utf-8'))
-        if m.get('status') == 'COMPLETE' and m.get('start') == args.start and m.get('days') == args.days:
+        if (
+            m.get('status') == 'COMPLETE'
+            and m.get('start') == args.start
+            and m.get('days') == args.days
+            and m.get('symbols') == list(selected)
+        ):
             print(json.dumps({'status': 'CATALOG_CACHE_HIT', 'manifest': m}, indent=2))
             return
 
     catalog = ParquetDataCatalog(str(catalog_path))
     instruments = {}
-    for symbol, meta in SYMBOLS.items():
+    for symbol, meta in selected.items():
         inst = default_fx_ccy(meta['pair'], SIM)
         instruments[symbol] = inst
     catalog.write_data(list(instruments.values()))
 
     stats = {}
-    for symbol, meta in SYMBOLS.items():
+    for symbol, meta in selected.items():
         instrument = instruments[symbol]
         wrangler = QuoteTickDataWrangler(instrument=instrument)
         total_ticks = 0
@@ -191,7 +209,7 @@ def main() -> None:
         'data_kind': 'RAW_BIDASK',
         'source': 'Dukascopy BI5 QuoteTick Bid/Ask',
         'venue': 'SIM',
-        'symbols': list(SYMBOLS),
+        'symbols': list(selected),
         'timeframes': ['M1', 'M5', 'M15'],
         'start': args.start,
         'days': args.days,

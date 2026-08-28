@@ -14,7 +14,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from nautilus_trader.model import Currency, CurrencyPair, InstrumentId, Price, Quantity, Symbol, Venue
+from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
+from nautilus_trader.model.instruments import CurrencyPair
+from nautilus_trader.model.objects import Currency, Price, Quantity
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
 
@@ -35,6 +37,7 @@ SYMBOLS = {
 def make_instrument(symbol: str, meta: dict) -> CurrencyPair:
     base, quote = meta['pair'].split('/')
     precision = int(meta['price_precision'])
+    price_increment = '0.' + ('0' * (precision - 1)) + '1'
     return CurrencyPair(
         instrument_id=InstrumentId(Symbol(symbol), SIM),
         raw_symbol=Symbol(symbol),
@@ -42,8 +45,8 @@ def make_instrument(symbol: str, meta: dict) -> CurrencyPair:
         quote_currency=Currency.from_str(quote),
         price_precision=precision,
         size_precision=0,
-        price_increment=Price(10 ** (-precision), precision=precision),
-        size_increment=Quantity(1, precision=0),
+        price_increment=Price.from_str(price_increment),
+        size_increment=Quantity.from_int(1),
         ts_event=0,
         ts_init=0,
     )

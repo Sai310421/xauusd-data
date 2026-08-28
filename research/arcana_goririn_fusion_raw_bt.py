@@ -24,13 +24,6 @@ from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
 
 SIM = Venue('SIM')
-
-# IMPORTANT:
-# ARCANA exact original Entry/Exit is not recovered.
-# The H1 intent below is a clean-room candidate used only to test the fusion architecture.
-# GORIRIN timing uses the supplied functional-extraction architecture: 3 RCI families,
-# extreme threshold, 2-of-3 agreement, plus RSI/CCI/reversal-style confirmation.
-
 MODES = ('PASS_THROUGH', 'FILTER', 'TIMING', 'TIMING_APEX_EXIT')
 
 
@@ -68,12 +61,19 @@ class FusionStrategy(Strategy):
         self.mfe = 0.0
         self.exit_pending = False
 
+        # Standard fast-state cache: expensive indicators are computed only on bar close.
+        self.cached_atr = None
+        self.cached_goririn = {1: (False, False, 0.0), -1: (False, False, 0.0)}
+        self.entry_allowed_cache = False
+        self.cache_updates = 0
+        self.quote_signal_recomputes = 0
+
     @staticmethod
     def _f(px) -> float:
         return float(px.as_double()) if hasattr(px, 'as_double') else float(px)
 
     @staticmethod
-    def _ema(values, period: int) -> float | None:
+    def _ema(values, period):
         if len(values) < period:
             return None
         a = 2.0 / (period + 1.0)
@@ -83,11 +83,10 @@ class FusionStrategy(Strategy):
         return e
 
     @staticmethod
-    def _rsi(values, period: int = 14) -> float | None:
+    def _rsi(values, period=14):
         if len(values) < period + 1:
             return None
-        xs = np.asarray(values[-period - 1:], dtype=float)
-        d = np.diff(xs)
+        d = np.diff(np.asarray(values[-period - 1:], dtype=float))
         up = np.maximum(d, 0.0).mean()
         dn = np.maximum(-d, 0.0).mean()
         if dn == 0:
@@ -96,31 +95,26 @@ class FusionStrategy(Strategy):
         return 100.0 - 100.0 / (1.0 + rs)
 
     @staticmethod
-    def _cci(bars, period: int = 20) -> float | None:
+    def _cci(bars, period=20):
         if len(bars) < period:
             return None
-        tps = np.array([(b['h'] + b['l'] + b['c']) / 3.0 for b in list(bars)[-period:]], dtype=float)
+        tps = np.asarray([(b['h'] + b['l'] + b['c']) / 3.0 for b in list(bars)[-period:]], dtype=float)
         ma = tps.mean()
         md = np.mean(np.abs(tps - ma))
-        if md <= 0:
-            return 0.0
-        return float((tps[-1] - ma) / (0.015 * md))
+        return 0.0 if md <= 0 else float((tps[-1] - ma) / (0.015 * md))
 
     @staticmethod
-    def _rank_corr(values, period: int) -> float | None:
-        # Clean-room RCI proxy: Spearman rank correlation of time rank and price rank.
+    def _rank_corr(values, period):
         if len(values) < period:
             return None
         x = np.asarray(values[-period:], dtype=float)
-        time_ranks = np.arange(1, period + 1, dtype=float)
-        price_ranks = pd.Series(x).rank(method='average').to_numpy(dtype=float)
-        d = time_ranks - price_ranks
-        denom = period * (period * period - 1)
-        if denom == 0:
-            return None
-        return float((1.0 - 6.0 * np.sum(d * d) / denom) * 100.0)
+        pr = pd.Series(x).rank(method='average').to_numpy(dtype=float)
+        tr = np.arange(1, period + 1, dtype=float)
+        d = tr - pr
+        den = period * (period * period - 1)
+        return None if den == 0 else float((1.0 - 6.0 * np.sum(d * d) / den) * 100.0)
 
-    def _atr(self, bars, period: int = 14) -> float | None:
+    def _atr(self, bars, period=14):
         if len(bars) < period + 1:
             return None
         xs = list(bars)
@@ -131,42 +125,34 @@ class FusionStrategy(Strategy):
         v = float(np.mean(trs))
         return v if math.isfinite(v) and v > 0 else None
 
-    def on_start(self) -> None:
+    def on_start(self):
         self.subscribe_quote_ticks(self.config.instrument_id)
         self.subscribe_bars(self.config.h1_bar_type)
         self.subscribe_bars(self.config.m1_bar_type)
 
-    def _arcana_candidate_intent(self) -> int:
-        # Clean-room H1 candidate, NOT recovered ARCANA source.
+    def _arcana_candidate_intent(self):
         if len(self.h1) < 55:
             return 0
         closes = [b['c'] for b in self.h1]
-        e20 = self._ema(closes, 20)
-        e50 = self._ema(closes, 50)
-        prev20 = self._ema(closes[:-1], 20)
+        e20, e50, prev20 = self._ema(closes, 20), self._ema(closes, 50), self._ema(closes[:-1], 20)
         if None in (e20, e50, prev20):
             return 0
-        b = self.h1[-1]
-        p = self.h1[-2]
+        b, p = self.h1[-1], self.h1[-2]
         bull = e20 > e50 and e20 > prev20 and b['c'] > e20 and p['l'] <= e20
         bear = e20 < e50 and e20 < prev20 and b['c'] < e20 and p['h'] >= e20
         return 1 if bull else (-1 if bear else 0)
 
-    def _goririn_candidate(self, side: int) -> tuple[bool, bool, float]:
-        if len(self.m1) < 55 or side == 0:
+    def _compute_goririn(self, side):
+        if len(self.m1) < 55:
             return False, False, 0.0
         closes = [b['c'] for b in self.m1]
-        # Periods are clean-room probes; original periods remain unverified.
         rcis = [self._rank_corr(closes, p) for p in (9, 26, 52)]
         if any(v is None for v in rcis):
             return False, False, 0.0
-        rsi = self._rsi(closes, 14)
-        cci = self._cci(self.m1, 20)
+        rsi, cci = self._rsi(closes, 14), self._cci(self.m1, 20)
         if rsi is None or cci is None:
             return False, False, 0.0
-        b = self.m1[-1]
-        p = self.m1[-2]
-
+        b, p = self.m1[-1], self.m1[-2]
         if side > 0:
             extreme = sum(v <= -90.0 for v in rcis)
             reversal = b['c'] > b['o'] and b['c'] > p['c']
@@ -175,104 +161,99 @@ class FusionStrategy(Strategy):
             extreme = sum(v >= 90.0 for v in rcis)
             reversal = b['c'] < b['o'] and b['c'] < p['c']
             momentum = rsi > 55.0 and cci > 0.0
-
-        score = float(extreme) + (1.0 if reversal else 0.0) + (1.0 if momentum else 0.0)
+        score = float(extreme) + float(reversal) + float(momentum)
         candidate = extreme >= 2 and reversal
-        high_conf = candidate and momentum and extreme >= 2
-        return candidate, high_conf, score
+        return candidate, bool(candidate and momentum), score
 
-    def on_bar(self, bar: Bar) -> None:
+    def _refresh_m1_cache(self):
+        self.cached_atr = self._atr(self.m1, 14)
+        self.cached_goririn[1] = self._compute_goririn(1)
+        self.cached_goririn[-1] = self._compute_goririn(-1)
+        self.cache_updates += 1
+
+    def on_bar(self, bar: Bar):
         b = {'o': self._f(bar.open), 'h': self._f(bar.high), 'l': self._f(bar.low), 'c': self._f(bar.close), 'ts': int(bar.ts_event)}
         bt = str(bar.bar_type)
 
         if '60-MINUTE' in bt:
             self.h1.append(b)
             side = self._arcana_candidate_intent()
-            if side != 0:
-                self.intent_side = side
-                self.intent_ts = b['ts']
-                self.intent_count += 1
+            if side == 0:
+                return
+            self.intent_count += 1
+            self.intent_side, self.intent_ts = side, b['ts']
+            self.entry_allowed_cache = False
+
+            if self.config.mode == 'PASS_THROUGH':
+                self.entry_allowed_cache = True
+            elif self.config.mode == 'FILTER':
+                cand, _, _ = self.cached_goririn.get(side, (False, False, 0.0))
+                self.entry_allowed_cache = cand
+                if cand:
+                    self.goririn_candidates += 1
+                else:
+                    self.goririn_rejects += 1
+                    self.intent_side, self.intent_ts = 0, None
             return
 
         if '1-MINUTE' not in bt:
             return
         self.m1.append(b)
+        self._refresh_m1_cache()
 
         if self.intent_side == 0 or self.intent_ts is None:
             return
         age_min = (b['ts'] - self.intent_ts) / 60_000_000_000
         if age_min > self.config.intent_expiry_minutes:
-            self.intent_side = 0
-            self.intent_ts = None
+            self.intent_side, self.intent_ts = 0, None
+            self.entry_allowed_cache = False
             return
 
-        cand, high, score = self._goririn_candidate(self.intent_side)
-        if cand:
-            self.goririn_candidates += 1
-        elif self.config.mode in ('FILTER', 'TIMING', 'TIMING_APEX_EXIT'):
-            self.goririn_rejects += 1
+        if self.config.mode in ('TIMING', 'TIMING_APEX_EXIT'):
+            cand, _, _ = self.cached_goririn[self.intent_side]
+            if cand and not self.entry_allowed_cache:
+                self.goririn_candidates += 1
+                self.entry_allowed_cache = True
+            elif not cand:
+                self.goririn_rejects += 1
 
-        if self.config.mode == 'PASS_THROUGH':
-            # armed immediately after H1 intent; quote tick performs execution.
-            return
-        if cand:
-            # keep intent armed; first subsequent quote executes.
-            return
+    def on_quote_tick(self, tick: QuoteTick):
+        bid, ask = self._f(tick.bid_price), self._f(tick.ask_price)
 
-    def _fusion_allows(self) -> bool:
-        if self.intent_side == 0 or self.intent_ts is None:
-            return False
-        if self.config.mode == 'PASS_THROUGH':
-            return True
-        cand, _, _ = self._goririn_candidate(self.intent_side)
-        return cand
-
-    def on_quote_tick(self, tick: QuoteTick) -> None:
-        bid = self._f(tick.bid_price)
-        ask = self._f(tick.ask_price)
-
-        if self.entry_ref is None and self.portfolio.is_net_flat(self.config.instrument_id) and self._fusion_allows():
-            atr = self._atr(self.m1, 14)
-            if atr is None:
+        # No indicator recomputation here: execution path consumes cached M1/H1 state only.
+        if self.entry_ref is None and self.portfolio.is_net_flat(self.config.instrument_id) and self.entry_allowed_cache:
+            atr = self.cached_atr
+            if atr is None or self.intent_side == 0:
                 return
             instrument = self.cache.instrument(self.config.instrument_id)
             side = self.intent_side
-            order_side = OrderSide.BUY if side > 0 else OrderSide.SELL
             order = self.order_factory.market(
                 instrument_id=self.config.instrument_id,
-                order_side=order_side,
+                order_side=OrderSide.BUY if side > 0 else OrderSide.SELL,
                 quantity=instrument.make_qty(self.config.trade_size),
             )
             self.submit_order(order)
             px = ask if side > 0 else bid
             risk = self.config.stop_atr * atr
-            self.entry_ref = px
-            self.side = side
-            self.initial_risk = risk
-            self.stop_ref = px - side * risk
-            self.tp_ref = px + side * self.config.tp_r * risk
-            self.mfe = 0.0
-            self.exit_pending = False
+            self.entry_ref, self.side, self.initial_risk = px, side, risk
+            self.stop_ref, self.tp_ref = px - side * risk, px + side * self.config.tp_r * risk
+            self.mfe, self.exit_pending = 0.0, False
             self.entries += 1
-            self.intent_side = 0
-            self.intent_ts = None
+            self.intent_side, self.intent_ts, self.entry_allowed_cache = 0, None, False
             return
 
         if self.entry_ref is None or self.exit_pending:
             return
-
         exit_px = bid if self.side > 0 else ask
-        favorable = self.side * (exit_px - self.entry_ref)
-        self.mfe = max(self.mfe, favorable)
-
+        self.mfe = max(self.mfe, self.side * (exit_px - self.entry_ref))
         active_stop = self.stop_ref
+
         if self.config.mode == 'TIMING_APEX_EXIT' and self.initial_risk and self.initial_risk > 0:
             if self.mfe >= self.config.apex_lock_trigger_r * self.initial_risk:
                 lock = self.entry_ref + self.side * self.config.apex_lock_r * self.initial_risk
                 active_stop = max(active_stop, lock) if self.side > 0 else min(active_stop, lock)
-            atr = self._atr(self.m1, 14)
-            if atr and self.mfe >= self.config.trail_trigger_r * self.initial_risk:
-                trail = exit_px - self.side * self.config.trail_atr_mult * atr
+            if self.cached_atr and self.mfe >= self.config.trail_trigger_r * self.initial_risk:
+                trail = exit_px - self.side * self.config.trail_atr_mult * self.cached_atr
                 active_stop = max(active_stop, trail) if self.side > 0 else min(active_stop, trail)
                 self.stop_ref = active_stop
 
@@ -282,32 +263,29 @@ class FusionStrategy(Strategy):
             self.close_all_positions(self.config.instrument_id)
             self.exit_pending = True
 
-    def on_position_closed(self, event) -> None:
+    def on_position_closed(self, event):
         self.entry_ref = None
         self.side = 0
-        self.stop_ref = None
-        self.tp_ref = None
-        self.initial_risk = None
+        self.stop_ref = self.tp_ref = self.initial_risk = None
         self.mfe = 0.0
         self.exit_pending = False
 
-    def on_stop(self) -> None:
+    def on_stop(self):
         self.close_all_positions(self.config.instrument_id)
 
 
-def parse_money(v) -> float:
+def parse_money(v):
     if v is None:
         return 0.0
     if isinstance(v, (float, int, np.number)):
         return float(v)
-    s = str(v).replace(',', '').strip()
     try:
-        return float(s.split()[0])
+        return float(str(v).replace(',', '').strip().split()[0])
     except Exception:
         return 0.0
 
 
-def extract_trades(report: pd.DataFrame, mode: str):
+def extract_trades(report, mode):
     if report is None or report.empty:
         return []
     pnl_col = next((c for c in report.columns if 'pnl' in str(c).lower()), None)
@@ -331,113 +309,108 @@ def metrics(trades, initial=1000.0, days=30):
     if not trades:
         return {'N':0,'WR_pct':0.0,'PF':0.0,'NetProfit':0.0,'MaxDD_pct':0.0,'RF':0.0,'Monthly21_pct':0.0}
     a = np.asarray([t['pnl'] for t in trades], dtype=float)
-    wins = a[a > 0]; losses = a[a < 0]
+    wins, losses = a[a > 0], a[a < 0]
     pf = float(wins.sum()/abs(losses.sum())) if len(losses) and losses.sum()!=0 else (float('inf') if len(wins) else 0.0)
-    eq=initial; peak=initial; mdd=0.0
+    eq = peak = initial
+    mdd = 0.0
     for x in a:
         eq += x
-        peak=max(peak,eq)
-        mdd=max(mdd,peak-eq)
-    net=float(a.sum())
-    mdd_pct=mdd/peak*100 if peak>0 else 0.0
-    monthly=((max(eq,1e-9)/initial)**(21/days)-1)*100
+        peak = max(peak, eq)
+        mdd = max(mdd, peak - eq)
+    net = float(a.sum())
     return {
-        'N':int(len(a)), 'WR_pct':float((a>0).mean()*100), 'PF':pf,
-        'NetProfit':net, 'MaxDD_pct':float(mdd_pct),
-        'RF':float(net/mdd) if mdd>0 else None, 'Monthly21_pct':float(monthly),
+        'N': int(len(a)), 'WR_pct': float((a>0).mean()*100), 'PF': pf,
+        'NetProfit': net, 'MaxDD_pct': float(mdd/peak*100 if peak>0 else 0.0),
+        'RF': float(net/mdd) if mdd>0 else None,
+        'Monthly21_pct': float(((max(eq,1e-9)/initial)**(21/days)-1)*100),
     }
 
 
-def main() -> None:
-    ap=argparse.ArgumentParser()
+def main():
+    ap = argparse.ArgumentParser()
     ap.add_argument('--catalog', required=True)
     ap.add_argument('--experiment-id', required=True)
     ap.add_argument('--symbol', default='USDJPY')
     ap.add_argument('--raw-bidask-only', action='store_true')
     ap.add_argument('--modes', nargs='+', default=list(MODES), choices=MODES)
-    args=ap.parse_args()
+    args = ap.parse_args()
     if not args.raw_bidask_only:
         raise SystemExit('raw-bidask-only is mandatory')
 
-    catalog_path=Path(args.catalog)
-    manifest=json.loads((catalog_path/'catalog_manifest.json').read_text(encoding='utf-8'))
-    days=int(manifest['days'])
-    catalog=ParquetDataCatalog(str(catalog_path))
-    inst_by_plain={x.id.symbol.value.replace('/',''): x for x in catalog.instruments()}
-    instrument=inst_by_plain.get(args.symbol)
+    catalog_path = Path(args.catalog)
+    manifest = json.loads((catalog_path/'catalog_manifest.json').read_text(encoding='utf-8'))
+    days = int(manifest['days'])
+    catalog = ParquetDataCatalog(str(catalog_path))
+    inst_by_plain = {x.id.symbol.value.replace('/',''): x for x in catalog.instruments()}
+    instrument = inst_by_plain.get(args.symbol)
     if instrument is None:
         raise SystemExit(f'instrument missing from Nautilus catalog: {args.symbol}')
-    ticks=catalog.query_quote_ticks(identifiers=[instrument.id.value])
+    ticks = catalog.query_quote_ticks(identifiers=[instrument.id.value])
     if not ticks:
         raise SystemExit(f'no raw QuoteTicks: {args.symbol}')
 
-    outdir=Path('results/ae-bt')/args.experiment_id
+    outdir = Path('results/ae-bt')/args.experiment_id
     outdir.mkdir(parents=True, exist_ok=True)
-    results={}
-    all_trades=[]
+    results, all_trades = {}, []
 
     for mode in args.modes:
-        cfg=BacktestEngineConfig(
+        engine = BacktestEngine(config=BacktestEngineConfig(
             trader_id=f'ARCANA-GORIRIN-{mode}',
             logging=LoggerConfig(stdout_level=LogLevel.ERROR),
             risk_engine=RiskEngineConfig(bypass=True),
-        )
-        engine=BacktestEngine(config=cfg)
+        ))
         engine.add_venue(
-            venue=SIM,
-            oms_type=OmsType.NETTING,
-            account_type=AccountType.MARGIN,
-            base_currency=USD,
-            starting_balances=[Money(1000, USD)],
-            default_leverage=Decimal('2000'),
+            venue=SIM, oms_type=OmsType.NETTING, account_type=AccountType.MARGIN,
+            base_currency=USD, starting_balances=[Money(1000, USD)], default_leverage=Decimal('2000'),
         )
         engine.add_instrument(instrument)
         engine.add_data(ticks)
-        h1=BarType.from_str(f'{instrument.id.value}-60-MINUTE-BID-INTERNAL')
-        m1=BarType.from_str(f'{instrument.id.value}-1-MINUTE-BID-INTERNAL')
-        strat=FusionStrategy(FusionConfig(
+        strat = FusionStrategy(FusionConfig(
             instrument_id=instrument.id,
-            h1_bar_type=h1,
-            m1_bar_type=m1,
-            mode=mode,
-            trade_size=Decimal('1000'),
+            h1_bar_type=BarType.from_str(f'{instrument.id.value}-60-MINUTE-BID-INTERNAL'),
+            m1_bar_type=BarType.from_str(f'{instrument.id.value}-1-MINUTE-BID-INTERNAL'),
+            mode=mode, trade_size=Decimal('1000'),
         ))
         engine.add_strategy(strat)
         engine.run()
-        trades=extract_trades(engine.generate_positions_report(), mode)
+        trades = extract_trades(engine.generate_positions_report(), mode)
         all_trades.extend(trades)
-        results[mode]={
+        results[mode] = {
             **metrics(trades, days=days),
-            'arcana_candidate_intents':strat.intent_count,
-            'goririn_candidates':strat.goririn_candidates,
-            'goririn_reject_observations':strat.goririn_rejects,
-            'entries_submitted':strat.entries,
+            'arcana_candidate_intents': strat.intent_count,
+            'goririn_candidates': strat.goririn_candidates,
+            'goririn_reject_observations': strat.goririn_rejects,
+            'entries_submitted': strat.entries,
+            'm1_signal_cache_updates': strat.cache_updates,
+            'quote_signal_recomputes': strat.quote_signal_recomputes,
         }
         engine.dispose()
 
-    summary={
-        'verification_level':'NAUTILUS_BT_RAW_BIDASK_FUSION_CANDIDATE',
-        'engine':'NautilusTrader BacktestEngine',
-        'nautilus_version':getattr(nautilus_trader,'__version__','unknown'),
-        'symbol':args.symbol,
-        'data_kind':'RAW_BIDASK QuoteTick',
-        'ohlc_resample_used':False,
-        'signal_bars':'Nautilus INTERNAL BID M1/H1 bars built from raw QuoteTicks',
-        'execution':'Nautilus MARKET orders on raw QuoteTicks; native spread included; no explicit commission/slippage model in this first fusion gate',
-        'period':{'start':manifest['start'],'days':days,'end_exclusive':manifest['end_exclusive']},
-        'modes':results,
-        'source_boundary':{
-            'ARCANA_exact_original_entry':'UNKNOWN',
-            'ARCANA_H1_intent_in_this_runner':'CLEAN_ROOM_CANDIDATE EMA20/50 pullback-reclaim',
-            'GORIRIN_architecture':'FUNCTIONAL_EXTRACTION_BASED',
-            'GORIRIN_RCI_periods':'CLEAN_ROOM_PROBE 9/26/52; original periods unverified',
-            'GORIRIN_RCI_extreme':'±90 and >=2 of 3 based on supplied extraction pack',
+    summary = {
+        'verification_level': 'NAUTILUS_BT_RAW_BIDASK_FUSION_CANDIDATE',
+        'engine': 'NautilusTrader BacktestEngine',
+        'nautilus_version': getattr(nautilus_trader,'__version__','unknown'),
+        'symbol': args.symbol,
+        'data_kind': 'RAW_BIDASK QuoteTick',
+        'ohlc_resample_used': False,
+        'signal_compute_policy': 'M1/H1 bar-close cache; QuoteTick execution reads cached state only',
+        'execution': 'Nautilus MARKET orders on raw QuoteTicks; native spread included',
+        'floating_dd_status': 'REQUIRED_BY_STANDARD_BUT_NOT_YET_IMPLEMENTED_IN_THIS_RUNNER',
+        'reality_profile_status': 'native spread only; commission/slippage/latency remain production-gate requirements',
+        'period': {'start':manifest['start'],'days':days,'end_exclusive':manifest['end_exclusive']},
+        'modes': results,
+        'source_boundary': {
+            'ARCANA_exact_original_entry': 'UNKNOWN',
+            'ARCANA_H1_intent_in_this_runner': 'CLEAN_ROOM_CANDIDATE EMA20/50 pullback-reclaim',
+            'GORIRIN_architecture': 'FUNCTIONAL_EXTRACTION_BASED',
+            'GORIRIN_RCI_periods': 'CLEAN_ROOM_PROBE 9/26/52; original periods unverified',
+            'GORIRIN_RCI_extreme': '±90 and >=2 of 3 based on supplied extraction pack',
         },
-        'limitations':[
-            'This is a fusion-candidate architecture test, not ARCANA source parity.',
-            'Trade size is fixed for the first signal-quality comparison; ARCANA AutoLot is intentionally excluded to prevent risk from masking signal quality.',
+        'limitations': [
+            'Fusion-candidate architecture test, not ARCANA source parity.',
+            'Fixed trade size for signal-quality isolation; ARCANA AutoLot excluded.',
             'No GORIRIN martingale/nanpin in phase 1.',
-            'No explicit commission or stochastic slippage model yet; raw Bid/Ask spread is native.',
+            'Production-grade floating MTM DD and explicit commission/slippage/latency are fail-closed future gates.',
         ],
     }
     pd.DataFrame(all_trades).to_csv(outdir/'fusion_trades.csv', index=False)
@@ -446,5 +419,5 @@ def main() -> None:
     print(json.dumps(summary,indent=2,ensure_ascii=False))
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main()

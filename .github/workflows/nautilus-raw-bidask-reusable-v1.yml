@@ -180,6 +180,14 @@ jobs:
             printf '%s\n' '{"schema":"amos-portfolio-gate-v1","status":"INVALID","missing":["engine_contribution","cross_engine_dependence","aggregate_exposure","event_budget","margin_stress","concentration"]}' > "$OUT/amos_portfolio_gate.json"
           fi
 
+      - name: Finalize AMOS governance verdict
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          OUT="results/ae-bt/${{ inputs.experiment_id }}"
+          python research/amos_governance_finalize.py "$OUT" --output "$OUT/amos_governance_final.json"
+
       - name: Upload immutable BT evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "canonical_data_policy": "RAW_BIDASK_ONLY",
+  "nautilus_version": "1.230.0",
+  "display_basis": {
+    "initial_equity_usd": 1000,
+    "business_days": 21,
+    "kpis": ["Monthly21", "Daily", "WR", "N21", "NDay", "PF", "RF", "MaxDD", "NetProfit"]
+  },
+  "experiments": [
+    {
+      "id": "MV_CONFORMAL_JOINT_SET_V1",
+      "priority": "A",
+      "status": "FORMALIZED_IMPLEMENTED_PRIMITIVES",
+      "type": "DERIVED_FROM_ORIGINAL_CLASS",
+      "target_vector": ["MFE", "MAE", "tau_EBE", "TailDepth"],
+      "first_gate": "Raw BidAsk Nautilus A/B with equal mean exposure"
+    },
+    {
+      "id": "CERTIFIED_WASSERSTEIN_UTILITY_V1",
+      "priority": "A",
+      "status": "FORMALIZED_SCREENING_PRIMITIVE_ONLY",
+      "type": "ORIGINAL_CLASS_PLUS_DERIVED_AE_MAPPING",
+      "note": "Exact certified LP solver still required; current code contains only a clearly labeled Lipschitz screening proxy.",
+      "first_gate": "Do not claim certified Wasserstein until exact solver is implemented"
+    },
+    {
+      "id": "CONFORMAL_KELLY_GOVERNOR_V1",
+      "priority": "B+",
+      "status": "FORMALIZED_IMPLEMENTED_PRIMITIVE",
+      "type": "DERIVED",
+      "first_gate": "Raw BidAsk Nautilus A/B; equal mean exposure; sizing stability metrics required"
+    },
+    {
+      "id": "HURST_DD_SCALER_V1",
+      "priority": "B",
+      "status": "FORMALIZED_IMPLEMENTED_PRIMITIVE",
+      "type": "DERIVED_RISK_CALIBRATION",
+      "first_gate": "Estimator robustness before execution use"
+    }
+  ]
+}

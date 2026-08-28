@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 import nautilus_trader
-from nautilus_trader.backtest import BacktestEngine
+from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.common import LogLevel
 from nautilus_trader.config import BacktestEngineConfig, LoggerConfig, RiskEngineConfig
 from nautilus_trader.model import BarType, Money, Venue
@@ -61,7 +61,6 @@ class FusionStrategy(Strategy):
         self.mfe = 0.0
         self.exit_pending = False
 
-        # Standard fast-state cache: expensive indicators are computed only on bar close.
         self.cached_atr = None
         self.cached_goririn = {1: (False, False, 0.0), -1: (False, False, 0.0)}
         self.entry_allowed_cache = False
@@ -220,7 +219,6 @@ class FusionStrategy(Strategy):
     def on_quote_tick(self, tick: QuoteTick):
         bid, ask = self._f(tick.bid_price), self._f(tick.ask_price)
 
-        # No indicator recomputation here: execution path consumes cached M1/H1 state only.
         if self.entry_ref is None and self.portfolio.is_net_flat(self.config.instrument_id) and self.entry_allowed_cache:
             atr = self.cached_atr
             if atr is None or self.intent_side == 0:

@@ -13,7 +13,9 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 NS = 1_000_000_000
 MINUTE_NS = 60 * NS
-HORIZONS_S = (300, 600, 1800, 3600, 21600, 43200, 86400)
+HORIZONS_S = (300, 600, 1800, 3600, 4000, 4500, 5400, 21600, 43200, 86400)
+TAIL_BASE_S = 3600
+TAIL_CHECKPOINTS_S = (4000, 4500, 5400)
 RESCUE_SLOTS = (3, 5, 10)
 
 
@@ -229,6 +231,15 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
             row[f"required_be_plus10pct_per_{n}_rescue_slots"] = debt * 1.10 / n
         rows.append(row)
 
+    unresolved_at_3600 = [r for r in rows if not r[f"be_le_{TAIL_BASE_S}s"]]
+    conditional_tail_recovery = {
+        str(h): (
+            sum(bool(r[f"be_le_{h}s"]) for r in unresolved_at_3600) / len(unresolved_at_3600)
+            if unresolved_at_3600 else None
+        )
+        for h in TAIL_CHECKPOINTS_S
+    }
+
     summary = {
         "classification": "G75_MULTI_HORIZON_FIXED_DEBT_RECOVERY_PROBE_V1",
         "truth_boundary": (
@@ -244,6 +255,11 @@ def analyze(qs: list[Q], max_layers: int) -> tuple[dict, list[dict]]:
         "economic_be_recovery_rate_by_horizon": {
             str(h): (sum(r[f"be_le_{h}s"] for r in rows) / len(rows) if rows else None)
             for h in HORIZONS_S
+        },
+        "post_3600_tail": {
+            "unresolved_at_3600_count": len(unresolved_at_3600),
+            "conditional_recovery_rate_of_3600s_unresolved": conditional_tail_recovery,
+            "interpretation": "P(BE<=h | BE>3600s) for h in 4000/4500/5400s",
         },
         "economic_be_time_s_recovered_24h": dist([float(r["tau_economic_be_s"]) for r in rows if r["tau_economic_be_s"] is not None]),
         "locked_debt_distance": dist([float(r["locked_debt_distance"]) for r in rows]),

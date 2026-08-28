@@ -1,0 +1,39 @@
+name: Nautilus Native Reality API Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/probe_nautilus_native_reality.py'
+      - '.github/workflows/nautilus-native-reality-probe.yml'
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-py312-nautilus-${{ env.NAUTILUS_VERSION }}
+      - name: Install pinned NautilusTrader
+        run: python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}"
+      - name: Probe native execution APIs
+        run: python research/probe_nautilus_native_reality.py
+      - name: Upload API evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: nautilus-native-reality-api-probe-${{ github.run_id }}
+          path: results/native-reality-probe/
+          if-no-files-found: error
+          retention-days: 90

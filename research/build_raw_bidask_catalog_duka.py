@@ -125,7 +125,7 @@ def main() -> None:
 
     catalog = ParquetDataCatalog(str(catalog_path))
     instruments = {symbol: make_instrument(symbol, meta) for symbol, meta in SYMBOLS.items()}
-    catalog.write_instruments(list(instruments.values()))
+    catalog.write_data(list(instruments.values()))
 
     stats = {}
     for symbol, meta in SYMBOLS.items():
@@ -151,7 +151,7 @@ def main() -> None:
             df = df.drop_duplicates('datetime', keep='last').set_index('datetime')
             ticks = wrangler.process(df)
             if ticks:
-                catalog.write_quote_ticks(ticks)
+                catalog.write_data(ticks)
                 total_ticks += len(ticks)
                 written_days += 1
 
@@ -176,6 +176,7 @@ def main() -> None:
         'ohlc_resample_used': False,
         'bar_policy': 'Nautilus INTERNAL bars built directly from raw QuoteTick stream; execution remains QuoteTick based',
         'instrument_provider': 'public-model CurrencyPair constructor; no nautilus_trader.testkit dependency',
+        'catalog_write_api': 'ParquetDataCatalog.write_data',
         'stats': stats,
         'missing_symbols': missing,
     }

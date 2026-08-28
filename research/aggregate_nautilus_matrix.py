@@ -22,13 +22,18 @@ def main() -> None:
     args = ap.parse_args()
 
     root = Path(args.root)
+    files = list(root.rglob('summary.json')) + list(root.rglob('fusion_summary.json'))
     rows = []
-    for p in root.rglob('summary.json'):
+    seen = set()
+    for p in files:
+        if p in seen:
+            continue
+        seen.add(p)
         try:
             obj = json.loads(p.read_text(encoding='utf-8'))
         except Exception:
             continue
-        mode_metrics = obj.get('mode_metrics') or obj.get('metrics') or {}
+        mode_metrics = obj.get('mode_metrics') or obj.get('modes') or obj.get('metrics') or {}
         if isinstance(mode_metrics, dict) and any(isinstance(v, dict) for v in mode_metrics.values()):
             for mode, m in mode_metrics.items():
                 if not isinstance(m, dict):

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import importlib
 import inspect
 import json
 from pathlib import Path
 
 import nautilus_trader
-from nautilus_trader.backtest import BacktestEngine
 
 
 def describe(module_name: str, names: list[str]) -> dict:
     out = {}
     try:
-        mod = __import__(module_name, fromlist=names)
+        mod = importlib.import_module(module_name)
     except Exception as exc:
         return {"__import_error__": repr(exc)}
     for name in names:
@@ -32,9 +32,44 @@ def describe(module_name: str, names: list[str]) -> dict:
     return out
 
 
+def locate_backtest_engine() -> dict:
+    candidates = [
+        ("nautilus_trader.backtest", "BacktestEngine"),
+        ("nautilus_trader.backtest.engine", "BacktestEngine"),
+        ("nautilus_trader.backtest.node", "BacktestEngine"),
+    ]
+    attempts = []
+    for module_name, attr in candidates:
+        try:
+            mod = importlib.import_module(module_name)
+            obj = getattr(mod, attr, None)
+            if obj is None:
+                attempts.append({"module": module_name, "available": False})
+                continue
+            try:
+                cls_sig = str(inspect.signature(obj))
+            except Exception as exc:
+                cls_sig = f"UNAVAILABLE:{exc!r}"
+            try:
+                add_venue_sig = str(inspect.signature(obj.add_venue))
+            except Exception as exc:
+                add_venue_sig = f"UNAVAILABLE:{exc!r}"
+            return {
+                "found": True,
+                "module": module_name,
+                "class_signature": cls_sig,
+                "add_venue_signature": add_venue_sig,
+                "attempts": attempts,
+            }
+        except Exception as exc:
+            attempts.append({"module": module_name, "import_error": repr(exc)})
+    return {"found": False, "attempts": attempts}
+
+
 def main() -> None:
     report = {
         "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
+        "backtest_engine": locate_backtest_engine(),
         "execution": describe(
             "nautilus_trader.execution",
             [
@@ -49,18 +84,21 @@ def main() -> None:
         ),
         "backtest_models": describe(
             "nautilus_trader.backtest.models",
-            ["FillModel", "MakerTakerFeeModel", "LatencyModel"],
+            ["FillModel", "MakerTakerFeeModel", "LatencyModel", "StaticLatencyModel"],
+        ),
+        "backtest_engine_module": describe(
+            "nautilus_trader.backtest.engine",
+            ["BacktestEngine", "BacktestVenueConfig"],
         ),
     }
-    try:
-        report["BacktestEngine.add_venue_signature"] = str(inspect.signature(BacktestEngine.add_venue))
-    except Exception as exc:
-        report["BacktestEngine.add_venue_signature"] = f"UNAVAILABLE:{exc!r}"
 
     out = Path("results/native-reality-probe")
     out.mkdir(parents=True, exist_ok=True)
     (out / "api_probe.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(report, indent=2, ensure_ascii=False))
+
+    if not report["backtest_engine"].get("found"):
+        raise SystemExit("BACKTEST_ENGINE_NOT_FOUND")
 
 
 if __name__ == "__main__":

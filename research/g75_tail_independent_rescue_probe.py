@@ -67,7 +67,6 @@ def natural_tail_cases(qs: list[Q], max_layers: int) -> list[dict]:
 
 
 def run_independent_rescue(qs: list[Q], start_i: int, end_i: int, slots: int, notional_budget: float, initial_debt: float) -> dict:
-    # Fresh independent state: it does not inherit the main basket direction/anchor.
     anchor = 0.0
     pending = 0
     active = 0
@@ -169,7 +168,6 @@ def run_independent_rescue(qs: list[Q], start_i: int, end_i: int, slots: int, no
                 else:
                     anchor = c1
 
-    # Open rescue inventory is not credited to debt because only realized rescue PnL services debt.
     return {
         "slots": slots,
         "total_notional_budget": notional_budget,
@@ -194,19 +192,18 @@ def summarize(rows: list[dict], slots: int) -> dict:
     pnl_sum = sum(float(r["realized_rescue_pnl"]) for r in rs)
     pos = sum(max(0.0, float(r["realized_rescue_pnl"])) for r in rs)
     neg = sum(max(0.0, -float(r["realized_rescue_pnl"])) for r in rs)
+    pf = pos / neg if neg > 0 else None
+    closed = sum(int(r["closed_rescue_cycles"]) for r in rs)
     return {
         "tail_cases": n,
         "system_be_by_24h_rate": len(wins) / n if n else None,
         "system_be_by_24h_count": len(wins),
         "mean_remaining_debt": sum(float(r["remaining_debt"]) for r in rs) / n if n else None,
         "mean_realized_rescue_pnl": pnl_sum / n if n else None,
-        "rescue_profit_factor": (pos / neg) if neg > 0 else (None if pos == 0 else float("inf")),
-        "closed_rescue_cycles": sum(int(r["closed_rescue_cycles"]) for r in rs),
-        "rescue_cycle_win_rate": (
-            sum(int(r["rescue_wins"]) for r in rs) /
-            sum(int(r["closed_rescue_cycles"]) for r in rs)
-            if sum(int(r["closed_rescue_cycles"]) for r in rs) else None
-        ),
+        "rescue_profit_factor": pf,
+        "profit_factor_status": "FINITE" if pf is not None else ("NO_LOSS_DENOMINATOR" if pos > 0 else "NO_REALIZED_PNL"),
+        "closed_rescue_cycles": closed,
+        "rescue_cycle_win_rate": sum(int(r["rescue_wins"]) for r in rs) / closed if closed else None,
         "open_rescue_inventory_at_24h_count": sum(bool(r["open_rescue_inventory_at_end"]) for r in rs),
     }
 
@@ -236,9 +233,9 @@ def main() -> None:
         "truth_boundary": (
             "6h-unresolved natural G75 baskets are frozen as debt at the executable 6h Bid/Ask mark. "
             "A fresh independent G75 Price-Follow state then trades from 6h to 24h. Main-basket state is not inherited. "
-            "Rescue losses are closed normally and increase the remaining debt through the realized-PnL ledger; rescue positions are never recursively rescued. "
+            "Rescue losses are closed normally and increase remaining debt through the realized-PnL ledger; rescue positions are never recursively rescued. "
             "3/5/10 use the same total rescue notional budget equal to the original basket layer count, divided equally per rescue layer. "
-            "Only realized rescue PnL services debt; open rescue inventory at 24h is not credited. Raw QuoteTicks are used with executable Bid/Ask and no OHLC resampling. "
+            "Only realized rescue PnL services debt; open rescue inventory at 24h is not credited. Raw QuoteTicks use executable Bid/Ask with no OHLC resampling. "
             "Commission, explicit slippage, latency, swap/hedge carry, broker margin, cashback and full MTM portfolio accounting are absent, so WR5=INVALID."
         ),
         "wr5": "INVALID",
@@ -267,7 +264,6 @@ def main() -> None:
                 rows.append({**t, **r})
         result[f"L{max_layers}"] = {
             "six_hour_tail_count": len(tails),
-            "six_hour_tail_rate_vs_loss_candidates": None,
             "same_total_rescue_notional_rule": "original basket layer count; qty_per_layer=original_layers/slots",
             "variants": {str(s): summarize(rows, s) for s in RESCUE_SLOTS},
         }

@@ -78,16 +78,39 @@ jobs:
         with:
           path: catalog/raw_bidask_xauusd
           key: ${{ env.RAW_CACHE_KEY }}
-      - name: Run Nautilus G75 BASE vs VGRSI A0/A1
+      - name: Run BASE in isolated Nautilus process
+        run: |
+          python research/g75_vgrsi_raw_bidask_bt.py --catalog "$RAW_CATALOG" --experiment-id "${EXPERIMENT_ID}-BASE" --symbol XAUUSD --modes BASE --max-layers 10 --raw-bidask-only
+      - name: Run VGRSI A0 in isolated Nautilus process
+        run: |
+          python research/g75_vgrsi_raw_bidask_bt.py --catalog "$RAW_CATALOG" --experiment-id "${EXPERIMENT_ID}-A0" --symbol XAUUSD --modes A0 --max-layers 10 --raw-bidask-only
+      - name: Run VGRSI A1 in isolated Nautilus process
+        run: |
+          python research/g75_vgrsi_raw_bidask_bt.py --catalog "$RAW_CATALOG" --experiment-id "${EXPERIMENT_ID}-A1" --symbol XAUUSD --modes A1 --max-layers 10 --raw-bidask-only
+      - name: Aggregate comparison summary
         shell: bash
         run: |
-          python research/g75_vgrsi_raw_bidask_bt.py \
-            --catalog "$RAW_CATALOG" \
-            --experiment-id "$EXPERIMENT_ID" \
-            --symbol XAUUSD \
-            --modes BASE A0 A1 \
-            --max-layers 10 \
-            --raw-bidask-only
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path('results/ae-bt')
+          eid=os.environ['EXPERIMENT_ID']
+          merged=None
+          modes={}
+          for mode in ('BASE','A0','A1'):
+              p=root/f'{eid}-{mode}'/'summary.json'
+              d=json.loads(p.read_text())
+              if merged is None:
+                  merged={k:v for k,v in d.items() if k!='modes'}
+              modes[mode]=d['modes'][mode]
+          merged['modes']=modes
+          out=root/eid
+          out.mkdir(parents=True,exist_ok=True)
+          (out/'summary.json').write_text(json.dumps(merged,indent=2,ensure_ascii=False))
+          src=root/f'{eid}-BASE'/'catalog_manifest.json'
+          (out/'catalog_manifest.json').write_text(src.read_text())
+          print(json.dumps(merged,indent=2,ensure_ascii=False))
+          PY
       - name: Show KPI summary
         run: cat "results/ae-bt/${EXPERIMENT_ID}/summary.json"
       - name: Upload immutable BT evidence
@@ -98,5 +121,8 @@ jobs:
           path: |
             results/ae-bt/${{ env.EXPERIMENT_ID }}/summary.json
             results/ae-bt/${{ env.EXPERIMENT_ID }}/catalog_manifest.json
+            results/ae-bt/${{ env.EXPERIMENT_ID }}-BASE/summary.json
+            results/ae-bt/${{ env.EXPERIMENT_ID }}-A0/summary.json
+            results/ae-bt/${{ env.EXPERIMENT_ID }}-A1/summary.json
           if-no-files-found: warn
           retention-days: 90

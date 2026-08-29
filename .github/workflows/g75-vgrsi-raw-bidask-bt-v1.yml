@@ -1,0 +1,102 @@
+name: G75 VGRSI Raw BidAsk BT v1
+
+on:
+  workflow_dispatch:
+    inputs:
+      raw_start:
+        description: 'Raw catalog start YYYY-MM-DD'
+        required: true
+        default: '2026-07-30'
+      raw_days:
+        description: 'Raw calendar days'
+        required: true
+        default: '30'
+  pull_request:
+    paths:
+      - 'research/g75_vgrsi_raw_bidask_bt.py'
+      - '.github/workflows/g75-vgrsi-raw-bidask-bt-v1.yml'
+      - 'bt_requests/g75-vgrsi-raw-bidask.request'
+  push:
+    paths:
+      - 'research/g75_vgrsi_raw_bidask_bt.py'
+      - '.github/workflows/g75-vgrsi-raw-bidask-bt-v1.yml'
+      - 'bt_requests/g75-vgrsi-raw-bidask.request'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask_xauusd
+  RAW_START: ${{ github.event_name == 'workflow_dispatch' && inputs.raw_start || '2026-07-30' }}
+  RAW_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.raw_days || '30' }}
+  RAW_CACHE_KEY: raw-bidask-duka-xauusd-${{ github.event_name == 'workflow_dispatch' && inputs.raw_start || '2026-07-30' }}-${{ github.event_name == 'workflow_dispatch' && inputs.raw_days || '30' }}-v1
+  EXPERIMENT_ID: g75-vgrsi-raw-bidask-v1
+
+jobs:
+  raw-bidask-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas requests
+          python - <<'PY'
+          import nautilus_trader
+          print('nautilus_trader', nautilus_trader.__version__)
+          PY
+      - name: Restore Raw BidAsk catalog cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask_xauusd
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Build XAUUSD Raw BidAsk catalog only when missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
+            echo 'CATALOG_CACHE_HIT'
+          else
+            python research/build_raw_bidask_catalog_duka.py \
+              --start "$RAW_START" \
+              --days "$RAW_DAYS" \
+              --catalog "$RAW_CATALOG" \
+              --symbols XAUUSD \
+              --workers 24
+          fi
+      - name: Fail-closed Raw Catalog Gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Save Raw BidAsk catalog cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask_xauusd
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Run Nautilus G75 BASE vs VGRSI A0/A1
+        shell: bash
+        run: |
+          python research/g75_vgrsi_raw_bidask_bt.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --symbol XAUUSD \
+            --modes BASE A0 A1 \
+            --max-layers 10 \
+            --raw-bidask-only
+      - name: Show KPI summary
+        run: cat "results/ae-bt/${EXPERIMENT_ID}/summary.json"
+      - name: Upload immutable BT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-vgrsi-raw-bidask-v1
+          path: |
+            results/ae-bt/${{ env.EXPERIMENT_ID }}/summary.json
+            results/ae-bt/${{ env.EXPERIMENT_ID }}/catalog_manifest.json
+          if-no-files-found: warn
+          retention-days: 90

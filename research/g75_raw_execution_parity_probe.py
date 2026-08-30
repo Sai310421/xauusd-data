@@ -40,12 +40,11 @@ def cache_order_snapshot(engine: BacktestEngine, instrument_id):
     if cache is None:
         out['errors'].append('engine.cache unavailable')
         return out
-    probes = (
+    for key, name in (
         ('orders_total', 'orders'),
         ('orders_open', 'orders_open'),
         ('positions_open', 'positions_open'),
-    )
-    for key, name in probes:
+    ):
         fn = getattr(cache, name, None)
         if fn is None:
             out['errors'].append(f'cache.{name} unavailable')
@@ -114,16 +113,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--catalog', required=True)
     ap.add_argument('--symbol', default='XAUUSD')
-    ap.add_argument('--out', default='results/ae-bt/g75-execution-parity-probe.json')
+    ap.add_argument('--oms', required=True, choices=('HEDGING', 'NETTING'))
+    ap.add_argument('--out', required=True)
     args = ap.parse_args()
-    catalog_path = Path(args.catalog).resolve()
+    oms_type = OmsType.HEDGING if args.oms == 'HEDGING' else OmsType.NETTING
     data = {
         'purpose': 'Diagnose N=0 before changing G75 logic',
-        'rule': 'No strategy logic changes; compare identical BASE strategy under HEDGING and NETTING',
-        'cells': [
-            run_cell(catalog_path, args.symbol, OmsType.HEDGING),
-            run_cell(catalog_path, args.symbol, OmsType.NETTING),
-        ],
+        'rule': 'One Nautilus engine per OS process to avoid Rust logger re-initialization panic',
+        'cell': run_cell(Path(args.catalog).resolve(), args.symbol, oms_type),
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

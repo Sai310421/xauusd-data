@@ -1,0 +1,66 @@
+name: G75 DD Return Frontier
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/g75_dd_return_frontier.py'
+      - 'research/g75_vgrsi_raw_bidask_bt.py'
+      - '.github/workflows/g75-dd-return-frontier.yml'
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      NAUTILUS_VERSION: 1.230.0
+      RAW_CATALOG: catalog/raw_bidask_xauusd
+      RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-07-30-30-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas requests
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Fail-closed Raw Catalog Gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Execution sanity cell
+        run: |
+          python research/g75_vgrsi_raw_bidask_bt.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id g75-frontier-sanity \
+            --symbol XAUUSD --modes BASE --max-layers 5 --base-lot 0.005 --raw-bidask-only
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('results/ae-bt/g75-frontier-sanity/summary.json')
+          d=json.loads(p.read_text())['modes']['BASE']
+          print(json.dumps(d,indent=2))
+          if d.get('OrderRejected',0) != 0 or d.get('N',0) <= 0:
+              raise SystemExit(f"EXECUTION_GATE_FAILED rejected={d.get('OrderRejected')} N={d.get('N')}")
+          PY
+      - name: Search DD-constrained maximum-return frontier
+        run: python research/g75_dd_return_frontier.py --catalog "$RAW_CATALOG"
+      - name: Show frontier
+        run: |
+          cat results/ae-bt/g75-dd-return-frontier/frontier.csv
+          python -m json.tool results/ae-bt/g75-dd-return-frontier/frontier.json
+      - name: Upload immutable frontier evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-dd-return-frontier
+          path: |
+            results/ae-bt/g75-frontier-sanity/summary.json
+            results/ae-bt/g75-frontier-sanity/catalog_manifest.json
+            results/ae-bt/g75-dd-return-frontier/frontier.json
+            results/ae-bt/g75-dd-return-frontier/frontier.csv
+            results/ae-bt/g75-frontier-*/summary.json
+          retention-days: 90

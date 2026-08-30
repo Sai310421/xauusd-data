@@ -78,6 +78,23 @@ jobs:
         with:
           path: catalog/raw_bidask_xauusd
           key: ${{ env.RAW_CACHE_KEY }}
+      - name: Patch Nautilus catalog API compatibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('research/g75_vgrsi_raw_bidask_bt.py')
+          s = p.read_text()
+          old = "catalog.query_quote_ticks(identifiers=[instrument.id.value])"
+          new = "catalog.quote_ticks(instrument_ids=[instrument.id.value])"
+          if old in s:
+              s = s.replace(old, new)
+              p.write_text(s)
+              print('PATCHED query_quote_ticks -> quote_ticks')
+          elif new in s:
+              print('ALREADY_COMPATIBLE')
+          else:
+              raise SystemExit('catalog QuoteTick query expression not found')
+          PY
       - name: Run BASE in isolated Nautilus process
         run: |
           python research/g75_vgrsi_raw_bidask_bt.py --catalog "$RAW_CATALOG" --experiment-id "${EXPERIMENT_ID}-BASE" --symbol XAUUSD --modes BASE --max-layers 10 --raw-bidask-only

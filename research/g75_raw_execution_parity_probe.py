@@ -27,6 +27,40 @@ def frame_to_records(df):
         return [{'repr': repr(df)}]
 
 
+def safe_positions_report(engine: BacktestEngine):
+    try:
+        return frame_to_records(engine.generate_positions_report())
+    except Exception as exc:
+        return [{'report_error': f'{type(exc).__name__}: {exc}'}]
+
+
+def cache_order_snapshot(engine: BacktestEngine, instrument_id):
+    out = {'orders_total': None, 'orders_open': None, 'positions_open': None, 'errors': []}
+    cache = getattr(engine, 'cache', None)
+    if cache is None:
+        out['errors'].append('engine.cache unavailable')
+        return out
+    probes = (
+        ('orders_total', 'orders'),
+        ('orders_open', 'orders_open'),
+        ('positions_open', 'positions_open'),
+    )
+    for key, name in probes:
+        fn = getattr(cache, name, None)
+        if fn is None:
+            out['errors'].append(f'cache.{name} unavailable')
+            continue
+        try:
+            try:
+                xs = fn(instrument_id=instrument_id)
+            except TypeError:
+                xs = fn()
+            out[key] = len(xs) if xs is not None else 0
+        except Exception as exc:
+            out['errors'].append(f'{name}: {type(exc).__name__}: {exc}')
+    return out
+
+
 def run_cell(catalog_path: Path, symbol: str, oms_type: OmsType):
     catalog = ParquetDataCatalog(str(catalog_path))
     inst_by_plain = {x.id.symbol.value.replace('/', ''): x for x in catalog.instruments()}
@@ -50,8 +84,8 @@ def run_cell(catalog_path: Path, symbol: str, oms_type: OmsType):
     strat = G75VGRSIStrategy(G75VGRSIConfig(instrument_id=instrument.id, mode='BASE', max_layers=10))
     engine.add_strategy(strat)
     engine.run()
-    orders = frame_to_records(engine.generate_orders_report())
-    positions = frame_to_records(engine.generate_positions_report())
+    positions = safe_positions_report(engine)
+    cache_snapshot = cache_order_snapshot(engine, instrument.id)
     out = {
         'oms_type': oms_type.name,
         'raw_ticks': len(ticks),
@@ -65,9 +99,10 @@ def run_cell(catalog_path: Path, symbol: str, oms_type: OmsType):
             'entry_order_id': str(strat.entry_order_id) if strat.entry_order_id is not None else None,
             'pending_open_count': len(strat.pending_opens),
             'active_side': strat.active_side,
+            'cycle_count': len(strat.cycle_pnls),
+            'max_layers_seen': strat.max_layers_seen,
         },
-        'orders_count': len(orders),
-        'orders_tail': orders[-10:],
+        'cache': cache_snapshot,
         'positions_count': len(positions),
         'positions_tail': positions[-10:],
     }
@@ -84,6 +119,7 @@ def main():
     catalog_path = Path(args.catalog).resolve()
     data = {
         'purpose': 'Diagnose N=0 before changing G75 logic',
+        'rule': 'No strategy logic changes; compare identical BASE strategy under HEDGING and NETTING',
         'cells': [
             run_cell(catalog_path, args.symbol, OmsType.HEDGING),
             run_cell(catalog_path, args.symbol, OmsType.NETTING),

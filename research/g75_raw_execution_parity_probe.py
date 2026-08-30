@@ -16,6 +16,7 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from research.g75_vgrsi_raw_bidask_bt import G75VGRSIConfig, G75VGRSIStrategy
 
 SIM = Venue('SIM')
+PROBE_VERSION = 'L1_MBP_REJECT_REASON_V2'
 
 
 def _event_record(event):
@@ -151,6 +152,7 @@ def run_cell(catalog_path: Path, symbol: str, oms_type: OmsType):
     positions = safe_positions_report(engine)
     cache_snapshot = cache_order_snapshot(engine, instrument.id)
     out = {
+        'probe_version': PROBE_VERSION,
         'oms_type': oms_type.name,
         'book_type': 'L1_MBP',
         'raw_ticks': len(ticks),

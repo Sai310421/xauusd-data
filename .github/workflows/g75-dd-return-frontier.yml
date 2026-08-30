@@ -36,7 +36,7 @@ jobs:
           python research/g75_vgrsi_raw_bidask_bt.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id g75-frontier-sanity \
-            --symbol XAUUSD --modes BASE --max-layers 5 --base-lot 0.005 --raw-bidask-only
+            --symbol XAUUSD --modes BASE --max-layers 5 --base-lot 0.01 --raw-bidask-only
           python - <<'PY'
           import json
           from pathlib import Path

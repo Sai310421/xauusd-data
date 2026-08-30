@@ -15,6 +15,7 @@ jobs:
       NAUTILUS_VERSION: 1.230.0
       RAW_CATALOG: catalog/raw_bidask_xauusd
       RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-07-30-30-v1
+      PROBE_TRIGGER: reject-reason-v2-20260831
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -29,11 +29,31 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
       - name: Fail closed if Raw BidAsk catalog missing
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Compare HEDGING vs NETTING execution
-        run: python research/g75_raw_execution_parity_probe.py --catalog "$RAW_CATALOG"
+      - name: Probe HEDGING execution in isolated process
+        run: python research/g75_raw_execution_parity_probe.py --catalog "$RAW_CATALOG" --oms HEDGING --out results/ae-bt/g75-execution-parity-HEDGING.json
+      - name: Probe NETTING execution in isolated process
+        run: python research/g75_raw_execution_parity_probe.py --catalog "$RAW_CATALOG" --oms NETTING --out results/ae-bt/g75-execution-parity-NETTING.json
+      - name: Aggregate parity evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('results/ae-bt')
+          h = json.loads((root/'g75-execution-parity-HEDGING.json').read_text())
+          n = json.loads((root/'g75-execution-parity-NETTING.json').read_text())
+          out = {
+              'purpose': 'G75 Raw BidAsk execution parity: isolated HEDGING vs NETTING',
+              'cells': [h['cell'], n['cell']],
+          }
+          (root/'g75-execution-parity-probe.json').write_text(json.dumps(out, indent=2, ensure_ascii=False))
+          print(json.dumps(out, indent=2, ensure_ascii=False))
+          PY
       - name: Upload probe evidence
         uses: actions/upload-artifact@v4
         with:
           name: g75-raw-execution-parity-probe
-          path: results/ae-bt/g75-execution-parity-probe.json
+          path: |
+            results/ae-bt/g75-execution-parity-probe.json
+            results/ae-bt/g75-execution-parity-HEDGING.json
+            results/ae-bt/g75-execution-parity-NETTING.json
           retention-days: 30

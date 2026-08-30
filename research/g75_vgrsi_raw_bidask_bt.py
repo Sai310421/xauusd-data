@@ -12,7 +12,7 @@ import numpy as np
 import nautilus_trader
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, RiskEngineConfig
-from nautilus_trader.model import Money, Venue
+from nautilus_trader.model import BookType, Money, Venue
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
 from nautilus_trader.model.identifiers import TraderId
@@ -116,6 +116,8 @@ class G75VGRSIStrategy(Strategy):
         self.entries = 0
         self.adds = 0
         self.exits = 0
+        self.order_rejects = 0
+        self.order_denials = 0
         self.vgrsi_checked = 0
         self.vgrsi_aligned = 0
         self.vgrsi_rejected = 0
@@ -155,6 +157,24 @@ class G75VGRSIStrategy(Strategy):
         else:
             self.pending_adds += 1
         self.submit_order(order)
+
+    def _clear_failed_order(self, event):
+        oid = str(event.client_order_id)
+        p = self.pending_opens.pop(oid, None)
+        if p is None:
+            return
+        if p.tag == "ENTRY":
+            self.entry_order_id = None
+        else:
+            self.pending_adds = max(0, self.pending_adds - 1)
+
+    def on_order_rejected(self, event):
+        self.order_rejects += 1
+        self._clear_failed_order(event)
+
+    def on_order_denied(self, event):
+        self.order_denials += 1
+        self._clear_failed_order(event)
 
     def _try_same_tick_add(self, side: int, bid: float, ask: float, last_cursor: float, trigger_ts: int) -> bool:
         if self.closing or not self.active_side or self.pending_adds or len(self.fill_prices) >= self.config.max_layers:
@@ -345,6 +365,8 @@ def calc_metrics(strat: G75VGRSIStrategy, trading_days: int) -> dict:
         "EntriesSubmitted": strat.entries,
         "Adds": strat.adds,
         "Exits": strat.exits,
+        "OrderRejects": strat.order_rejects,
+        "OrderDenials": strat.order_denials,
         "MaxLayersSeen": strat.max_layers_seen,
         "VGRSI_checked": strat.vgrsi_checked,
         "VGRSI_aligned": strat.vgrsi_aligned,
@@ -395,6 +417,7 @@ def main():
             base_currency=USD,
             starting_balances=[Money(1000, USD)],
             default_leverage=Decimal("2000"),
+            book_type=BookType.L1_MBP,
         )
         engine.add_instrument(instrument)
         engine.add_data(ticks)
@@ -417,6 +440,7 @@ def main():
         "data_kind": "RAW_BIDASK QuoteTick",
         "ohlc_resample_used": False,
         "native_spread": True,
+        "execution_book_type": "L1_MBP",
         "commission_model": "NOT_INCLUDED",
         "slippage_model": "NOT_INCLUDED",
         "latency_model": "NOT_INCLUDED",

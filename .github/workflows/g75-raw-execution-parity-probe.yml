@@ -1,0 +1,39 @@
+name: G75 Raw Execution Parity Probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/g75_raw_execution_parity_probe.py'
+      - '.github/workflows/g75-raw-execution-parity-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      NAUTILUS_VERSION: 1.230.0
+      RAW_CATALOG: catalog/raw_bidask_xauusd
+      RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-07-30-30-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: python -m pip install -q "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas requests
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Fail closed if Raw BidAsk catalog missing
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Compare HEDGING vs NETTING execution
+        run: python research/g75_raw_execution_parity_probe.py --catalog "$RAW_CATALOG"
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-raw-execution-parity-probe
+          path: results/ae-bt/g75-execution-parity-probe.json
+          retention-days: 30

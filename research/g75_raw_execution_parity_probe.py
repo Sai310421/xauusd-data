@@ -9,7 +9,7 @@ from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, RiskEngineConfig
 from nautilus_trader.model import Money, Venue
 from nautilus_trader.model.currencies import USD
-from nautilus_trader.model.enums import AccountType, OmsType
+from nautilus_trader.model.enums import AccountType, BookType, OmsType
 from nautilus_trader.model.identifiers import TraderId
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
@@ -141,6 +141,7 @@ def run_cell(catalog_path: Path, symbol: str, oms_type: OmsType):
         base_currency=USD,
         starting_balances=[Money(1000, USD)],
         default_leverage=Decimal('2000'),
+        book_type=BookType.L1_MBP,
     )
     engine.add_instrument(instrument)
     engine.add_data(ticks)
@@ -151,6 +152,7 @@ def run_cell(catalog_path: Path, symbol: str, oms_type: OmsType):
     cache_snapshot = cache_order_snapshot(engine, instrument.id)
     out = {
         'oms_type': oms_type.name,
+        'book_type': 'L1_MBP',
         'raw_ticks': len(ticks),
         'instrument': {
             'id': str(instrument.id),
@@ -189,7 +191,7 @@ def main():
     oms_type = OmsType.HEDGING if args.oms == 'HEDGING' else OmsType.NETTING
     data = {
         'purpose': 'Diagnose G75 order lifecycle before changing strategy logic',
-        'rule': 'One Nautilus engine per OS process; capture submit/accept/deny/reject/fill lifecycle',
+        'rule': 'One Nautilus engine per OS process; Raw QuoteTick venue explicitly uses L1_MBP market book',
         'cell': run_cell(Path(args.catalog).resolve(), args.symbol, oms_type),
     }
     out = Path(args.out)

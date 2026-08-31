@@ -27,7 +27,7 @@ HOSTS = (
     'https://datafeed.dukascopy.com/datafeed',
     'https://www.dukascopy.com/datafeed',
 )
-HEADERS = {'User-Agent': 'bigplayer-rawtick-5tf/1.1', 'Accept': '*/*'}
+HEADERS = {'User-Agent': 'bigplayer-rawtick-5tf/1.2', 'Accept': '*/*'}
 TF_SECONDS = {'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800, 'H1': 3600}
 OUT = Path('results/bigplayer_rawtick_5tf_21d')
 
@@ -83,22 +83,23 @@ def load_ticks(days: list[dt.date], workers: int) -> pd.DataFrame:
         raise SystemExit('no raw ticks downloaded')
     rows.sort(key=lambda x: x[0])
     df = pd.DataFrame(rows, columns=['datetime','bid','ask','bid_size','ask_size'])
+    df['datetime'] = pd.to_datetime(df['datetime'], utc=True)
     df = df.drop_duplicates('datetime', keep='last').reset_index(drop=True)
     df['mid'] = (df.bid + df.ask) / 2.0
-    # Adapter note: the frozen BigPlayer baseline consumes bar tick-volume.
-    # For raw quote ticks, the semantics-preserving adapter is number of raw ticks
-    # in the bar, NOT sum(bid_size+ask_size), which is quote-size volume.
+    # Adapter only: baseline volume semantics are tick count per bar.
     df['tick_volume'] = 1.0
     (OUT / 'download_status.json').write_text(json.dumps({'hours': len(jobs), 'status': status, 'ticks': len(df)}, indent=2), encoding='utf-8')
     return df
 
 
 def build_bars_from_raw_ticks(ticks: pd.DataFrame, tf_sec: int) -> pd.DataFrame:
-    # Direct raw tick -> bar construction. No OHLC-to-OHLC resampling is used.
-    ns = ticks.datetime.astype('int64').to_numpy()
-    bucket_ns = tf_sec * 1_000_000_000
-    key = (ns // bucket_ns) * bucket_ns
-    x = ticks.assign(bucket=pd.to_datetime(key, utc=True))
+    # Direct raw tick -> bar construction. No OHLC-to-OHLC resampling.
+    # IMPORTANT: use timezone-aware floor instead of integer epoch arithmetic.
+    # Pandas can retain microsecond datetime resolution; treating that integer as
+    # nanoseconds collapsed ~21 days into only a few dozen bars. This adapter fix
+    # changes no BigPlayer formula or threshold.
+    bucket = ticks['datetime'].dt.floor(f'{tf_sec}s')
+    x = ticks.assign(bucket=bucket)
     g = x.groupby('bucket', sort=True)
     bars = g.agg(
         open=('mid','first'), high=('mid','max'), low=('mid','min'), close=('mid','last'),
@@ -145,6 +146,8 @@ def build_edges(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         'volume_median': float(vol.median()) if len(vol) else 0.0,
         'volume_p99': float(vol.quantile(0.99)) if len(vol) else 0.0,
         'z_p99': float(z.quantile(0.99)) if z.notna().any() else None,
+        'first_bar': str(out['datetime'].iloc[0]) if len(out) else None,
+        'last_bar': str(out['datetime'].iloc[-1]) if len(out) else None,
     }
     return out, diag
 
@@ -223,7 +226,7 @@ def main():
     (OUT/'provenance.json').write_text(json.dumps({
         'start':days[0].isoformat(),'end':days[-1].isoformat(),'business_days':[d.isoformat() for d in days],
         'formula_policy':'FROZEN_BIGPLAYER_2EDGE','volume_input':'raw tick count per direct raw-tick bar',
-        'adapter_fix':'quote-size volume -> tick-volume semantics; formulas/thresholds unchanged',
+        'adapter_fix':'timezone-aware floor bucketing + tick-volume semantics; formulas/thresholds unchanged',
         'execution':'next bar open, fixed 5 bars, non-overlap within each TF-edge, independent across TF-edge',
         'cost_usd':args.round_trip_cost_usd}, indent=2), encoding='utf-8')
     print(pd.DataFrame(all_rows).to_string(index=False))

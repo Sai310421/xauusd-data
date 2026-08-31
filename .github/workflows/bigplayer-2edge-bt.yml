@@ -1,0 +1,68 @@
+name: BigPlayer 2-EDGE XAUUSD M1 BT
+
+on:
+  workflow_dispatch:
+    inputs:
+      horizon_minutes:
+        description: Fixed exit horizon in M1 bars
+        required: false
+        default: '5'
+      round_trip_cost_usd:
+        description: All-in round-trip cost per trade in USD
+        required: false
+        default: '0.0'
+  push:
+    branches: [main]
+    paths:
+      - 'research/bigplayer_2edge_bt.py'
+      - '.github/workflows/bigplayer-2edge-bt.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bigplayer-2edge-bt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'pandas>=2.2,<3' 'numpy>=1.26,<3'
+      - name: Run isolated 2-edge BT
+        env:
+          HORIZON: ${{ github.event.inputs.horizon_minutes || '5' }}
+          COST_USD: ${{ github.event.inputs.round_trip_cost_usd || '0.0' }}
+        run: |
+          python research/bigplayer_2edge_bt.py \
+            --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/bigplayer_2edge \
+            --horizon "$HORIZON" \
+            --initial-balance 1000 \
+            --lot 0.01 \
+            --contract-size 100 \
+            --round-trip-cost-usd "$COST_USD"
+      - name: Print compact KPI table
+        if: always()
+        run: |
+          if [ -f results/bigplayer_2edge/summary.csv ]; then
+            python - <<'PY'
+          import pandas as pd
+          p='results/bigplayer_2edge/summary.csv'
+          d=pd.read_csv(p)
+          cols=['variant','event_N','N','N_per_day','WR','PF','RF','net_profit','return_pct','max_dd_pct','final_balance']
+          print(d[cols].to_string(index=False))
+          PY
+          fi
+      - name: Upload BigPlayer BT artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bigplayer-2edge-bt-${{ github.sha }}
+          path: results/bigplayer_2edge/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import json
+from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 
@@ -45,6 +46,8 @@ class CompatStrat(base.Strat):
         self.pending_side = 0
         self.pending_scene = 'unknown'
         self.pending_atr = None
+        self.rejection_reasons = Counter()
+        self.rejection_samples = []
         self.lifecycle = {
             'orders_submitted': 0,
             'orders_filled': 0,
@@ -84,7 +87,6 @@ class CompatStrat(base.Strat):
             return
         d = self.decision
 
-        # Entry state is only armed on submit. Position state is created on PositionOpened.
         if self.entry_ref is None and not self.order_pending and self._is_flat():
             side = self.direction(x, d)
             if side and d.confidence >= .65 and d.scene not in (base.Scene.TRANSITION, base.Scene.NOISE, base.Scene.NEWS):
@@ -127,6 +129,11 @@ class CompatStrat(base.Strat):
 
     def on_order_rejected(self, event):
         self.lifecycle['orders_rejected'] += 1
+        reason = str(getattr(event, 'reason', None) or getattr(event, 'message', None) or 'UNKNOWN')
+        self.rejection_reasons[reason] += 1
+        if len(self.rejection_samples) < 5:
+            self.rejection_samples.append(reason)
+            print(f'ORDER_REJECT_SAMPLE={reason}')
         self._reset_pending()
         self.entry_ref = None
         self.entry_side = 0
@@ -249,7 +256,7 @@ def main():
                 'raw_ticks': len(ticks),
                 'signals_submitted': st.entries,
             }
-            lifecycle[key] = dict(st.lifecycle)
+            lifecycle[key] = {**dict(st.lifecycle), 'rejection_reasons': dict(st.rejection_reasons)}
             counts[key] = dict(st.scene_counts)
             trans[key] = dict(st.transitions)
             for sc in sorted({t['scene'] for t in tt}):

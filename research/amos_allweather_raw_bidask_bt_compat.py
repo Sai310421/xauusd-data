@@ -41,6 +41,17 @@ class CompatStrat(base.Strat):
         self.latest_x = None
         self.active_scene = 'unknown'
         self.closed_trades = []
+        self.order_pending = False
+        self.pending_side = 0
+        self.pending_scene = 'unknown'
+        self.pending_atr = None
+        self.lifecycle = {
+            'orders_submitted': 0,
+            'orders_filled': 0,
+            'orders_rejected': 0,
+            'positions_opened': 0,
+            'positions_closed': 0,
+        }
 
     def _is_flat(self) -> bool:
         p = self.portfolio
@@ -49,6 +60,12 @@ class CompatStrat(base.Strat):
         if hasattr(p, 'is_net_long') and hasattr(p, 'is_net_short'):
             return (not p.is_net_long(self.config.instrument_id)) and (not p.is_net_short(self.config.instrument_id))
         return self.entry_ref is None
+
+    def _reset_pending(self):
+        self.order_pending = False
+        self.pending_side = 0
+        self.pending_scene = 'unknown'
+        self.pending_atr = None
 
     def on_bar(self, bar):
         super().on_bar(bar)
@@ -66,7 +83,9 @@ class CompatStrat(base.Strat):
         if x is None:
             return
         d = self.decision
-        if self.entry_ref is None and self._is_flat():
+
+        # Entry state is only armed on submit. Position state is created on PositionOpened.
+        if self.entry_ref is None and not self.order_pending and self._is_flat():
             side = self.direction(x, d)
             if side and d.confidence >= .65 and d.scene not in (base.Scene.TRANSITION, base.Scene.NOISE, base.Scene.NEWS):
                 ins = self.cache.instrument(self.config.instrument_id)
@@ -75,25 +94,16 @@ class CompatStrat(base.Strat):
                     order_side=base.OrderSide.BUY if side > 0 else base.OrderSide.SELL,
                     quantity=ins.make_qty(self.config.trade_size),
                 )
-                self.submit_order(order)
-                self.entry_ref = ask if side > 0 else bid
-                self.entry_side = side
-                self.active_scene = d.scene.value
-                self.entry_scenes.append(d.scene.value)
-                atr = self.atrs()[-1]
-                if d.scene in (base.Scene.BALANCED_RANGE, base.Scene.LIQUIDITY_BUILD, base.Scene.COMPRESSION):
-                    sk, tk = .75, .55
-                elif d.scene in (base.Scene.REVERSAL, base.Scene.BREAKOUT, base.Scene.CONTINUATION, base.Scene.CRISIS):
-                    sk, tk = 1., 1.8
-                else:
-                    sk, tk = .9, 1.2
-                self.stop_ref = self.entry_ref - side * sk * atr
-                self.tp_ref = self.entry_ref + side * tk * atr
-                self.trail_ref = None
-                self.hold = 0
-                self.exit_pending = False
+                self.order_pending = True
+                self.pending_side = side
+                self.pending_scene = d.scene.value
+                av = self.atrs()
+                self.pending_atr = av[-1] if av else None
+                self.lifecycle['orders_submitted'] += 1
                 self.entries += 1
+                self.submit_order(order)
                 return
+
         if self.entry_ref is None or self.exit_pending:
             return
         px = bid if self.entry_side > 0 else ask
@@ -112,7 +122,48 @@ class CompatStrat(base.Strat):
             self.close_all_positions(self.config.instrument_id)
             self.exit_pending = True
 
+    def on_order_filled(self, event):
+        self.lifecycle['orders_filled'] += 1
+
+    def on_order_rejected(self, event):
+        self.lifecycle['orders_rejected'] += 1
+        self._reset_pending()
+        self.entry_ref = None
+        self.entry_side = 0
+        self.exit_pending = False
+
+    def on_position_opened(self, event):
+        self.lifecycle['positions_opened'] += 1
+        side = self.pending_side
+        if side == 0:
+            side = 1 if self.portfolio.is_net_long(self.config.instrument_id) else -1
+        px = getattr(event, 'avg_px_open', None)
+        if px is None:
+            px = self.last_ask if side > 0 else self.last_bid
+        self.entry_ref = float(px)
+        self.entry_side = side
+        self.active_scene = self.pending_scene
+        self.entry_scenes.append(self.active_scene)
+        atr = self.pending_atr
+        if atr is None:
+            av = self.atrs()
+            atr = av[-1] if av else max(abs((self.last_ask or 0) - (self.last_bid or 0)), 0.01)
+        scene = base.Scene(self.active_scene) if self.active_scene in base.Scene._value2member_map_ else base.Scene.TRANSITION
+        if scene in (base.Scene.BALANCED_RANGE, base.Scene.LIQUIDITY_BUILD, base.Scene.COMPRESSION):
+            sk, tk = .75, .55
+        elif scene in (base.Scene.REVERSAL, base.Scene.BREAKOUT, base.Scene.CONTINUATION, base.Scene.CRISIS):
+            sk, tk = 1., 1.8
+        else:
+            sk, tk = .9, 1.2
+        self.stop_ref = self.entry_ref - side * sk * atr
+        self.tp_ref = self.entry_ref + side * tk * atr
+        self.trail_ref = None
+        self.hold = 0
+        self.exit_pending = False
+        self._reset_pending()
+
     def on_position_closed(self, event):
+        self.lifecycle['positions_closed'] += 1
         self.closed_trades.append({
             'scene': self.active_scene,
             'pnl': base.money(getattr(event, 'realized_pnl', None)),
@@ -120,13 +171,21 @@ class CompatStrat(base.Strat):
             'realized_return': float(getattr(event, 'realized_return', 0.0) or 0.0),
         })
         self.active_scene = 'unknown'
-        super().on_position_closed(event)
+        self._reset_pending()
+        self.entry_ref = None
+        self.stop_ref = None
+        self.tp_ref = None
+        self.trail_ref = None
+        self.entry_side = 0
+        self.hold = 0
+        self.exit_pending = False
 
 
 base.Strat = CompatStrat
 print('PORTFOLIO_FLAT_API=strategy_compat')
 print('FEATURE_UPDATE_MODE=BAR_CACHED_TICK_EXECUTION')
 print('REPORT_MODE=POSITION_CLOSED_EVENTS')
+print('LIFECYCLE_MODE=EVENT_DRIVEN_OPEN_CLOSE_REENTRY')
 
 
 def main():
@@ -148,7 +207,7 @@ def main():
     out = Path('results/ae-bt') / a.experiment_id
     out.mkdir(parents=True, exist_ok=True)
 
-    allts, cells, scenes, counts, trans, raw = [], {}, {}, {}, {}, {}
+    allts, cells, scenes, counts, trans, raw, lifecycle = [], {}, {}, {}, {}, {}, {}
     for symbol in [s for s in a.symbols if s == 'XAUUSD']:
         ins = insts.get(symbol)
         if ins is None:
@@ -190,6 +249,7 @@ def main():
                 'raw_ticks': len(ticks),
                 'signals_submitted': st.entries,
             }
+            lifecycle[key] = dict(st.lifecycle)
             counts[key] = dict(st.scene_counts)
             trans[key] = dict(st.transitions)
             for sc in sorted({t['scene'] for t in tt}):
@@ -211,6 +271,7 @@ def main():
         'period': {'start': manifest['start'], 'days': days, 'end_exclusive': manifest['end_exclusive']},
         'portfolio_realized_close_ordered': base.metrics(allts, days=days),
         'cell_metrics': cells,
+        'lifecycle_metrics': lifecycle,
         'scene_metrics': scenes,
         'scene_bar_counts': counts,
         'state_transitions': trans,

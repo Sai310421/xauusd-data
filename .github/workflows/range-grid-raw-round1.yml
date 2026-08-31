@@ -1,0 +1,116 @@
+name: Range Grid Raw BidAsk Round1
+
+on:
+  push:
+    branches: ['range-grid-round1']
+    paths:
+      - 'research/range_grid_raw_bt.py'
+      - 'research/range_grid_aggregate.py'
+      - '.github/workflows/range-grid-raw-round1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v3-size6
+  EXPERIMENT_ID: range-grid-r1-${{ github.run_id }}
+
+jobs:
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from datetime import date,timedelta
+          variants=['equal_grid','linear_nanpin','atr_grid','sqrt_nanpin','protected_recovery']
+          start=date.fromisoformat('2026-07-27')
+          include=[]
+          for i in range(7):
+              a=start+timedelta(days=i); b=a+timedelta(days=1)
+              for v in variants:
+                  include.append({'day':f'{i+1:02d}','start':a.isoformat(),'end':b.isoformat(),'variant':v})
+          print('matrix='+json.dumps({'include':include},separators=(',',':')))
+          PY
+
+  range-grid-shard:
+    needs: matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - name: Restore Raw BidAsk cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Raw Catalog Gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Run Range Grid variant
+        run: |
+          python -m research.range_grid_raw_bt \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "${EXPERIMENT_ID}-${{ matrix.variant }}-${{ matrix.day }}" \
+            --start "${{ matrix.start }}" \
+            --end "${{ matrix.end }}" \
+            --variant "${{ matrix.variant }}" \
+            --initial 1000 \
+            --base-qty 0.01 \
+            --max-layers 5
+      - name: Upload shard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: range-grid-${{ matrix.variant }}-${{ matrix.day }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}-${{ matrix.variant }}-${{ matrix.day }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    needs: range-grid-shard
+    if: always() && needs.range-grid-shard.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: range-grid-*-${{ github.run_id }}
+          path: range-grid-artifacts
+          merge-multiple: false
+      - name: Aggregate Round1
+        run: |
+          python -m research.range_grid_aggregate \
+            --root range-grid-artifacts \
+            --experiment-id "$EXPERIMENT_ID" \
+            --initial 1000 \
+            --days 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: range-grid-round1-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          retention-days: 90

@@ -1,0 +1,27 @@
+name: BigPlayer Finish Liquidity Exit 21D
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/bigplayer_finish_liquidity_exit_21d.py'
+      - '.github/workflows/bigplayer-finish-liquidity-exit-21d.yml'
+permissions:
+  contents: write
+jobs:
+  bt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - run: python research/bigplayer_finish_liquidity_exit_21d.py --start 2026-07-27
+      - name: Persist
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add results/bigplayer_finish_liquidity_exit_21d
+          git diff --cached --quiet || git commit -m 'bt: persist BigPlayer liquidity exit 21d'
+          git pull --rebase
+          git push

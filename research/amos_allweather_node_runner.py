@@ -11,6 +11,7 @@ from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 import research.amos_allweather_raw_bidask_bt_compat as compat
+from research.amos_allweather_autofit_strategy import AutoFitCompatStrat, fit_snapshot
 
 base = compat.base
 
@@ -34,7 +35,7 @@ def main():
     out = Path('results/ae-bt') / a.experiment_id
     out.mkdir(parents=True, exist_ok=True)
 
-    allts, cells, scenes, counts, trans, raw, lifecycle = [], {}, {}, {}, {}, {}, {}
+    allts, cells, scenes, counts, trans, raw, lifecycle, autofit = [], {}, {}, {}, {}, {}, {}, {}
 
     for symbol in [s for s in a.symbols if s == 'XAUUSD']:
         ins = insts.get(symbol)
@@ -80,7 +81,7 @@ def main():
                 raise RuntimeError(f'BacktestNode failed to build engine for {run_cfg.id}')
 
             bt = base.BarType.from_str(f'{ins.id.value}-{mins}-MINUTE-BID-INTERNAL')
-            st = compat.CompatStrat(base.Cfg(
+            st = AutoFitCompatStrat(base.Cfg(
                 instrument_id=ins.id,
                 bar_type=bt,
                 trade_size=Decimal('1'),
@@ -97,42 +98,49 @@ def main():
             lifecycle[key]['rejection_reasons'] = dict(getattr(st, 'rejection_reasons', {}))
             counts[key] = dict(st.scene_counts)
             trans[key] = dict(st.transitions)
+            autofit[key] = fit_snapshot(st)
             for sc in sorted({t['scene'] for t in tt}):
                 scenes[f'{key}:{sc}'] = base.metrics([t for t in tt if t['scene'] == sc], days=days)
             node.dispose()
 
     allts.sort(key=lambda x: (x['ts_closed'], x['symbol'], x['tf']))
     summary = {
-        'verification_level': 'NAUTILUS_BT_RAW_BIDASK_NODE',
-        'strategy': 'AMOS_AllWeather_XAUUSD_MetaBot_v0.2',
-        'engine': 'NautilusTrader BacktestNode 1.230 + engine.add_strategy',
+        'verification_level': 'NAUTILUS_BT_RAW_BIDASK_NODE_AUTOFIT',
+        'strategy': 'AMOS_AllWeather_XAUUSD_MetaBot_v0.3_AutoFit',
+        'engine': 'NautilusTrader BacktestNode 1.230 + ExecutionAutoFit',
         'nautilus_version': getattr(base.nautilus_trader, '__version__', 'unknown'),
         'data_kind': 'RAW_BIDASK QuoteTick',
         'ohlc_resample_used': False,
         'book_type': 'L1_MBP',
-        'execution': 'BacktestNode catalog-driven QuoteTick market; native Bid/Ask spread included; explicit commission/slippage model not yet added',
+        'execution': 'Catalog-driven QuoteTick execution with market-ready gate, dynamic spread gate, causal volatility sizing and TF execution weight',
         'symbols': ['XAUUSD'],
         'timeframes': a.timeframes,
         'period': {'start': manifest['start'], 'days': days, 'end_exclusive': manifest['end_exclusive']},
+        'catalog_execution_contract': {
+            'size_precision': manifest.get('size_precision'),
+            'size_increment': manifest.get('size_increment'),
+            'volume_policy': manifest.get('volume_policy'),
+        },
         'portfolio_realized_close_ordered': base.metrics(allts, days=days),
         'cell_metrics': cells,
         'lifecycle_metrics': lifecycle,
+        'autofit_snapshot': autofit,
         'scene_metrics': scenes,
         'scene_bar_counts': counts,
         'state_transitions': trans,
         'raw_tick_counts': raw,
         'limitations': [
-            'Scheduled-news calendar is not present in the raw catalog; NEWS is not directly event-labelled in v0.2.',
-            'IFVG/BPR/Breaker are reserved but not fully reconstructed in v0.2.',
+            'Scheduled-news calendar is not present in the raw catalog; NEWS is not directly event-labelled in v0.3.',
+            'IFVG/BPR/Breaker are reserved but not fully reconstructed in v0.3.',
             'Portfolio DD is reconstructed from realized closed PnL across independent TF cells, not synchronized mark-to-market equity.',
-            'No explicit commission/probabilistic slippage model yet; raw Bid/Ask spread is native.',
+            'No explicit probabilistic latency/slippage model yet; raw Bid/Ask spread is native and dynamically gated.',
         ],
     }
     cols = ['scene', 'pnl', 'ts_closed', 'realized_return', 'symbol', 'tf']
     base.pd.DataFrame(allts, columns=cols).to_csv(out / 'trades.csv', index=False)
     (out / 'summary.json').write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     (out / 'catalog_manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
-    print('ENGINE_MODE=BACKTEST_NODE_1_230_ENGINE_STRATEGY')
+    print('ENGINE_MODE=BACKTEST_NODE_1_230_EXECUTION_AUTOFIT')
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 

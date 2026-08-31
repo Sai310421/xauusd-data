@@ -61,15 +61,15 @@ def _price_float(v):
             return None
 
 
+def _event_reason(event):
+    for name in ("reason", "message", "error", "info"):
+        value = getattr(event, name, None)
+        if value is not None:
+            return str(value)
+    return repr(event)
+
+
 class HFTBaseEventStrategy(HFTBaseStrategy):
-    """Fill-driven state machine.
-
-    The original prototype marked a position open immediately after submit_order().
-    If the order was rejected or not yet filled, the strategy could lock itself after
-    one signal. This version only activates entry state from OrderFilled and clears
-    pending state on reject/deny/cancel.
-    """
-
     def __init__(self, config):
         super().__init__(config)
         self.closed_trades = []
@@ -89,7 +89,6 @@ class HFTBaseEventStrategy(HFTBaseStrategy):
         if m is None:
             return
         ts_ms, bid, ask, *_ = m
-
         if self.entry_price is not None and not self.exit_pending:
             signed = 1 if self.entry_side == "buy" else -1
             mark = bid if self.entry_side == "buy" else ask
@@ -99,12 +98,10 @@ class HFTBaseEventStrategy(HFTBaseStrategy):
                 self.close_all_positions(self.config.instrument_id)
                 self.exit_pending = True
                 return
-
         if self.entry_price is not None or self.entry_pending or self.exit_pending:
             return
         if ts_ms - self.last_exit_ts_ms < self.config.cooldown_ms:
             return
-
         s = self._signal(m)
         if s is None:
             return
@@ -135,8 +132,10 @@ class HFTBaseEventStrategy(HFTBaseStrategy):
 
     def on_order_rejected(self, event):
         self.order_rejects += 1
-        self._clear_entry_pending()
-        self.exit_pending = False
+        reason = _event_reason(event)
+        print("FIRST_ORDER_REJECT_REASON=" + reason, flush=True)
+        print("FIRST_ORDER_REJECT_EVENT=" + repr(event), flush=True)
+        raise RuntimeError("HFT_ORDER_REJECT_DIAGNOSTIC: " + reason)
 
     def on_order_denied(self, event):
         self.order_denials += 1
@@ -180,7 +179,6 @@ def main():
     ticks = catalog.query_quote_ticks(identifiers=[instrument.id.value])
     if not ticks:
         raise SystemExit("no XAUUSD raw QuoteTicks")
-
     try:
         point = float(instrument.price_increment.as_double())
     except Exception:
@@ -216,33 +214,24 @@ def main():
     outdir = Path("results/ae-bt") / args.experiment_id
     outdir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(trades).to_csv(outdir / "trades.csv", index=False)
-
     summary = {
         "verification_level": "NAUTILUS_BT_RAW_BIDASK",
-        "edge": "HFT_BOOST_BASE_v0.5-fill-state",
+        "edge": "HFT_BOOST_BASE_v0.6-reject-diagnostic",
         "engine": "NautilusTrader BacktestEngine",
         "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
         "data_kind": "RAW_BIDASK QuoteTick",
         "ohlc_resample_used": False,
-        "execution": "Nautilus native MARKET orders; entry state begins only after OrderFilled; native Bid/Ask spread; no explicit fee/slippage yet",
         "period": {"start": manifest["start"], "days": days, "end_exclusive": manifest["end_exclusive"]},
         "raw_ticks": len(ticks),
-        "point": point,
         "signals": strat.signal_count,
         "entries_submitted": strat.entries,
         "order_fills": strat.order_fills,
         "order_rejects": strat.order_rejects,
-        "order_denials": strat.order_denials,
-        "order_cancels": strat.order_cancels,
         "closed_positions": len(trades),
-        "avg_signal_score": strat.score_sum / strat.signal_count if strat.signal_count else 0.0,
-        "params": {"min_score": args.min_score, "tp_points": args.tp_points, "sl_points": args.sl_points, "trade_size": args.trade_size},
         "kpi": k,
-        "limitations": ["Floating mark-to-market DD/MAE/MFE and explicit commission/slippage are next Reality Gate."],
     }
     text = json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True)
     (outdir / "summary.json").write_text(text)
-    (outdir / "catalog_manifest.json").write_text(json.dumps(manifest, indent=2))
     print(text)
     eng.dispose()
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.model.data import QuoteTick
-from nautilus_trader.portfolio.portfolio import Portfolio
+
 
 def _install_quote_tick_compat() -> str:
     if hasattr(ParquetDataCatalog, 'query_quote_ticks'):
@@ -23,20 +23,82 @@ def _install_quote_tick_compat() -> str:
         return 'query(QuoteTick)'
     raise RuntimeError('No Raw QuoteTick reader found on ParquetDataCatalog')
 
-def _install_portfolio_flat_compat() -> str:
-    if hasattr(Portfolio, 'is_net_flat'):
-        return 'is_net_flat'
-    if hasattr(Portfolio, 'is_net_long') and hasattr(Portfolio, 'is_net_short'):
-        def is_net_flat(self, instrument_id):
-            return (not self.is_net_long(instrument_id)) and (not self.is_net_short(instrument_id))
-        Portfolio.is_net_flat = is_net_flat
-        return 'derived_from_long_short'
-    raise RuntimeError('No compatible net-position state API found on Portfolio')
 
 CATALOG_QUOTE_API = _install_quote_tick_compat()
-PORTFOLIO_FLAT_API = _install_portfolio_flat_compat()
 print(f'CATALOG_QUOTE_API={CATALOG_QUOTE_API}')
-print(f'PORTFOLIO_FLAT_API={PORTFOLIO_FLAT_API}')
-from research.amos_allweather_raw_bidask_bt import main
+
+import research.amos_allweather_raw_bidask_bt as base
+
+
+class CompatStrat(base.Strat):
+    def _is_flat(self) -> bool:
+        p = self.portfolio
+        if hasattr(p, 'is_net_flat'):
+            return bool(p.is_net_flat(self.config.instrument_id))
+        if hasattr(p, 'is_net_long') and hasattr(p, 'is_net_short'):
+            return (not p.is_net_long(self.config.instrument_id)) and (not p.is_net_short(self.config.instrument_id))
+        return self.entry_ref is None
+
+    def on_quote_tick(self, tick):
+        bid, ask = self.f(tick.bid_price), self.f(tick.ask_price)
+        mid = (bid + ask) / 2
+        if self.last_mid is not None:
+            self.rets.append(mid - self.last_mid)
+        self.last_mid = mid
+        self.spreads.append(max(ask - bid, 0))
+        self.last_bid, self.last_ask = bid, ask
+        x = self.features()
+        if x is None:
+            return
+        d = self.decision
+        if self.entry_ref is None and self._is_flat():
+            side = self.direction(x, d)
+            if side and d.confidence >= .65 and d.scene not in (base.Scene.TRANSITION, base.Scene.NOISE, base.Scene.NEWS):
+                ins = self.cache.instrument(self.config.instrument_id)
+                order = self.order_factory.market(
+                    instrument_id=self.config.instrument_id,
+                    order_side=base.OrderSide.BUY if side > 0 else base.OrderSide.SELL,
+                    quantity=ins.make_qty(self.config.trade_size),
+                )
+                self.submit_order(order)
+                self.entry_ref = ask if side > 0 else bid
+                self.entry_side = side
+                self.entry_scenes.append(d.scene.value)
+                atr = self.atrs()[-1]
+                if d.scene in (base.Scene.BALANCED_RANGE, base.Scene.LIQUIDITY_BUILD, base.Scene.COMPRESSION):
+                    sk, tk = .75, .55
+                elif d.scene in (base.Scene.REVERSAL, base.Scene.BREAKOUT, base.Scene.CONTINUATION, base.Scene.CRISIS):
+                    sk, tk = 1., 1.8
+                else:
+                    sk, tk = .9, 1.2
+                self.stop_ref = self.entry_ref - side * sk * atr
+                self.tp_ref = self.entry_ref + side * tk * atr
+                self.trail_ref = None
+                self.hold = 0
+                self.exit_pending = False
+                self.entries += 1
+                return
+        if self.entry_ref is None or self.exit_pending:
+            return
+        px = bid if self.entry_side > 0 else ask
+        fav = (px - self.entry_ref) * self.entry_side
+        risk = abs(self.entry_ref - self.stop_ref)
+        if fav >= .8 * risk:
+            cand = px - self.entry_side * .45 * risk
+            self.trail_ref = cand if self.trail_ref is None else (
+                max(self.trail_ref, cand) if self.entry_side > 0 else min(self.trail_ref, cand)
+            )
+        st = self.stop_ref if self.trail_ref is None else (
+            max(self.stop_ref, self.trail_ref) if self.entry_side > 0 else min(self.stop_ref, self.trail_ref)
+        )
+        hit = (px <= st or px >= self.tp_ref) if self.entry_side > 0 else (px >= st or px <= self.tp_ref)
+        if hit:
+            self.close_all_positions(self.config.instrument_id)
+            self.exit_pending = True
+
+
+base.Strat = CompatStrat
+print('PORTFOLIO_FLAT_API=strategy_compat')
+
 if __name__ == '__main__':
-    main()
+    base.main()

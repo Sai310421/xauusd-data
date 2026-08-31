@@ -1,0 +1,39 @@
+name: CHOCHOMARU Dynamic ATR Exit BT v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chochomaru-cleanroom-discovery-v1
+    paths:
+      - 'research/chochomaru_dynamic_atr_exit_bt_v2.py'
+      - 'research/chochomaru_cleanroom_discovery_bt_v1.py'
+      - '.github/workflows/chochomaru-dynamic-atr-exit-bt-v2.yml'
+      - 'csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv'
+
+permissions:
+  contents: read
+
+jobs:
+  dynamic-atr-exit-bt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' pandas numpy
+      - name: Run dynamic ATR / MFE exit comparison
+        run: python research/chochomaru_dynamic_atr_exit_bt_v2.py
+      - name: Upload v2 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chochomaru-dynamic-atr-exit-bt-v2
+          path: results/chochomaru-dynamic-atr-exit-v2/
+          if-no-files-found: error
+          retention-days: 30

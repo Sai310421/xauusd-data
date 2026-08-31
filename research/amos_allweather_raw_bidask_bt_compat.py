@@ -31,6 +31,10 @@ import research.amos_allweather_raw_bidask_bt as base
 
 
 class CompatStrat(base.Strat):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.latest_x = None
+
     def _is_flat(self) -> bool:
         p = self.portfolio
         if hasattr(p, 'is_net_flat'):
@@ -38,6 +42,10 @@ class CompatStrat(base.Strat):
         if hasattr(p, 'is_net_long') and hasattr(p, 'is_net_short'):
             return (not p.is_net_long(self.config.instrument_id)) and (not p.is_net_short(self.config.instrument_id))
         return self.entry_ref is None
+
+    def on_bar(self, bar):
+        super().on_bar(bar)
+        self.latest_x = self.features()
 
     def on_quote_tick(self, tick):
         bid, ask = self.f(tick.bid_price), self.f(tick.ask_price)
@@ -47,7 +55,7 @@ class CompatStrat(base.Strat):
         self.last_mid = mid
         self.spreads.append(max(ask - bid, 0))
         self.last_bid, self.last_ask = bid, ask
-        x = self.features()
+        x = self.latest_x
         if x is None:
             return
         d = self.decision
@@ -99,6 +107,7 @@ class CompatStrat(base.Strat):
 
 base.Strat = CompatStrat
 print('PORTFOLIO_FLAT_API=strategy_compat')
+print('FEATURE_UPDATE_MODE=BAR_CACHED_TICK_EXECUTION')
 
 if __name__ == '__main__':
     base.main()

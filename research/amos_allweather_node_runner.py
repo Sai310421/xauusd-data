@@ -8,7 +8,6 @@ from pathlib import Path
 from nautilus_trader.backtest.node import BacktestNode
 from nautilus_trader.config import BacktestDataConfig, BacktestEngineConfig, BacktestRunConfig, BacktestVenueConfig
 from nautilus_trader.model.data import QuoteTick
-from nautilus_trader.model.enums import BookType
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 import research.amos_allweather_raw_bidask_bt_compat as compat
@@ -51,9 +50,9 @@ def main():
             mins = base.TF_MIN[tf]
             venue_cfg = BacktestVenueConfig(
                 name='SIM',
-                oms_type=base.OmsType.NETTING,
-                account_type=base.AccountType.MARGIN,
-                book_type=BookType.L1_MBP,
+                oms_type='NETTING',
+                account_type='MARGIN',
+                book_type='L1_MBP',
                 base_currency='USD',
                 starting_balances=['1000 USD'],
                 default_leverage=Decimal('2000'),

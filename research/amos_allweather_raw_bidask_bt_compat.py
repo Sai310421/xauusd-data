@@ -46,6 +46,8 @@ class CompatStrat(base.Strat):
         self.pending_side = 0
         self.pending_scene = 'unknown'
         self.pending_atr = None
+        self.entry_intent = None
+        self.quote_seq = 0
         self.rejection_reasons = Counter()
         self.rejection_samples = []
         self.lifecycle = {
@@ -54,6 +56,8 @@ class CompatStrat(base.Strat):
             'orders_rejected': 0,
             'positions_opened': 0,
             'positions_closed': 0,
+            'entry_intents_queued': 0,
+            'entry_intents_expired': 0,
         }
 
     def _is_flat(self) -> bool:
@@ -70,11 +74,51 @@ class CompatStrat(base.Strat):
         self.pending_scene = 'unknown'
         self.pending_atr = None
 
+    def _queue_entry_intent(self, side, scene, atr):
+        self.entry_intent = {
+            'side': int(side),
+            'scene': str(scene),
+            'atr': atr,
+            'quote_seq': self.quote_seq,
+        }
+        self.lifecycle['entry_intents_queued'] += 1
+
+    def _submit_delayed_intent(self):
+        intent = self.entry_intent
+        if intent is None:
+            return False
+        if self.quote_seq <= intent['quote_seq']:
+            return False
+        self.entry_intent = None
+        if self.entry_ref is not None or self.order_pending or not self._is_flat():
+            self.lifecycle['entry_intents_expired'] += 1
+            return False
+
+        side = intent['side']
+        ins = self.cache.instrument(self.config.instrument_id)
+        if ins is None:
+            self.lifecycle['entry_intents_expired'] += 1
+            return False
+        order = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=base.OrderSide.BUY if side > 0 else base.OrderSide.SELL,
+            quantity=ins.make_qty(self.config.trade_size),
+        )
+        self.order_pending = True
+        self.pending_side = side
+        self.pending_scene = intent['scene']
+        self.pending_atr = intent['atr']
+        self.lifecycle['orders_submitted'] += 1
+        self.entries += 1
+        self.submit_order(order)
+        return True
+
     def on_bar(self, bar):
         super().on_bar(bar)
         self.latest_x = self.features()
 
     def on_quote_tick(self, tick):
+        self.quote_seq += 1
         bid, ask = self.f(tick.bid_price), self.f(tick.ask_price)
         mid = (bid + ask) / 2
         if self.last_mid is not None:
@@ -82,28 +126,24 @@ class CompatStrat(base.Strat):
         self.last_mid = mid
         self.spreads.append(max(ask - bid, 0))
         self.last_bid, self.last_ask = bid, ask
+
+        # Important for Nautilus 1.230 L1 execution: the strategy callback can run
+        # before the simulated exchange has promoted the same QuoteTick into its
+        # matching core. Submit a signal only from the following QuoteTick so the
+        # previous raw Bid/Ask has already initialized core.bid/core.ask.
+        if self._submit_delayed_intent():
+            return
+
         x = self.latest_x
         if x is None:
             return
         d = self.decision
 
-        if self.entry_ref is None and not self.order_pending and self._is_flat():
+        if self.entry_ref is None and not self.order_pending and self.entry_intent is None and self._is_flat():
             side = self.direction(x, d)
             if side and d.confidence >= .65 and d.scene not in (base.Scene.TRANSITION, base.Scene.NOISE, base.Scene.NEWS):
-                ins = self.cache.instrument(self.config.instrument_id)
-                order = self.order_factory.market(
-                    instrument_id=self.config.instrument_id,
-                    order_side=base.OrderSide.BUY if side > 0 else base.OrderSide.SELL,
-                    quantity=ins.make_qty(self.config.trade_size),
-                )
-                self.order_pending = True
-                self.pending_side = side
-                self.pending_scene = d.scene.value
                 av = self.atrs()
-                self.pending_atr = av[-1] if av else None
-                self.lifecycle['orders_submitted'] += 1
-                self.entries += 1
-                self.submit_order(order)
+                self._queue_entry_intent(side, d.scene.value, av[-1] if av else None)
                 return
 
         if self.entry_ref is None or self.exit_pending:
@@ -178,6 +218,7 @@ class CompatStrat(base.Strat):
             'realized_return': float(getattr(event, 'realized_return', 0.0) or 0.0),
         })
         self.active_scene = 'unknown'
+        self.entry_intent = None
         self._reset_pending()
         self.entry_ref = None
         self.stop_ref = None
@@ -193,6 +234,7 @@ print('PORTFOLIO_FLAT_API=strategy_compat')
 print('FEATURE_UPDATE_MODE=BAR_CACHED_TICK_EXECUTION')
 print('REPORT_MODE=POSITION_CLOSED_EVENTS')
 print('LIFECYCLE_MODE=EVENT_DRIVEN_OPEN_CLOSE_REENTRY')
+print('ENTRY_SIGNAL_DELAY_TICKS=1')
 
 
 def main():
@@ -272,7 +314,7 @@ def main():
         'data_kind': 'RAW_BIDASK QuoteTick',
         'ohlc_resample_used': False,
         'signal_bars': 'Nautilus INTERNAL BID bars built from raw QuoteTicks',
-        'execution': 'MARKET orders on raw QuoteTicks; native observed spread included; explicit commission/slippage model not yet added',
+        'execution': 'MARKET orders on raw QuoteTicks with 1-Quote execution delay; native observed spread included; explicit commission/slippage model not yet added',
         'symbols': ['XAUUSD'],
         'timeframes': a.timeframes,
         'period': {'start': manifest['start'], 'days': days, 'end_exclusive': manifest['end_exclusive']},

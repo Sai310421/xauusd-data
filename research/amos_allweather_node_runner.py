@@ -5,9 +5,9 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from nautilus_trader.backtest import BacktestNode
-from nautilus_trader.config import BacktestDataConfig, BacktestEngineConfig, BacktestRunConfig, BacktestVenueConfig
-from nautilus_trader.model import Currency
+from nautilus_trader.backtest.node import BacktestNode
+from nautilus_trader.backtest.config import BacktestDataConfig, BacktestEngineConfig, BacktestRunConfig, BacktestVenueConfig
+from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 import research.amos_allweather_raw_bidask_bt_compat as compat
@@ -53,13 +53,13 @@ def main():
                 oms_type='NETTING',
                 account_type='MARGIN',
                 book_type='L1_MBP',
-                base_currency=Currency.from_str('USD'),
+                base_currency='USD',
                 starting_balances=['1000 USD'],
-                default_leverage=Decimal('2000'),
+                default_leverage=2000.0,
             )
             data_cfg = BacktestDataConfig(
-                data_type='QuoteTick',
                 catalog_path=str(path),
+                data_cls=QuoteTick,
                 instrument_id=ins.id,
             )
             run_cfg = BacktestRunConfig(
@@ -70,10 +70,15 @@ def main():
                     risk_engine=base.RiskEngineConfig(bypass=True),
                 ),
                 dispose_on_completion=False,
+                raise_exception=True,
             )
 
             node = BacktestNode(configs=[run_cfg])
             node.build()
+            engine = node.get_engine(run_cfg.id)
+            if engine is None:
+                raise RuntimeError(f'BacktestNode failed to build engine for {run_cfg.id}')
+
             bt = base.BarType.from_str(f'{ins.id.value}-{mins}-MINUTE-BID-INTERNAL')
             st = compat.CompatStrat(base.Cfg(
                 instrument_id=ins.id,
@@ -81,7 +86,7 @@ def main():
                 trade_size=Decimal('1'),
                 tf_minutes=mins,
             ))
-            node.add_strategy(run_cfg.id, st)
+            engine.add_strategy(st)
             node.run()
 
             tt = [dict(t, symbol=symbol, tf=tf) for t in st.closed_trades]
@@ -100,7 +105,7 @@ def main():
     summary = {
         'verification_level': 'NAUTILUS_BT_RAW_BIDASK_NODE',
         'strategy': 'AMOS_AllWeather_XAUUSD_MetaBot_v0.2',
-        'engine': 'NautilusTrader BacktestNode',
+        'engine': 'NautilusTrader BacktestNode 1.230 + engine.add_strategy',
         'nautilus_version': getattr(base.nautilus_trader, '__version__', 'unknown'),
         'data_kind': 'RAW_BIDASK QuoteTick',
         'ohlc_resample_used': False,
@@ -127,7 +132,7 @@ def main():
     base.pd.DataFrame(allts, columns=cols).to_csv(out / 'trades.csv', index=False)
     (out / 'summary.json').write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     (out / 'catalog_manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
-    print('ENGINE_MODE=BACKTEST_NODE_CATALOG_DRIVEN')
+    print('ENGINE_MODE=BACKTEST_NODE_1_230_ENGINE_STRATEGY')
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 

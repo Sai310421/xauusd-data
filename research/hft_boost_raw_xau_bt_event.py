@@ -13,7 +13,7 @@ from nautilus_trader.config import LoggingConfig, RiskEngineConfig
 from nautilus_trader.model import Money, Venue
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import QuoteTick
-from nautilus_trader.model.enums import AccountType, OmsType
+from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 from research.hft_boost_raw_xau_bt import HFTBaseConfig, HFTBaseStrategy, metrics
@@ -32,26 +32,127 @@ if not hasattr(ParquetDataCatalog, "query_quote_ticks"):
     ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
 
 
+def _money_float(v):
+    if v is None:
+        return 0.0
+    if hasattr(v, "as_double"):
+        return float(v.as_double())
+    if hasattr(v, "as_decimal"):
+        return float(v.as_decimal())
+    try:
+        return float(str(v).replace(",", "").split()[0])
+    except Exception:
+        return 0.0
+
+
+def _price_float(v):
+    if v is None:
+        return None
+    if hasattr(v, "as_double"):
+        return float(v.as_double())
+    if hasattr(v, "as_decimal"):
+        return float(v.as_decimal())
+    try:
+        return float(v)
+    except Exception:
+        try:
+            return float(str(v))
+        except Exception:
+            return None
+
+
 class HFTBaseEventStrategy(HFTBaseStrategy):
+    """Fill-driven state machine.
+
+    The original prototype marked a position open immediately after submit_order().
+    If the order was rejected or not yet filled, the strategy could lock itself after
+    one signal. This version only activates entry state from OrderFilled and clears
+    pending state on reject/deny/cancel.
+    """
+
     def __init__(self, config):
         super().__init__(config)
         self.closed_trades = []
+        self.entry_pending = False
+        self.pending_side = None
+        self.order_fills = 0
+        self.order_rejects = 0
+        self.order_denials = 0
+        self.order_cancels = 0
+
+    def _clear_entry_pending(self):
+        self.entry_pending = False
+        self.pending_side = None
+
+    def on_quote_tick(self, tick: QuoteTick):
+        m = self._micro(tick)
+        if m is None:
+            return
+        ts_ms, bid, ask, *_ = m
+
+        if self.entry_price is not None and not self.exit_pending:
+            signed = 1 if self.entry_side == "buy" else -1
+            mark = bid if self.entry_side == "buy" else ask
+            dpts = signed * (mark - self.entry_price) / self.config.point
+            held = ts_ms - self.entry_ts_ms
+            if dpts >= self.config.tp_points or dpts <= -self.config.sl_points or held >= self.config.max_hold_ms:
+                self.close_all_positions(self.config.instrument_id)
+                self.exit_pending = True
+                return
+
+        if self.entry_price is not None or self.entry_pending or self.exit_pending:
+            return
+        if ts_ms - self.last_exit_ts_ms < self.config.cooldown_ms:
+            return
+
+        s = self._signal(m)
+        if s is None:
+            return
+        side, _ = s
+        instrument = self.cache.instrument(self.config.instrument_id)
+        order = self.order_factory.market(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY if side == "buy" else OrderSide.SELL,
+            quantity=instrument.make_qty(self.config.trade_size),
+        )
+        self.pending_side = side
+        self.entry_pending = True
+        self.entries += 1
+        self.submit_order(order)
+
+    def on_order_filled(self, event):
+        self.order_fills += 1
+        if self.entry_pending and self.entry_price is None:
+            px = _price_float(getattr(event, "last_px", None))
+            if px is None:
+                px = _price_float(getattr(event, "avg_px", None))
+            if px is None:
+                px = _price_float(getattr(event, "price", None))
+            self.entry_price = px
+            self.entry_side = self.pending_side
+            self.entry_ts_ms = int(getattr(event, "ts_event", 0) // 1_000_000)
+            self._clear_entry_pending()
+
+    def on_order_rejected(self, event):
+        self.order_rejects += 1
+        self._clear_entry_pending()
+        self.exit_pending = False
+
+    def on_order_denied(self, event):
+        self.order_denials += 1
+        self._clear_entry_pending()
+        self.exit_pending = False
+
+    def on_order_canceled(self, event):
+        self.order_cancels += 1
+        self._clear_entry_pending()
+        self.exit_pending = False
 
     def on_position_closed(self, event):
-        pnl = getattr(event, "realized_pnl", None)
-        if pnl is None:
-            pnl_value = 0.0
-        elif hasattr(pnl, "as_double"):
-            pnl_value = float(pnl.as_double())
-        elif hasattr(pnl, "as_decimal"):
-            pnl_value = float(pnl.as_decimal())
-        else:
-            try:
-                pnl_value = float(str(pnl).replace(",", "").split()[0])
-            except Exception:
-                pnl_value = 0.0
+        pnl_value = _money_float(getattr(event, "realized_pnl", None))
         ts = getattr(event, "ts_closed", None) or getattr(event, "ts_event", 0)
         self.closed_trades.append({"pnl": pnl_value, "ts_closed": int(ts or 0)})
+        self._clear_entry_pending()
         super().on_position_closed(event)
 
 
@@ -118,17 +219,21 @@ def main():
 
     summary = {
         "verification_level": "NAUTILUS_BT_RAW_BIDASK",
-        "edge": "HFT_BOOST_BASE_v0.4-event-ledger",
+        "edge": "HFT_BOOST_BASE_v0.5-fill-state",
         "engine": "NautilusTrader BacktestEngine",
         "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
         "data_kind": "RAW_BIDASK QuoteTick",
         "ohlc_resample_used": False,
-        "execution": "Nautilus native MARKET orders; native Bid/Ask spread; PnL captured from PositionClosed.realized_pnl; no explicit fee/slippage yet",
+        "execution": "Nautilus native MARKET orders; entry state begins only after OrderFilled; native Bid/Ask spread; no explicit fee/slippage yet",
         "period": {"start": manifest["start"], "days": days, "end_exclusive": manifest["end_exclusive"]},
         "raw_ticks": len(ticks),
         "point": point,
         "signals": strat.signal_count,
         "entries_submitted": strat.entries,
+        "order_fills": strat.order_fills,
+        "order_rejects": strat.order_rejects,
+        "order_denials": strat.order_denials,
+        "order_cancels": strat.order_cancels,
         "closed_positions": len(trades),
         "avg_signal_score": strat.score_sum / strat.signal_count if strat.signal_count else 0.0,
         "params": {"min_score": args.min_score, "tp_points": args.tp_points, "sl_points": args.sl_points, "trade_size": args.trade_size},

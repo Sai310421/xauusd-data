@@ -1,0 +1,29 @@
+name: Native M15 M30 Probe
+
+on:
+  push:
+    paths:
+      - 'research/native_m15_m30_probe.py'
+      - '.github/workflows/native-m15-m30-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Probe native Dukascopy M15/M30
+        run: python research/native_m15_m30_probe.py
+      - name: Persist result
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add results/native_mtf_probe/status.json
+          git diff --cached --quiet || git commit -m 'Persist native M15/M30 probe result'
+          git push

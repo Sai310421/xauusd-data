@@ -1,0 +1,104 @@
+name: HFT Boost XAU Fill Probe
+
+on:
+  push:
+    branches: ['hft-boost-raw-bt-v04']
+    paths:
+      - '.github/workflows/hft-boost-xau-fill-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  PROBE_CATALOG: catalog/hft_probe_v3
+  PROBE_START: '2026-07-27'
+  PROBE_DAYS: '2'
+  EXPERIMENT_ID: hft-fill-probe-${{ github.run_id }}
+
+jobs:
+  xau-fill-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+
+      - name: Build XAU-only fractional-volume Raw BidAsk v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$PROBE_CATALOG"
+          python -m research.build_raw_bidask_catalog_duka_v3 \
+            --start "$PROBE_START" \
+            --days "$PROBE_DAYS" \
+            --catalog "$PROBE_CATALOG" \
+            --workers 24 \
+            --symbols XAUUSD \
+            --fresh
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          p=Path(os.environ['PROBE_CATALOG'])
+          m=json.loads((p/'catalog_manifest.json').read_text())
+          c=ParquetDataCatalog(str(p))
+          inst=c.instruments()[0]
+          ticks=c.query(__import__('nautilus_trader').model.data.QuoteTick, identifiers=[inst.id.value])
+          if not ticks:
+              raise SystemExit('NO_PROBE_TICKS')
+          sample=ticks[:1000]
+          bid_sizes=[float(x.bid_size.as_double()) for x in sample]
+          ask_sizes=[float(x.ask_size.as_double()) for x in sample]
+          print('PROBE_INSTRUMENT', inst.id.value)
+          print('PROBE_SIZE_PRECISION', inst.size_precision)
+          print('PROBE_TICKS', len(ticks))
+          print('PROBE_BID_SIZE_MINMAX', min(bid_sizes), max(bid_sizes))
+          print('PROBE_ASK_SIZE_MINMAX', min(ask_sizes), max(ask_sizes))
+          if max(bid_sizes) <= 0 or max(ask_sizes) <= 0:
+              raise SystemExit('ZERO_TOP_OF_BOOK_SIZE')
+          PY
+
+      - name: Run HFT BASE fill probe on native Raw QuoteTicks
+        run: |
+          python -m research.hft_boost_raw_xau_bt_event \
+            --catalog "$PROBE_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only \
+            --initial 1000 \
+            --trade-size 1 \
+            --min-score 62 \
+            --tp-points 8 \
+            --sl-points 10
+
+      - name: Capture probe evidence
+        if: always()
+        shell: bash
+        run: |
+          OUT="results/ae-bt/$EXPERIMENT_ID"
+          mkdir -p "$OUT/preflight"
+          printf '%s\n' \
+            "run_id=$GITHUB_RUN_ID" \
+            "git_sha=$GITHUB_SHA" \
+            "nautilus=$NAUTILUS_VERSION" \
+            "probe_days=$PROBE_DAYS" > "$OUT/preflight/github_run.txt"
+          [ -f "$PROBE_CATALOG/catalog_manifest.json" ] && cp "$PROBE_CATALOG/catalog_manifest.json" "$OUT/preflight/catalog_manifest.json" || true
+
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hft-fill-probe-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 30

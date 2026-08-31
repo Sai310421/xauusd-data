@@ -32,6 +32,8 @@ jobs:
   prepare-raw-catalog:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    outputs:
+      matrix: ${{ steps.make-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -72,6 +74,21 @@ jobs:
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
+      - name: Generate 30 daily shards
+        id: make-matrix
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from datetime import date, timedelta
+          start = date.fromisoformat("2026-07-27")
+          include = []
+          for i in range(30):
+              a = start + timedelta(days=i)
+              b = a + timedelta(days=1)
+              include.append({"shard": f"{i+1:02d}", "start": a.isoformat(), "end": b.isoformat()})
+          print("matrix=" + json.dumps({"include": include}, separators=(",", ":")))
+          PY
 
   raw-xau-shard:
     needs: prepare-raw-catalog
@@ -79,27 +96,8 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 6
-      matrix:
-        include:
-          - shard: '01'
-            start: '2026-07-27'
-            end: '2026-08-01'
-          - shard: '02'
-            start: '2026-08-01'
-            end: '2026-08-06'
-          - shard: '03'
-            start: '2026-08-06'
-            end: '2026-08-11'
-          - shard: '04'
-            start: '2026-08-11'
-            end: '2026-08-16'
-          - shard: '05'
-            start: '2026-08-16'
-            end: '2026-08-21'
-          - shard: '06'
-            start: '2026-08-21'
-            end: '2026-08-26'
+      max-parallel: 20
+      matrix: ${{ fromJSON(needs.prepare-raw-catalog.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -118,7 +116,7 @@ jobs:
           fail-on-cache-miss: true
       - name: Raw Catalog Gate
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run HFT BASE Raw QuoteTick shard
+      - name: Run HFT BASE Raw QuoteTick daily shard
         env:
           SHARD_ID: ${{ matrix.shard }}
           SHARD_START: ${{ matrix.start }}
@@ -206,7 +204,7 @@ jobs:
             "git_sha=$GITHUB_SHA" \
             "nautilus=$NAUTILUS_VERSION" \
             "raw_cache=$RAW_CACHE_KEY" \
-            "aggregation=6x5day_trade_level" > "$OUT/preflight/github_run.txt"
+            "aggregation=30x1day_trade_level" > "$OUT/preflight/github_run.txt"
           sha256sum \
             research/hft_boost_raw_xau_bt.py \
             research/hft_boost_raw_xau_bt_event.py \

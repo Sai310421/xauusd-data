@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  group: raw-bidask-duka-6sym-2026-07-27-30d-v3-size6
   cancel-in-progress: false
 
 env:
@@ -23,7 +23,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v3-size6
   FACTORY_EVIDENCE: results/raw-factory/${{ github.run_id }}
 
 jobs:
@@ -67,6 +67,14 @@ jobs:
         run: |
           set -euo pipefail
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('catalog/raw_bidask/catalog_manifest.json').read_text())
+          assert m.get('size_precision') == 6, m.get('size_precision')
+          assert m.get('size_increment') == '0.000001', m.get('size_increment')
+          print('RAW_EXECUTION_PRECISION_OK=1')
+          PY
           echo 'RAW_FACTORY_CACHE_HIT_VERIFIED=1'
 
       - name: Build Raw BidAsk catalog once on cold cache
@@ -85,6 +93,14 @@ jobs:
               --catalog "$RAW_CATALOG" \
               --workers 32; then
               if python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then
+                python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('catalog/raw_bidask/catalog_manifest.json').read_text())
+          assert m.get('size_precision') == 6
+          assert m.get('size_increment') == '0.000001'
+          print('RAW_EXECUTION_PRECISION_OK=1')
+          PY
                 ok=1
                 break
               fi

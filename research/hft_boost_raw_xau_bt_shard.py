@@ -42,6 +42,34 @@ def _normal_reject(self, event):
 HFTBaseEventStrategy.on_order_rejected = _normal_reject
 
 
+def _write_empty(outdir: Path, manifest: dict, start: pd.Timestamp, end: pd.Timestamp, days: float, initial: float):
+    outdir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(columns=["pnl", "ts_closed"]).to_csv(outdir / "trades.csv", index=False)
+    summary = {
+        "verification_level": "NAUTILUS_BT_RAW_BIDASK_SHARD",
+        "edge": "HFT_BOOST_BASE_v0.7",
+        "engine": "NautilusTrader BacktestEngine",
+        "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
+        "data_kind": "RAW_BIDASK QuoteTick",
+        "ohlc_resample_used": False,
+        "period": {"start": start.isoformat(), "days": days, "end_exclusive": end.isoformat()},
+        "catalog_period": {"start": manifest["start"], "days": manifest["days"], "end_exclusive": manifest["end_exclusive"]},
+        "raw_ticks": 0,
+        "signals": 0,
+        "entries_submitted": 0,
+        "order_fills": 0,
+        "order_rejects": 0,
+        "order_denials": 0,
+        "order_cancels": 0,
+        "closed_positions": 0,
+        "kpi": metrics([], initial, days),
+        "empty_shard": True,
+    }
+    text = json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True)
+    (outdir / "summary.json").write_text(text)
+    print(text)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", required=True)
@@ -68,13 +96,15 @@ def main():
     if instrument is None:
         raise SystemExit("XAUUSD missing")
 
+    outdir = Path("results/ae-bt") / args.experiment_id
     ticks = catalog.query_quote_ticks(
         identifiers=[instrument.id.value],
         start=start.isoformat(),
         end=end.isoformat(),
     )
     if not ticks:
-        raise SystemExit(f"no XAUUSD raw QuoteTicks in {start}..{end}")
+        _write_empty(outdir, manifest, start, end, days, args.initial)
+        return
 
     try:
         point = float(instrument.price_increment.as_double())
@@ -108,7 +138,6 @@ def main():
 
     trades = strat.closed_trades
     k = metrics(trades, args.initial, days)
-    outdir = Path("results/ae-bt") / args.experiment_id
     outdir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(trades, columns=["pnl", "ts_closed"]).to_csv(outdir / "trades.csv", index=False)
     summary = {
@@ -129,6 +158,7 @@ def main():
         "order_cancels": strat.order_cancels,
         "closed_positions": len(trades),
         "kpi": k,
+        "empty_shard": False,
     }
     text = json.dumps(summary, indent=2, ensure_ascii=False, allow_nan=True)
     (outdir / "summary.json").write_text(text)

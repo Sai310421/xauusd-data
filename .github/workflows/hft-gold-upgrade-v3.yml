@@ -1,0 +1,98 @@
+name: HFT GOLD Upgrade v3
+
+on:
+  push:
+    branches: ['hft-boost-raw-bt-v04']
+    paths:
+      - '.github/workflows/hft-gold-upgrade-v3.yml'
+      - 'research/hft_gold_upgrade_v3.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  PROBE_START: '2026-07-27'
+  PROBE_DAYS: '2'
+  SHARED_CATALOG: catalog/hft_gold_upgrade_v3_shared
+
+jobs:
+  build-catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - name: Build shared Raw BidAsk catalog
+        run: |
+          set -euo pipefail
+          rm -rf "$SHARED_CATALOG"
+          python -m research.build_raw_bidask_catalog_duka_v3 --start "$PROBE_START" --days "$PROBE_DAYS" --catalog "$SHARED_CATALOG" --workers 24 --symbols XAUUSD --fresh
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ['SHARED_CATALOG'])
+          m=json.loads((p/'catalog_manifest.json').read_text())
+          st=m['stats']['XAUUSD']
+          if int(st.get('written_days',0)) < int(os.environ['PROBE_DAYS']):
+              raise SystemExit('INCOMPLETE_SHARED_CATALOG')
+          print('SHARED_TICKS',st['ticks'])
+          print('SHARED_SHA',m['catalog_sha256'])
+          PY
+      - run: tar -czf shared_catalog.tgz "$SHARED_CATALOG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hft-gold-upgrade-v3-shared-${{ github.run_id }}
+          path: shared_catalog.tgz
+          retention-days: 7
+
+  ablation:
+    needs: build-catalog
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [base, spread760, spread630, midas_htf, midas_htf_760, midas_htf_630]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      VARIANT: ${{ matrix.variant }}
+      EXPERIMENT_ID: hft-gold-v3-${{ matrix.variant }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - uses: actions/download-artifact@v4
+        with:
+          name: hft-gold-upgrade-v3-shared-${{ github.run_id }}
+      - run: tar -xzf shared_catalog.tgz
+      - name: Run GOLD-HFT upgrade ablation
+        run: |
+          set -euo pipefail
+          python -m research.hft_gold_upgrade_v3 --catalog "$SHARED_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --variant "$VARIANT"
+      - name: Capture evidence
+        if: always()
+        run: |
+          OUT="results/ae-bt/$EXPERIMENT_ID"
+          mkdir -p "$OUT/preflight"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "variant=$VARIANT" "nautilus=$NAUTILUS_VERSION" "shared_catalog=true" > "$OUT/preflight/github_run.txt"
+          cp "$SHARED_CATALOG/catalog_manifest.json" "$OUT/preflight/catalog_manifest.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hft-gold-v3-${{ matrix.variant }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 30

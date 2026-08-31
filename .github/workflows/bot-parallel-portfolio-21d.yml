@@ -1,0 +1,27 @@
+name: BOT Parallel Portfolio 21D
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/bot_parallel_portfolio_21d.py'
+      - '.github/workflows/bot-parallel-portfolio-21d.yml'
+permissions:
+  contents: write
+jobs:
+  bt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - run: python research/bot_parallel_portfolio_21d.py --start 2026-07-27
+      - name: Persist
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add results/bot_parallel_portfolio_21d
+          git diff --cached --quiet || git commit -m 'bt: persist BOT parallel portfolio 21d'
+          git pull --rebase
+          git push

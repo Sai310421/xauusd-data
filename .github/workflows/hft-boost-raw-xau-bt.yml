@@ -1,0 +1,72 @@
+name: HFT Boost XAU Raw BidAsk BT
+on:
+  push:
+    branches: ['hft-boost-raw-bt-v04']
+    paths:
+      - 'research/hft_boost_raw_xau_bt.py'
+      - '.github/workflows/hft-boost-raw-xau-bt.yml'
+      - 'bt_requests/hft_boost.request'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: hft-boost-${{ github.run_id }}
+jobs:
+  raw-xau-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - name: Restore Raw BidAsk cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Self-heal Raw BidAsk catalog if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.raw-cache.outputs.cache-hit }}" = 'true' ]; then
+            python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          else
+            ok=0
+            for attempt in 1 2 3; do
+              rm -rf "$RAW_CATALOG"; mkdir -p "$RAW_CATALOG"
+              if python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers 32 && python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then ok=1; break; fi
+              sleep $((attempt*10))
+            done
+            test "$ok" -eq 1
+          fi
+      - name: Run HFT BASE Raw QuoteTick BT
+        run: |
+          python -m research.hft_boost_raw_xau_bt --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --min-score 62 --tp-points 8 --sl-points 10
+      - name: Capture evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "nautilus=$NAUTILUS_VERSION" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/hft_boost_raw_xau_bt.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+          [ -f "$RAW_CATALOG/catalog_manifest.json" ] && cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
+      - name: Upload immutable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hft-boost-raw-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

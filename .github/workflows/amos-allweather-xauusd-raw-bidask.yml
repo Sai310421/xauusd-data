@@ -6,14 +6,17 @@ on:
       experiment_id:
         description: 'Unique experiment id'
         required: true
-        default: 'amos-allweather-manual'
+        default: 'amos-allweather-autofit'
   push:
     paths:
       - 'research/amos_allweather_raw_bidask_bt.py'
       - 'research/amos_allweather_raw_bidask_bt_compat.py'
+      - 'research/amos_execution_autofit.py'
+      - 'research/amos_allweather_autofit_strategy.py'
       - 'research/amos_allweather_l1_runner.py'
       - 'research/amos_allweather_node_runner.py'
       - 'research/amos_allweather_merge_tf_results.py'
+      - 'research/build_raw_bidask_catalog_duka.py'
       - '.github/workflows/amos-allweather-xauusd-raw-bidask.yml'
 
 permissions:
@@ -23,7 +26,7 @@ env:
   PYTHONPATH: ${{ github.workspace }}
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v3-size6
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('amos-allweather-{0}', github.run_id) }}
 
 jobs:
@@ -57,6 +60,8 @@ jobs:
           sha256sum \
             research/amos_allweather_raw_bidask_bt.py \
             research/amos_allweather_raw_bidask_bt_compat.py \
+            research/amos_execution_autofit.py \
+            research/amos_allweather_autofit_strategy.py \
             research/amos_allweather_node_runner.py \
             research/amos_allweather_merge_tf_results.py \
             > "results/ae-bt/$TF_EXPERIMENT_ID/preflight/strategy_sha256.txt"
@@ -80,6 +85,15 @@ jobs:
             exit 22
           fi
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('catalog/raw_bidask/catalog_manifest.json').read_text())
+          assert m.get('size_precision') == 6, m.get('size_precision')
+          assert m.get('size_increment') == '0.000001', m.get('size_increment')
+          assert m.get('ohlc_resample_used') is False
+          print('RAW_EXECUTION_CONTRACT_OK=1')
+          PY
           cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$TF_EXPERIMENT_ID/preflight/catalog_manifest.json"
           find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$TF_EXPERIMENT_ID/preflight/catalog_inventory.txt"
       - name: Run AMOS AllWeather XAUUSD ${{ matrix.tf }}

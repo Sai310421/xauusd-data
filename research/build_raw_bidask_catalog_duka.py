@@ -21,8 +21,10 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
 
 REC = struct.Struct('>3i2f')
-HEADERS = {'User-Agent': 'raw6x3-nautilus/1.1', 'Accept': '*/*', 'Connection': 'close'}
+HEADERS = {'User-Agent': 'raw6x3-nautilus/1.2', 'Accept': '*/*', 'Connection': 'close'}
 SIM = Venue('SIM')
+SIZE_PRECISION = 6
+SIZE_INCREMENT = '0.000001'
 
 SYMBOLS = {
     'XAUUSD': {'pair': 'XAU/USD', 'scale': 1000.0, 'price_precision': 3},
@@ -44,9 +46,9 @@ def make_instrument(symbol: str, meta: dict) -> CurrencyPair:
         base_currency=Currency.from_str(base),
         quote_currency=Currency.from_str(quote),
         price_precision=precision,
-        size_precision=0,
+        size_precision=SIZE_PRECISION,
         price_increment=Price.from_str(price_increment),
-        size_increment=Quantity.from_int(1),
+        size_increment=Quantity.from_str(SIZE_INCREMENT),
         ts_event=0,
         ts_init=0,
     )
@@ -77,9 +79,13 @@ def fetch_hour(symbol: str, scale: float, t: dt.datetime):
                 ts = t + dt.timedelta(milliseconds=ms)
                 ask = ask_i / scale
                 bid = bid_i / scale
+                bid_size = round(float(bid_v), SIZE_PRECISION)
+                ask_size = round(float(ask_v), SIZE_PRECISION)
                 if ask <= 0 or bid <= 0 or ask < bid:
                     continue
-                rows.append((ts, bid, ask, float(bid_v), float(ask_v)))
+                if bid_size <= 0 or ask_size <= 0:
+                    continue
+                rows.append((ts, bid, ask, bid_size, ask_size))
             return rows, 200
         except urllib.error.HTTPError as e:
             last = e.code
@@ -133,6 +139,7 @@ def main() -> None:
             and m.get('start') == args.start
             and m.get('days') == args.days
             and set(m.get('symbols', [])) == set(selected)
+            and m.get('size_precision') == SIZE_PRECISION
         ):
             print(json.dumps({'status': 'CATALOG_CACHE_HIT', 'manifest': m}, indent=2))
             return
@@ -175,6 +182,8 @@ def main() -> None:
             'ticks': total_ticks,
             'written_days': written_days,
             'http_status_counts': status_counts,
+            'size_precision': SIZE_PRECISION,
+            'size_increment': SIZE_INCREMENT,
         }
 
     missing = [s for s, v in stats.items() if v['ticks'] <= 0]
@@ -192,6 +201,9 @@ def main() -> None:
         'bar_policy': 'Nautilus INTERNAL bars built directly from raw QuoteTick stream; execution remains QuoteTick based',
         'instrument_provider': 'public-model CurrencyPair constructor; no nautilus_trader.testkit dependency',
         'catalog_write_api': 'ParquetDataCatalog.write_data',
+        'size_precision': SIZE_PRECISION,
+        'size_increment': SIZE_INCREMENT,
+        'volume_policy': 'Dukascopy BI5 float volumes rounded to instrument size precision; non-positive quote sizes removed',
         'stats': stats,
         'missing_symbols': missing,
     }

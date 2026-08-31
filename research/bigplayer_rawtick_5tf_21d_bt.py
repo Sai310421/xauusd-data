@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 # FROZEN BigPlayer formula constants copied from research/bigplayer_2edge_bt.py.
+# Do not modify these values in this runner.
 LOOKBACK = 120
 VOL_SIGMA = 2.0
 RANGE_MULT = 1.5
@@ -26,7 +27,7 @@ HOSTS = (
     'https://datafeed.dukascopy.com/datafeed',
     'https://www.dukascopy.com/datafeed',
 )
-HEADERS = {'User-Agent': 'bigplayer-rawtick-5tf/1.0', 'Accept': '*/*'}
+HEADERS = {'User-Agent': 'bigplayer-rawtick-5tf/1.1', 'Accept': '*/*'}
 TF_SECONDS = {'M1': 60, 'M5': 300, 'M15': 900, 'M30': 1800, 'H1': 3600}
 OUT = Path('results/bigplayer_rawtick_5tf_21d')
 
@@ -84,24 +85,31 @@ def load_ticks(days: list[dt.date], workers: int) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=['datetime','bid','ask','bid_size','ask_size'])
     df = df.drop_duplicates('datetime', keep='last').reset_index(drop=True)
     df['mid'] = (df.bid + df.ask) / 2.0
-    df['raw_volume'] = df.bid_size + df.ask_size
+    # Adapter note: the frozen BigPlayer baseline consumes bar tick-volume.
+    # For raw quote ticks, the semantics-preserving adapter is number of raw ticks
+    # in the bar, NOT sum(bid_size+ask_size), which is quote-size volume.
+    df['tick_volume'] = 1.0
     (OUT / 'download_status.json').write_text(json.dumps({'hours': len(jobs), 'status': status, 'ticks': len(df)}, indent=2), encoding='utf-8')
     return df
 
 
 def build_bars_from_raw_ticks(ticks: pd.DataFrame, tf_sec: int) -> pd.DataFrame:
-    # Direct tick->bar aggregation. This is NOT OHLC-to-OHLC resampling.
+    # Direct raw tick -> bar construction. No OHLC-to-OHLC resampling is used.
     ns = ticks.datetime.astype('int64').to_numpy()
     bucket_ns = tf_sec * 1_000_000_000
     key = (ns // bucket_ns) * bucket_ns
     x = ticks.assign(bucket=pd.to_datetime(key, utc=True))
     g = x.groupby('bucket', sort=True)
-    bars = g.agg(open=('mid','first'), high=('mid','max'), low=('mid','min'), close=('mid','last'), volume=('raw_volume','sum')).reset_index().rename(columns={'bucket':'datetime'})
+    bars = g.agg(
+        open=('mid','first'), high=('mid','max'), low=('mid','min'), close=('mid','last'),
+        volume=('tick_volume','sum'), raw_quote_volume_bid=('bid_size','sum'), raw_quote_volume_ask=('ask_size','sum'),
+        tick_count=('tick_volume','sum'),
+    ).reset_index().rename(columns={'bucket':'datetime'})
     return bars
 
 
-def build_edges(df: pd.DataFrame) -> pd.DataFrame:
-    # BYTE-FOR-BYTE mathematical structure preserved from BigPlayer 2-edge baseline.
+def build_edges(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    # FROZEN mathematical structure preserved from BigPlayer 2-edge baseline.
     out = df.copy()
     rng = out['high'] - out['low']
     vol = out['volume'].astype(float)
@@ -126,11 +134,23 @@ def build_edges(df: pd.DataFrame) -> pd.DataFrame:
     absorption.loc[long_upper] = -1
     out['bp_imbalance'] = imbalance
     out['bp_absorption'] = absorption
-    return out
+    diag = {
+        'bars': int(len(out)),
+        'high_volume_N': int(high_volume.sum()),
+        'imb_gate_N': int(imb_gate.sum()),
+        'abs_lower_N': int(long_lower.sum()),
+        'abs_upper_N': int(long_upper.sum()),
+        'imbalance_event_N': int((imbalance != 0).sum()),
+        'absorption_event_N': int((absorption != 0).sum()),
+        'volume_median': float(vol.median()) if len(vol) else 0.0,
+        'volume_p99': float(vol.quantile(0.99)) if len(vol) else 0.0,
+        'z_p99': float(z.quantile(0.99)) if z.notna().any() else None,
+    }
+    return out, diag
 
 
 def run_tf(df: pd.DataFrame, signal: pd.Series, tf: str, initial_balance: float, lot: float, contract_size: float, cost: float):
-    horizon = 5  # same five-bar fixed horizon per TF; formula not retuned.
+    horizon = 5
     qty = lot * contract_size
     trades = []
     next_free = 0
@@ -182,8 +202,10 @@ def main():
     ticks = load_ticks(days, args.workers)
     all_rows = []
     all_trade_frames = []
+    diagnostics = {}
     for tf, sec in TF_SECONDS.items():
-        bars = build_edges(build_bars_from_raw_ticks(ticks, sec))
+        bars, diag = build_edges(build_bars_from_raw_ticks(ticks, sec))
+        diagnostics[tf] = diag
         for edge, col in [('IMBALANCE','bp_imbalance'),('ABSORPTION','bp_absorption')]:
             tr = run_tf(bars, bars[col], tf, args.initial_balance, args.lot, args.contract_size, args.round_trip_cost_usd)
             td = pd.DataFrame(tr, columns=['tf','signal_idx','entry_idx','exit_idx','direction','entry','exit','pnl','entry_time'])
@@ -197,8 +219,15 @@ def main():
     all_rows.append({'scope':'ALL_5TF_2EDGE','tf':'ALL','edge':'BOTH_INDEPENDENT','business_days':21,'raw_tick_to_bar':True,'ohlc_resample_used':False,**cm})
     pd.DataFrame(all_rows).to_csv(OUT/'summary_21d.csv', index=False)
     combined.to_csv(OUT/'trades_all.csv', index=False)
-    (OUT/'provenance.json').write_text(json.dumps({'start':days[0].isoformat(),'end':days[-1].isoformat(),'business_days':[d.isoformat() for d in days],'formula_policy':'FROZEN_BIGPLAYER_2EDGE','volume_input':'sum(bid_size+ask_size) per direct raw-tick bar','execution':'next bar open, fixed 5 bars, non-overlap within each TF-edge, independent across TF-edge','cost_usd':args.round_trip_cost_usd}, indent=2), encoding='utf-8')
+    (OUT/'diagnostics.json').write_text(json.dumps(diagnostics, indent=2), encoding='utf-8')
+    (OUT/'provenance.json').write_text(json.dumps({
+        'start':days[0].isoformat(),'end':days[-1].isoformat(),'business_days':[d.isoformat() for d in days],
+        'formula_policy':'FROZEN_BIGPLAYER_2EDGE','volume_input':'raw tick count per direct raw-tick bar',
+        'adapter_fix':'quote-size volume -> tick-volume semantics; formulas/thresholds unchanged',
+        'execution':'next bar open, fixed 5 bars, non-overlap within each TF-edge, independent across TF-edge',
+        'cost_usd':args.round_trip_cost_usd}, indent=2), encoding='utf-8')
     print(pd.DataFrame(all_rows).to_string(index=False))
+    print(json.dumps(diagnostics, indent=2))
 
 if __name__ == '__main__':
     main()

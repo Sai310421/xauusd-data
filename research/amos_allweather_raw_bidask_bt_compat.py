@@ -1,6 +1,7 @@
 from __future__ import annotations
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.portfolio.portfolio import Portfolio
 
 def _install_quote_tick_compat() -> str:
     if hasattr(ParquetDataCatalog, 'query_quote_ticks'):
@@ -22,8 +23,20 @@ def _install_quote_tick_compat() -> str:
         return 'query(QuoteTick)'
     raise RuntimeError('No Raw QuoteTick reader found on ParquetDataCatalog')
 
+def _install_portfolio_flat_compat() -> str:
+    if hasattr(Portfolio, 'is_net_flat'):
+        return 'is_net_flat'
+    if hasattr(Portfolio, 'is_net_long') and hasattr(Portfolio, 'is_net_short'):
+        def is_net_flat(self, instrument_id):
+            return (not self.is_net_long(instrument_id)) and (not self.is_net_short(instrument_id))
+        Portfolio.is_net_flat = is_net_flat
+        return 'derived_from_long_short'
+    raise RuntimeError('No compatible net-position state API found on Portfolio')
+
 CATALOG_QUOTE_API = _install_quote_tick_compat()
+PORTFOLIO_FLAT_API = _install_portfolio_flat_compat()
 print(f'CATALOG_QUOTE_API={CATALOG_QUOTE_API}')
+print(f'PORTFOLIO_FLAT_API={PORTFOLIO_FLAT_API}')
 from research.amos_allweather_raw_bidask_bt import main
 if __name__ == '__main__':
     main()

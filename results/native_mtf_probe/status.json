@@ -1,0 +1,50 @@
+{
+  "policy": "NATIVE_ONLY_NO_RESAMPLE",
+  "period": "2026-06",
+  "checks": [
+    {
+      "tf": "M15",
+      "side": "BID",
+      "url": "https://datafeed.dukascopy.com/datafeed/XAUUSD/2026/05/BID_candles_min_15.bi5",
+      "http": 0,
+      "bytes": 25,
+      "rows": 0,
+      "first": null,
+      "last": null
+    },
+    {
+      "tf": "M15",
+      "side": "ASK",
+      "url": "https://datafeed.dukascopy.com/datafeed/XAUUSD/2026/05/ASK_candles_min_15.bi5",
+      "http": 0,
+      "bytes": 25,
+      "rows": 0,
+      "first": null,
+      "last": null
+    },
+    {
+      "tf": "M30",
+      "side": "BID",
+      "url": "https://datafeed.dukascopy.com/datafeed/XAUUSD/2026/05/BID_candles_min_30.bi5",
+      "http": 0,
+      "bytes": 25,
+      "rows": 0,
+      "first": null,
+      "last": null
+    },
+    {
+      "tf": "M30",
+      "side": "ASK",
+      "url": "https://datafeed.dukascopy.com/datafeed/XAUUSD/2026/05/ASK_candles_min_30.bi5",
+      "http": 0,
+      "bytes": 25,
+      "rows": 0,
+      "first": null,
+      "last": null
+    }
+  ],
+  "M15_paired_rows": 0,
+  "M15_native_ok": false,
+  "M30_paired_rows": 0,
+  "M30_native_ok": false
+}

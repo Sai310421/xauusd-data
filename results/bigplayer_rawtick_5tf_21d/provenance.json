@@ -26,7 +26,7 @@
   ],
   "formula_policy": "FROZEN_BIGPLAYER_2EDGE",
   "volume_input": "raw tick count per direct raw-tick bar",
-  "adapter_fix": "quote-size volume -> tick-volume semantics; formulas/thresholds unchanged",
+  "adapter_fix": "timezone-aware floor bucketing + tick-volume semantics; formulas/thresholds unchanged",
   "execution": "next bar open, fixed 5 bars, non-overlap within each TF-edge, independent across TF-edge",
   "cost_usd": 0.0
 }

@@ -1,0 +1,55 @@
+{
+  "formula_policy": "FROZEN_BIGPLAYER_2EDGE_NO_INTERNAL_CHANGES",
+  "selected_edges": [
+    [
+      "M1",
+      "IMBALANCE"
+    ],
+    [
+      "M5",
+      "ABSORPTION"
+    ]
+  ],
+  "bar_policy": "raw QuoteTick direct aggregation; no OHLC resample",
+  "execution": "common fixed 5-minute raw-tick horizon across all TFs",
+  "supervisor": "external gates only",
+  "configs": {
+    "BASE": [],
+    "TREND": [
+      "TREND"
+    ],
+    "REGIME": [
+      "REGIME"
+    ],
+    "SPREAD": [
+      "SPREAD"
+    ],
+    "SESSION": [
+      "SESSION"
+    ],
+    "TREND_REGIME": [
+      "TREND",
+      "REGIME"
+    ],
+    "TREND_SPREAD": [
+      "TREND",
+      "SPREAD"
+    ],
+    "REGIME_SPREAD": [
+      "REGIME",
+      "SPREAD"
+    ],
+    "TREND_REGIME_SPREAD": [
+      "TREND",
+      "REGIME",
+      "SPREAD"
+    ],
+    "TREND_REGIME_SPREAD_SESSION": [
+      "TREND",
+      "REGIME",
+      "SPREAD",
+      "SESSION"
+    ]
+  },
+  "cost_usd": 0.0
+}

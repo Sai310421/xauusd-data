@@ -1,0 +1,12 @@
+scope,tf,edge,business_days,raw_tick_to_bar,ohlc_resample_used,N,N_per_day,WR,PF,RF,net_profit,return_pct,max_dd_pct,max_dd_usd,final_balance
+TF_EDGE,M1,IMBALANCE,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M1,ABSORPTION,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M5,IMBALANCE,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M5,ABSORPTION,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M15,IMBALANCE,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M15,ABSORPTION,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M30,IMBALANCE,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,M30,ABSORPTION,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,H1,IMBALANCE,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+TF_EDGE,H1,ABSORPTION,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0
+ALL_5TF_2EDGE,ALL,BOTH_INDEPENDENT,21,True,False,0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1000.0

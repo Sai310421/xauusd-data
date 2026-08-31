@@ -5,9 +5,9 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from nautilus_trader.backtest.node import BacktestNode
+from nautilus_trader.backtest import BacktestNode
 from nautilus_trader.config import BacktestDataConfig, BacktestEngineConfig, BacktestRunConfig, BacktestVenueConfig
-from nautilus_trader.model.data import QuoteTick
+from nautilus_trader.model import Currency
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 import research.amos_allweather_raw_bidask_bt_compat as compat
@@ -53,13 +53,13 @@ def main():
                 oms_type='NETTING',
                 account_type='MARGIN',
                 book_type='L1_MBP',
-                base_currency='USD',
+                base_currency=Currency.from_str('USD'),
                 starting_balances=['1000 USD'],
                 default_leverage=Decimal('2000'),
             )
             data_cfg = BacktestDataConfig(
+                data_type='QuoteTick',
                 catalog_path=str(path),
-                data_cls=QuoteTick,
                 instrument_id=ins.id,
             )
             run_cfg = BacktestRunConfig(

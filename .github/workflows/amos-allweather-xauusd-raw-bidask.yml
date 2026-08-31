@@ -12,6 +12,7 @@ on:
       - 'research/amos_allweather_raw_bidask_bt.py'
       - 'research/amos_allweather_raw_bidask_bt_compat.py'
       - 'research/amos_allweather_l1_runner.py'
+      - 'research/amos_allweather_node_runner.py'
       - 'research/amos_allweather_merge_tf_results.py'
       - '.github/workflows/amos-allweather-xauusd-raw-bidask.yml'
 
@@ -56,7 +57,7 @@ jobs:
           sha256sum \
             research/amos_allweather_raw_bidask_bt.py \
             research/amos_allweather_raw_bidask_bt_compat.py \
-            research/amos_allweather_l1_runner.py \
+            research/amos_allweather_node_runner.py \
             research/amos_allweather_merge_tf_results.py \
             > "results/ae-bt/$TF_EXPERIMENT_ID/preflight/strategy_sha256.txt"
       - name: Install pinned NautilusTrader
@@ -86,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           TF_EXPERIMENT_ID="${EXPERIMENT_ID}-${{ matrix.tf }}"
-          python -m research.amos_allweather_l1_runner \
+          python -m research.amos_allweather_node_runner \
             --catalog "$RAW_CATALOG" \
             --symbols XAUUSD \
             --timeframes ${{ matrix.tf }} \

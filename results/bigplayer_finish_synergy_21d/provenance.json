@@ -1,0 +1,8 @@
+{
+  "source": "results/bigplayer_synergy_supervisor_21d/trades_TREND_REGIME.csv",
+  "formula_policy": "FROZEN_BIGPLAYER_NO_INTERNAL_CHANGES",
+  "execution": "persisted common fixed 5-minute raw-tick horizon",
+  "mtf_policy": "same-minute same-direction confirmation; single edges remain tradeable; boost only",
+  "timestamp_adapter_fix": "explicit pandas UTC mixed-format normalization; no signal or threshold changes",
+  "note": "This stage isolates MTF confirmation synergy before adding liquidity/exit branches."
+}

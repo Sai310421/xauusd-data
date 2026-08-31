@@ -25,7 +25,8 @@
     "2026-08-24"
   ],
   "formula_policy": "FROZEN_BIGPLAYER_2EDGE",
-  "volume_input": "sum(bid_size+ask_size) per direct raw-tick bar",
+  "volume_input": "raw tick count per direct raw-tick bar",
+  "adapter_fix": "quote-size volume -> tick-volume semantics; formulas/thresholds unchanged",
   "execution": "next bar open, fixed 5 bars, non-overlap within each TF-edge, independent across TF-edge",
   "cost_usd": 0.0
 }

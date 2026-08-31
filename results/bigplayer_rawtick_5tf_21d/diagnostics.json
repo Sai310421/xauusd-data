@@ -1,0 +1,62 @@
+{
+  "M1": {
+    "bars": 34,
+    "high_volume_N": 0,
+    "imb_gate_N": 0,
+    "abs_lower_N": 0,
+    "abs_upper_N": 0,
+    "imbalance_event_N": 0,
+    "absorption_event_N": 0,
+    "volume_median": 154461.0,
+    "volume_p99": 215021.2,
+    "z_p99": null
+  },
+  "M5": {
+    "bars": 9,
+    "high_volume_N": 0,
+    "imb_gate_N": 0,
+    "abs_lower_N": 0,
+    "abs_upper_N": 0,
+    "imbalance_event_N": 0,
+    "absorption_event_N": 0,
+    "volume_median": 455022.0,
+    "volume_p99": 763198.48,
+    "z_p99": null
+  },
+  "M15": {
+    "bars": 4,
+    "high_volume_N": 0,
+    "imb_gate_N": 0,
+    "abs_lower_N": 0,
+    "abs_upper_N": 0,
+    "imbalance_event_N": 0,
+    "absorption_event_N": 0,
+    "volume_median": 1266934.0,
+    "volume_p99": 1859854.05,
+    "z_p99": null
+  },
+  "M30": {
+    "bars": 3,
+    "high_volume_N": 0,
+    "imb_gate_N": 0,
+    "abs_lower_N": 0,
+    "abs_upper_N": 0,
+    "imbalance_event_N": 0,
+    "absorption_event_N": 0,
+    "volume_median": 909011.0,
+    "volume_p99": 3440319.64,
+    "z_p99": null
+  },
+  "H1": {
+    "bars": 2,
+    "high_volume_N": 0,
+    "imb_gate_N": 0,
+    "abs_lower_N": 0,
+    "abs_upper_N": 0,
+    "imbalance_event_N": 0,
+    "absorption_event_N": 0,
+    "volume_median": 2338939.5,
+    "volume_p99": 3740269.43,
+    "z_p99": null
+  }
+}

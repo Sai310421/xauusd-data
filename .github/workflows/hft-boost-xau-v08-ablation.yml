@@ -1,0 +1,112 @@
+name: HFT Boost XAU v0.8 Ablation
+
+on:
+  push:
+    branches: ['hft-boost-raw-bt-v04']
+    paths:
+      - '.github/workflows/hft-boost-xau-v08-ablation.yml'
+      - 'research/hft_boost_raw_xau_bt_v08.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  PROBE_START: '2026-07-27'
+  PROBE_DAYS: '2'
+
+jobs:
+  ablation:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: fixed
+            target_mult: '2.0'
+            stop_mult: '1.5'
+            green_mult: '1.0'
+            retrace_mult: '0.75'
+          - mode: costnorm
+            target_mult: '2.0'
+            stop_mult: '1.5'
+            green_mult: '1.0'
+            retrace_mult: '0.75'
+          - mode: peak
+            target_mult: '2.0'
+            stop_mult: '1.5'
+            green_mult: '1.0'
+            retrace_mult: '0.75'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      MODE: ${{ matrix.mode }}
+      PROBE_CATALOG: catalog/hft_v08_${{ matrix.mode }}
+      EXPERIMENT_ID: hft-v08-${{ matrix.mode }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+
+      - name: Build XAU-only fractional-volume Raw BidAsk v3
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$PROBE_CATALOG"
+          python -m research.build_raw_bidask_catalog_duka_v3 \
+            --start "$PROBE_START" \
+            --days "$PROBE_DAYS" \
+            --catalog "$PROBE_CATALOG" \
+            --workers 24 \
+            --symbols XAUUSD \
+            --fresh
+
+      - name: Run Raw QuoteTick ablation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.hft_boost_raw_xau_bt_v08 \
+            --catalog "$PROBE_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only \
+            --initial 1000 \
+            --trade-size 1 \
+            --min-score 62 \
+            --tp-points 8 \
+            --sl-points 10 \
+            --mode "$MODE" \
+            --target-spread-mult "${{ matrix.target_mult }}" \
+            --stop-spread-mult "${{ matrix.stop_mult }}" \
+            --green-arm-mult "${{ matrix.green_mult }}" \
+            --retrace-mult "${{ matrix.retrace_mult }}"
+
+      - name: Capture evidence
+        if: always()
+        shell: bash
+        run: |
+          OUT="results/ae-bt/$EXPERIMENT_ID"
+          mkdir -p "$OUT/preflight"
+          printf '%s\n' \
+            "run_id=$GITHUB_RUN_ID" \
+            "git_sha=$GITHUB_SHA" \
+            "nautilus=$NAUTILUS_VERSION" \
+            "mode=$MODE" \
+            "probe_days=$PROBE_DAYS" > "$OUT/preflight/github_run.txt"
+          [ -f "$PROBE_CATALOG/catalog_manifest.json" ] && cp "$PROBE_CATALOG/catalog_manifest.json" "$OUT/preflight/catalog_manifest.json" || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hft-v08-${{ matrix.mode }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,19 @@
+{
+  "policy": "FROZEN_DO_NOT_EDIT_FORMULAS_OR_THRESHOLDS",
+  "source_pack": "GORIRIN_APEX_EDGE_DECOMPILE_PACK_v1.0(9).zip",
+  "files": {
+    "amos_apex_edge_functions_v1_0.py": "0621511ef4b57e808c276d7efed54c9e3d23b36c1e5ff4ed429775d9ecef00e9",
+    "AMOS_EDGE_APEX_RECOGNITION_v1.0.mqh": "fd1ef454018730311ccb707ae675b88241dad6016c54a2178af12c5fd5dba75d"
+  },
+  "unknown_inputs_must_not_be_guessed": [
+    "rci_periods",
+    "cci_period",
+    "cci_level_A",
+    "cci_level_B",
+    "rsi_period",
+    "rsi_low",
+    "rsi_high",
+    "c3_basis_formula",
+    "cci_reversal_expression"
+  ]
+}

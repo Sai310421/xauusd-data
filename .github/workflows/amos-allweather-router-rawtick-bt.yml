@@ -1,0 +1,37 @@
+name: AMOS AllWeather Router RawTick BT
+
+on:
+  push:
+    branches:
+      - 'bt/amos-allweather-router-v01'
+    paths:
+      - 'research/amos_allweather_router_rawtick_bt.py'
+      - '.github/workflows/amos-allweather-router-rawtick-bt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' pandas numpy
+      - name: Run 21-business-day raw-tick router validation
+        run: python research/amos_allweather_router_rawtick_bt.py --start 2026-07-27 --days 21 --workers 48
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-allweather-router-rawtick
+          path: results/amos_allweather_router_rawtick/
+          if-no-files-found: warn
+          retention-days: 90

@@ -6,6 +6,8 @@ on:
       - 'research/hft_boost_raw_xau_bt.py'
       - 'research/hft_boost_raw_xau_bt_compat.py'
       - 'research/hft_boost_raw_xau_bt_event.py'
+      - 'research/hft_boost_raw_xau_bt_v07.py'
+      - 'research/build_raw_bidask_catalog_duka_v3.py'
       - '.github/workflows/hft-boost-raw-xau-bt.yml'
       - 'bt_requests/hft_boost.request'
   workflow_dispatch:
@@ -17,7 +19,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v3-size6
   EXPERIMENT_ID: hft-boost-${{ github.run_id }}
 jobs:
   raw-xau-base:
@@ -48,21 +50,27 @@ jobs:
             ok=0
             for attempt in 1 2 3; do
               rm -rf "$RAW_CATALOG"; mkdir -p "$RAW_CATALOG"
-              if python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers 32 && python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then ok=1; break; fi
+              if python research/build_raw_bidask_catalog_duka_v3.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers 32 && python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then ok=1; break; fi
               sleep $((attempt*10))
             done
             test "$ok" -eq 1
           fi
+      - name: Save Raw BidAsk v3 cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
       - name: Run HFT BASE Raw QuoteTick BT
         run: |
-          python -m research.hft_boost_raw_xau_bt_event --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --min-score 62 --tp-points 8 --sl-points 10
+          python -m research.hft_boost_raw_xau_bt_v07 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --min-score 62 --tp-points 8 --sl-points 10
       - name: Capture evidence
         if: always()
         shell: bash
         run: |
           mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
-          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "nautilus=$NAUTILUS_VERSION" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
-          sha256sum research/hft_boost_raw_xau_bt.py research/hft_boost_raw_xau_bt_compat.py research/hft_boost_raw_xau_bt_event.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "nautilus=$NAUTILUS_VERSION" "raw_cache=$RAW_CACHE_KEY" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/hft_boost_raw_xau_bt.py research/hft_boost_raw_xau_bt_event.py research/hft_boost_raw_xau_bt_v07.py research/build_raw_bidask_catalog_duka_v3.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
           [ -f "$RAW_CATALOG/catalog_manifest.json" ] && cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
       - name: Upload immutable evidence
         if: always()

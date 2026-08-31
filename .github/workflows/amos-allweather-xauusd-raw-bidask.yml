@@ -11,6 +11,7 @@ on:
     paths:
       - 'research/amos_allweather_raw_bidask_bt.py'
       - 'research/amos_allweather_raw_bidask_bt_compat.py'
+      - 'research/amos_allweather_merge_tf_results.py'
       - '.github/workflows/amos-allweather-xauusd-raw-bidask.yml'
 
 permissions:
@@ -25,8 +26,14 @@ env:
 
 jobs:
   allweather-xauusd:
+    name: allweather-xauusd-${{ matrix.tf }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        tf: [M1, M5, M15]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,9 +43,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
-          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "experiment_id=${EXPERIMENT_ID}" "raw_cache_key=${RAW_CACHE_KEY}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
-          sha256sum research/amos_allweather_raw_bidask_bt.py research/amos_allweather_raw_bidask_bt_compat.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+          TF_EXPERIMENT_ID="${EXPERIMENT_ID}-${{ matrix.tf }}"
+          mkdir -p "results/ae-bt/$TF_EXPERIMENT_ID/preflight"
+          printf '%s\n' \
+            "run_id=${GITHUB_RUN_ID}" \
+            "git_sha=${GITHUB_SHA}" \
+            "experiment_id=${TF_EXPERIMENT_ID}" \
+            "timeframe=${{ matrix.tf }}" \
+            "raw_cache_key=${RAW_CACHE_KEY}" \
+            > "results/ae-bt/$TF_EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum \
+            research/amos_allweather_raw_bidask_bt.py \
+            research/amos_allweather_raw_bidask_bt_compat.py \
+            research/amos_allweather_merge_tf_results.py \
+            > "results/ae-bt/$TF_EXPERIMENT_ID/preflight/strategy_sha256.txt"
       - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
@@ -53,28 +71,64 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          TF_EXPERIMENT_ID="${EXPERIMENT_ID}-${{ matrix.tf }}"
           if [ "${{ steps.raw-cache.outputs.cache-hit }}" != 'true' ]; then
             echo 'RAW_FACTORY_CACHE_MISS: run Raw BidAsk Catalog Factory first'
             exit 22
           fi
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
-          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
-      - name: Run AMOS AllWeather XAUUSD M1 M5 M15
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$TF_EXPERIMENT_ID/preflight/catalog_manifest.json"
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$TF_EXPERIMENT_ID/preflight/catalog_inventory.txt"
+      - name: Run AMOS AllWeather XAUUSD ${{ matrix.tf }}
         shell: bash
         run: |
           set -euo pipefail
+          TF_EXPERIMENT_ID="${EXPERIMENT_ID}-${{ matrix.tf }}"
           python -m research.amos_allweather_raw_bidask_bt_compat \
             --catalog "$RAW_CATALOG" \
             --symbols XAUUSD \
-            --timeframes M1 M5 M15 \
-            --experiment-id "$EXPERIMENT_ID" \
+            --timeframes ${{ matrix.tf }} \
+            --experiment-id "$TF_EXPERIMENT_ID" \
             --raw-bidask-only
-      - name: Upload immutable evidence
+      - name: Upload timeframe evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amos-allweather-${{ env.EXPERIMENT_ID }}
-          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          name: amos-allweather-${{ env.EXPERIMENT_ID }}-${{ matrix.tf }}
+          path: results/ae-bt/
+          if-no-files-found: error
+          retention-days: 90
+
+  merge-portfolio:
+    name: merge-allweather-portfolio
+    needs: allweather-xauusd
+    if: always() && needs.allweather-xauusd.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install merge dependencies
+        run: python -m pip install numpy pandas
+      - name: Download all timeframe artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: amos-allweather-${{ env.EXPERIMENT_ID }}-*
+          path: downloaded
+          merge-multiple: true
+      - name: Merge synchronized realized-close portfolio KPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/amos_allweather_merge_tf_results.py \
+            --input-root downloaded \
+            --output "results/ae-bt/${EXPERIMENT_ID}-PORTFOLIO" \
+            --base-experiment-id "$EXPERIMENT_ID"
+      - name: Upload combined portfolio evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-allweather-${{ env.EXPERIMENT_ID }}-PORTFOLIO
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}-PORTFOLIO/
           if-no-files-found: error
           retention-days: 90

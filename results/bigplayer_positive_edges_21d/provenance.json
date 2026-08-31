@@ -1,0 +1,21 @@
+{
+  "source": "results/bigplayer_rawtick_5tf_21d/trades_all.csv",
+  "selection_policy": "EXTERNAL_ONLY_NO_FORMULA_CHANGE",
+  "selected_edges": [
+    {
+      "tf": "M1",
+      "edge": "IMBALANCE"
+    },
+    {
+      "tf": "M5",
+      "edge": "ABSORPTION"
+    }
+  ],
+  "selection_basis": "positive standalone 21d structural BT; treat as in-sample candidate, not out-of-sample proof",
+  "apex_policy": "NOT_INJECTED_UNTIL_EXACT_PERIODS_ARE_RECOVERED",
+  "same_direction_overlap": {
+    "groups": 1,
+    "trades": 2
+  },
+  "formula_changes": false
+}

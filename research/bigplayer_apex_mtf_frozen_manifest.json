@@ -1,0 +1,60 @@
+{
+  "project_id": "BIGPLAYER_APEX_MTF_FROZEN",
+  "target": "XAUUSD",
+  "timeframes": ["M1", "M5", "M15", "M30", "H1"],
+  "display_basis": {
+    "initial_balance_usd": 1000,
+    "business_days": 21,
+    "required_metrics": ["monthly_return_pct_21d", "daily_return_pct", "WR", "PF", "RF", "max_DD_pct", "N_21d", "N_per_day", "final_balance_21d"]
+  },
+  "entry_target": {
+    "N_per_day": 1000,
+    "N_21d": 21000
+  },
+  "formula_policy": "FROZEN_NO_INTERNAL_CHANGES",
+  "allowed_changes": [
+    "native_timeframe_parallelization",
+    "external_temporal_matching",
+    "same_direction_confirmation",
+    "external_MTF_boost"
+  ],
+  "forbidden_changes": [
+    "BigPlayer_formula_change",
+    "Apex_formula_change",
+    "threshold_tuning",
+    "indicator_period_guessing",
+    "OHLC_resample_for_backtest"
+  ],
+  "frozen_sources": {
+    "bigplayer_runner": {
+      "path": "research/bigplayer_2edge_bt.py",
+      "blob_sha_at_freeze": "34fe920ad0b184f3c156814a6b504a35d87a2cc7"
+    },
+    "apex_python": {
+      "path": "research/frozen/apex_v1_0/amos_apex_edge_functions_v1_0.py",
+      "source_sha256": "0621511ef4b57e808c276d7efed54c9e3d23b36c1e5ff4ed429775d9ecef00e9"
+    },
+    "apex_formula_spec_sha256": "043af680d8df5b154cf89081f4d2b00dfe8ef5988e688ea9b98c55287c42882d",
+    "apex_mqh_sha256": "fd1ef454018730311ccb707ae675b88241dad6016c54a2178af12c5fd5dba75d"
+  },
+  "apex_unresolved_inputs": [
+    "rci_periods",
+    "cci_period",
+    "logic_A_B_exact_cci_levels",
+    "rsi_period",
+    "rsi_exact_thresholds",
+    "c3_exact_formula",
+    "cci_reversal_exact_comparison_order"
+  ],
+  "data_policy": {
+    "native_only": true,
+    "currently_present_in_xauusd_data": ["M1", "M5", "H1"],
+    "missing_native_for_full_5tf": ["M15", "M30"]
+  },
+  "composition": {
+    "single_edges_remain_tradeable": true,
+    "same_direction_overlap": "BOOST_ONLY",
+    "cross_timeframe_overlap": "BOOST_ONLY",
+    "do_not_require_AND": true
+  }
+}

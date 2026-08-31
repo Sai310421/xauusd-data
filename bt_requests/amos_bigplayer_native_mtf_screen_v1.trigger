@@ -1,0 +1,5 @@
+experiment_id=AMOS_BIGPLAYER_NATIVE_MTF_SCREEN_V1
+source_commit=cfca447f1fce189d418145380919c5df6b65e4d4
+formula_blob_sha=34fe920ad0b184f3c156814a6b504a35d87a2cc7
+no_ohlc_resample=true
+wr5=INVALID_until_raw_bidask

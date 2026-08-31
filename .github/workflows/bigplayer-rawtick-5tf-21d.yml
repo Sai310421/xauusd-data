@@ -1,0 +1,31 @@
+name: BigPlayer RawTick 5TF 21D BT
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/bigplayer_rawtick_5tf_21d_bt.py'
+      - '.github/workflows/bigplayer-rawtick-5tf-21d.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - name: Run 21-business-day raw-tick 5TF BT
+        run: python research/bigplayer_rawtick_5tf_21d_bt.py --start 2026-07-27
+      - name: Persist results
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add results/bigplayer_rawtick_5tf_21d
+          git diff --cached --quiet || git commit -m 'bt: persist BigPlayer raw-tick 5TF 21d results'
+          git push

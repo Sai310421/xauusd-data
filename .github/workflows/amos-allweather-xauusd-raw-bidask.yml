@@ -1,0 +1,80 @@
+name: AMOS AllWeather XAUUSD Raw BidAsk BT
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'amos-allweather-manual'
+  push:
+    paths:
+      - 'research/amos_allweather_raw_bidask_bt.py'
+      - 'research/amos_allweather_raw_bidask_bt_compat.py'
+      - '.github/workflows/amos-allweather-xauusd-raw-bidask.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('amos-allweather-{0}', github.run_id) }}
+
+jobs:
+  allweather-xauusd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "experiment_id=${EXPERIMENT_ID}" "raw_cache_key=${RAW_CACHE_KEY}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/amos_allweather_raw_bidask_bt.py research/amos_allweather_raw_bidask_bt_compat.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - name: Restore shared immutable Raw BidAsk catalog cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Raw Catalog Gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != 'true' ]; then
+            echo 'RAW_FACTORY_CACHE_MISS: run Raw BidAsk Catalog Factory first'
+            exit 22
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
+      - name: Run AMOS AllWeather XAUUSD M1 M5 M15
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.amos_allweather_raw_bidask_bt_compat \
+            --catalog "$RAW_CATALOG" \
+            --symbols XAUUSD \
+            --timeframes M1 M5 M15 \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only
+      - name: Upload immutable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-allweather-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

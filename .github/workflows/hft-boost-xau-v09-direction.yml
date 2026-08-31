@@ -1,0 +1,63 @@
+name: HFT Boost XAU v0.9 Direction
+
+on:
+  push:
+    branches: ['hft-boost-raw-bt-v04']
+    paths:
+      - '.github/workflows/hft-boost-xau-v09-direction.yml'
+      - 'research/hft_boost_raw_xau_direction_v09.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  PROBE_START: '2026-07-27'
+  PROBE_DAYS: '2'
+
+jobs:
+  direction:
+    strategy:
+      fail-fast: false
+      matrix:
+        direction: [continuation, reversal, exhaustion]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      DIRECTION: ${{ matrix.direction }}
+      PROBE_CATALOG: catalog/hft_v09_${{ matrix.direction }}
+      EXPERIMENT_ID: hft-v09-${{ matrix.direction }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - name: Build XAU Raw BidAsk v3
+        run: |
+          set -euo pipefail
+          rm -rf "$PROBE_CATALOG"
+          python -m research.build_raw_bidask_catalog_duka_v3 --start "$PROBE_START" --days "$PROBE_DAYS" --catalog "$PROBE_CATALOG" --workers 24 --symbols XAUUSD --fresh
+      - name: Run direction ablation
+        run: |
+          set -euo pipefail
+          python -m research.hft_boost_raw_xau_direction_v09 --catalog "$PROBE_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --min-score 62 --tp-points 8 --sl-points 10 --mode costnorm --target-spread-mult 2.0 --stop-spread-mult 1.5 --direction-mode "$DIRECTION"
+      - name: Capture evidence
+        if: always()
+        run: |
+          OUT="results/ae-bt/$EXPERIMENT_ID"
+          mkdir -p "$OUT/preflight"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "nautilus=$NAUTILUS_VERSION" "direction=$DIRECTION" > "$OUT/preflight/github_run.txt"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hft-v09-${{ matrix.direction }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: warn
+          retention-days: 30

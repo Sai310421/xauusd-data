@@ -1,0 +1,33 @@
+name: BigPlayer Positive Edges 21d
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'research/bigplayer_positive_edges_21d.py'
+      - 'results/bigplayer_rawtick_5tf_21d/trades_all.csv'
+      - '.github/workflows/bigplayer-positive-edges-21d.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy
+      - run: python research/bigplayer_positive_edges_21d.py
+      - name: Persist results
+        run: |
+          if [[ -n "$(git status --porcelain results/bigplayer_positive_edges_21d)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add results/bigplayer_positive_edges_21d
+            git commit -m "bt: persist BigPlayer positive-edge 21d results"
+            git push
+          fi

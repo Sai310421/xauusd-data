@@ -7,6 +7,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Native probe only. OHLC resampling is intentionally prohibited here.
 REC = struct.Struct(">5If")
 SCALE = 1000.0
 HOST = "https://datafeed.dukascopy.com/datafeed"

@@ -1,0 +1,38 @@
+name: CHOCHOMARU Cleanroom Discovery BT v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chochomaru-cleanroom-discovery-v1
+    paths:
+      - 'research/chochomaru_cleanroom_discovery_bt_v1.py'
+      - '.github/workflows/chochomaru-cleanroom-discovery-bt-v1.yml'
+      - 'csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv'
+
+permissions:
+  contents: read
+
+jobs:
+  discovery-bt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' pandas numpy
+      - name: Run CHOCHOMARU clean-room discovery matrix
+        run: python research/chochomaru_cleanroom_discovery_bt_v1.py
+      - name: Upload discovery results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chochomaru-cleanroom-discovery-bt-v1
+          path: results/chochomaru-cleanroom-discovery-v1/
+          if-no-files-found: error
+          retention-days: 30

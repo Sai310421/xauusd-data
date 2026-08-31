@@ -4,6 +4,7 @@ on:
     branches: ['hft-boost-raw-bt-v04']
     paths:
       - 'research/hft_boost_raw_xau_bt.py'
+      - 'research/hft_boost_raw_xau_bt_compat.py'
       - '.github/workflows/hft-boost-raw-xau-bt.yml'
       - 'bt_requests/hft_boost.request'
   workflow_dispatch:
@@ -53,14 +54,14 @@ jobs:
           fi
       - name: Run HFT BASE Raw QuoteTick BT
         run: |
-          python -m research.hft_boost_raw_xau_bt --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --min-score 62 --tp-points 8 --sl-points 10
+          python -m research.hft_boost_raw_xau_bt_compat --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only --initial 1000 --trade-size 1 --min-score 62 --tp-points 8 --sl-points 10
       - name: Capture evidence
         if: always()
         shell: bash
         run: |
           mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
           printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "nautilus=$NAUTILUS_VERSION" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
-          sha256sum research/hft_boost_raw_xau_bt.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+          sha256sum research/hft_boost_raw_xau_bt.py research/hft_boost_raw_xau_bt_compat.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
           [ -f "$RAW_CATALOG/catalog_manifest.json" ] && cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
       - name: Upload immutable evidence
         if: always()

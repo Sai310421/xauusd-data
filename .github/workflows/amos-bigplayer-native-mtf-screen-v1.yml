@@ -1,0 +1,84 @@
+name: AMOS BigPlayer Native MTF Cost Screen v1
+
+on:
+  push:
+    branches:
+      - amos-bigplayer-native-mtf-screen-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tf: M1
+            horizon: 5
+          - tf: M5
+            horizon: 1
+          - tf: H1
+            horizon: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check numpy pandas
+      - name: Run frozen BigPlayer formula across fixed cost grid
+        shell: bash
+        run: |
+          set -euo pipefail
+          TF='${{ matrix.tf }}'
+          H='${{ matrix.horizon }}'
+          DATA="csv/XAUUSD/XAUUSD_${TF}_2026Q1Q2.csv"
+          for COST in 0.0 0.1 0.2 0.3 0.4; do
+            TAG=$(printf '%s' "$COST" | tr '.' 'p')
+            OUT="results/amos_bigplayer_native_mtf_screen/${TF}/cost_${TAG}"
+            python research/bigplayer_2edge_bt.py \
+              --data "$DATA" \
+              --out "$OUT" \
+              --horizon "$H" \
+              --initial-balance 1000 \
+              --lot 0.01 \
+              --contract-size 100 \
+              --round-trip-cost-usd "$COST"
+          done
+      - name: Build cell manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, hashlib
+          from pathlib import Path
+          tf='${{ matrix.tf }}'
+          horizon=int('${{ matrix.horizon }}')
+          data=Path(f'csv/XAUUSD/XAUUSD_{tf}_2026Q1Q2.csv')
+          h=hashlib.sha256(data.read_bytes()).hexdigest()
+          root=Path('results/amos_bigplayer_native_mtf_screen')/tf
+          payload={
+            'experiment_id':'AMOS_BIGPLAYER_NATIVE_MTF_SCREEN_V1',
+            'git_sha':os.environ.get('GITHUB_SHA'),
+            'tf':tf,
+            'horizon_bars':horizon,
+            'dataset':str(data),
+            'dataset_sha256':h,
+            'formula_source':'research/bigplayer_2edge_bt.py',
+            'formula_blob_sha_frozen':'34fe920ad0b184f3c156814a6b504a35d87a2cc7',
+            'cost_grid_usd_round_trip':[0.0,0.1,0.2,0.3,0.4],
+            'truth_boundary':'Native repository OHLC screen only. No OHLC resampling is performed in this workflow. It is not Raw Bid/Ask execution evidence and cannot pass WR5.',
+            'wr5':'INVALID'
+          }
+          (root/'cell_manifest.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+          PY
+      - name: Upload screen artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-bigplayer-native-mtf-${{ matrix.tf }}
+          path: results/amos_bigplayer_native_mtf_screen/${{ matrix.tf }}/
+          if-no-files-found: error
+          retention-days: 90

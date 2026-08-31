@@ -1,0 +1,11 @@
+{
+  "formula_policy": "FROZEN_BIGPLAYER_NO_INTERNAL_CHANGES",
+  "entry_supervisor": "same proxy TREND+REGIME winner from prior screen",
+  "mtf_boost": "same-minute same-direction x2.0",
+  "liquidity": "50-bar prior swing sweep: pierce then close back",
+  "execution": "raw bid/ask, 5-minute max horizon",
+  "exit_branches": {
+    "TESTBOT": "ATR14 SL0.3 / TP0.6 / trail activation-distance0.2",
+    "FAST": "ATR14 SL1.0 / TP2.0 / trail after1.2 ATR"
+  }
+}

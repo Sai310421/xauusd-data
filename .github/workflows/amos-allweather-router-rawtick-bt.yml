@@ -3,6 +3,7 @@ name: AMOS AllWeather Router RawTick BT
 on:
   push:
     branches:
+      - main
       - 'bt/amos-allweather-router-v01'
     paths:
       - 'research/amos_allweather_router_rawtick_bt.py'

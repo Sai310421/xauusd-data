@@ -9,22 +9,35 @@ class ExitRouter:
     def reset(self):
         self.be_armed=False
 
+    def _close(self, reason: str) -> ExitDecision:
+        self.reset()
+        return ExitDecision('CLOSE', reason)
+
     def decide(self,s:ExitState)->ExitDecision:
         if self.enable_structure_exit and (s.structure_invalidated or s.opposite_mss or s.opposite_choch):
-            return ExitDecision('CLOSE','STRUCTURE_INVALIDATION')
+            return self._close('STRUCTURE_INVALIDATION')
         if self.enable_liquidity_take and s.liquidity_target_hit and s.pnl>0:
-            return ExitDecision('CLOSE','LIQUIDITY_TARGET')
+            return self._close('LIQUIDITY_TARGET')
         if self.enable_ai_exit and s.ai_reject_now and s.pnl>0:
-            return ExitDecision('CLOSE','AI_PROFIT_EXIT')
+            return self._close('AI_PROFIT_EXIT')
         if self.enable_breakeven and self.be_armed and s.pnl<=0:
-            return ExitDecision('CLOSE','ECONOMIC_BE')
+            return self._close('ECONOMIC_BE')
+
         risk_unit=max(abs(s.mae),1e-12)
-        if self.enable_breakeven and s.pnl>0 and s.mfe/risk_unit>=self.be_arm_mfe_r:
+        just_armed=False
+        if self.enable_breakeven and (not self.be_armed) and s.pnl>0 and s.mfe/risk_unit>=self.be_arm_mfe_r:
             self.be_armed=True
-            return ExitDecision('PROTECT_BE','MFE_BE_ARM',lock_fraction=1.0)
+            just_armed=True
+
         if self.enable_atr_trail and s.pnl>0 and s.atr>0:
-            return ExitDecision('TRAIL','ATR_TRAIL',trail_distance=self.atr_trail_mult*s.atr)
+            trail_distance=self.atr_trail_mult*s.atr
+            if s.mfe-s.pnl>=trail_distance:
+                return self._close('ATR_TRAIL')
+
         if self.enable_time_stop and s.seconds_held>=self.time_stop_seconds:
             if s.mfe/(abs(s.mae)+1e-12)<self.min_progress_ratio:
-                return ExitDecision('CLOSE','TIME_NO_PROGRESS')
+                return self._close('TIME_NO_PROGRESS')
+
+        if just_armed:
+            return ExitDecision('PROTECT_BE','MFE_BE_ARM',lock_fraction=1.0)
         return ExitDecision('HOLD','NO_EXIT')

@@ -13,7 +13,7 @@ raw ticks (not from OHLC resampling). This lets the original BOT logic run on
 GitHub Actions/Linux without MetaTrader5 installed.
 """
 from __future__ import annotations
-import argparse, json, math
+import argparse, json, math, datetime as dt
 from pathlib import Path
 import sys
 import numpy as np
@@ -129,7 +129,8 @@ def metrics(trades: pd.DataFrame, max_dd: float, days: int):
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--start',default='2026-07-27'); ap.add_argument('--days',type=int,default=21); a=ap.parse_args()
-    bdays=core.business_days(a.start,a.days)
+    start=dt.datetime.strptime(a.start,'%Y-%m-%d').date()
+    bdays=core.business_days(start,a.days)
     ticks=core.load_ticks(bdays)
     df=prepare(raw_m1(ticks))
     rows=[]; out=ROOT/'results'/'testbot_native_bridge_21d'; out.mkdir(parents=True,exist_ok=True)

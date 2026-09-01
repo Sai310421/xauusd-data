@@ -2,6 +2,12 @@ name: AMOS Math-ICT XAU Raw Entry Ablation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'research/amos_math_ict_raw6x3_bt.py'
+      - 'research/amos_math_ict_v1_4/**'
+      - '.github/workflows/amos-math-ict-xau-entry-ablation.yml'
   push:
     branches: [amos-math-ict-v1-4-prenautilus]
     paths:

@@ -116,7 +116,7 @@ class AmosMathICTStrategy(Strategy):
         self.last_ict=ict; return EntryContext(ict=ict,ifvg=active_ifvg,bpr=active_bpr,bpr_retested=bpr_retested,bpr_rejected=bpr_rejected)
     def on_bar(self,bar:Bar):
         b={'o':self._f(bar.open),'h':self._f(bar.high),'l':self._f(bar.low),'c':self._f(bar.close),'ts':int(bar.ts_event)}; self.bars.append(b); a=self._atr14(); self.last_atr=a or self.last_atr; ctx=self._detect(b); self._update_swings()
-        if self.entry_px is not None or not self.portfolio.is_net_flat(self.config.instrument_id): return
+        if self.entry_px is not None or self.cache.positions_open(instrument_id=self.config.instrument_id): return
         g=ctx.effective_groups(); v=self.config.entry_variant
         if v=='E00': ctx.ifvg=None; ctx.bpr=None; ctx.bpr_retested=False; ctx.bpr_rejected=False
         elif v=='E01' and not g['ifvg_transition']: return

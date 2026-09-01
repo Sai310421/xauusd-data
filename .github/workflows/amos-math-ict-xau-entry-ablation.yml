@@ -1,0 +1,75 @@
+name: AMOS Math-ICT XAU Raw Entry Ablation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [amos-math-ict-v1-4-prenautilus]
+    paths:
+      - 'research/amos_math_ict_raw6x3_bt.py'
+      - 'research/amos_math_ict_v1_4/**'
+      - '.github/workflows/amos-math-ict-xau-entry-ablation.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+
+jobs:
+  xau-entry-ablation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        entry_variant: [E00, E01, E02, E03, E04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - name: Restore Raw BidAsk catalog
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Raw Catalog Gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.raw-cache.outputs.cache-hit }}" = 'true' || { echo 'RAW_FACTORY_CACHE_MISS'; exit 22; }
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Compile strategy modules
+        run: |
+          python -m py_compile research/amos_math_ict_raw6x3_bt.py research/amos_math_ict_v1_4/*.py
+      - name: Run XAUUSD M1 M5 M15 Raw Tick gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXP="amos-math-ict-${{ matrix.entry_variant }}-X04-${GITHUB_RUN_ID}"
+          python -m research.amos_math_ict_raw6x3_bt \
+            --catalog "$RAW_CATALOG" \
+            --symbols XAUUSD \
+            --timeframes M1 M5 M15 \
+            --experiment-id "$EXP" \
+            --entry-variant "${{ matrix.entry_variant }}" \
+            --exit-variant X04 \
+            --raw-bidask-only
+          echo "EXPERIMENT_ID=$EXP" >> "$GITHUB_ENV"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-math-ict-${{ matrix.entry_variant }}-X04-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: warn
+          retention-days: 90

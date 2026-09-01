@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-# Install Raw QuoteTick catalog API compatibility before importing the runner.
-# NautilusTrader releases expose either query_quote_ticks(...) or quotes(...).
-# This shim preserves Raw Bid/Ask semantics and never falls back to OHLC.
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
+# NautilusTrader catalog reader names differ by release. Preserve Raw QuoteTick
+# semantics and fail closed rather than ever falling back to OHLC/resampled data.
 if not hasattr(ParquetDataCatalog, "query_quote_ticks"):
-    if hasattr(ParquetDataCatalog, "quotes"):
+    if hasattr(ParquetDataCatalog, "quote_ticks"):
+        def _query_quote_ticks(self, identifiers=None, start=None, end=None, **kwargs):
+            return self.quote_ticks(instrument_ids=identifiers, start=start, end=end, **kwargs)
+        ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
+    elif hasattr(ParquetDataCatalog, "quotes"):
         def _query_quote_ticks(self, identifiers=None, start=None, end=None, **kwargs):
             return self.quotes(instrument_ids=identifiers, start=start, end=end, **kwargs)
+        ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
+    elif hasattr(ParquetDataCatalog, "query"):
+        from nautilus_trader.model.data import QuoteTick as _CompatQuoteTick
+        def _query_quote_ticks(self, identifiers=None, start=None, end=None, **kwargs):
+            return self.query(data_cls=_CompatQuoteTick, identifiers=identifiers, start=start, end=end, **kwargs)
         ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
     else:
         raise RuntimeError("No Raw QuoteTick reader found on ParquetDataCatalog")

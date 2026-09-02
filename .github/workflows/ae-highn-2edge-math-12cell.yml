@@ -13,7 +13,7 @@ env:
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  BT_REV: 'event-ledger-v3'
+  BT_REV: 'reject-reason-v4'
 
 jobs:
   cell:
@@ -39,7 +39,7 @@ jobs:
         run: |
           test "${{ steps.raw-cache.outputs.cache-hit }}" = 'true'
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Patch 1.230 API + event ledger + single mode
+      - name: Patch 1.230 API + rejection diagnostics + event ledger + single mode
         env:
           MODE: ${{ matrix.mode }}
         run: |
@@ -49,19 +49,22 @@ jobs:
           p=Path('research/ae_highn_2edge_math_raw6x3_bt.py')
           s=p.read_text()
           s=s.replace('cat.query_quote_ticks(identifiers=[inst.id.value])','cat.quote_ticks(instrument_ids=[inst.id.value])')
-          s=s.replace('self.direction=0; self.entries=0; self.blocked=0; self.actions={}; self.debt=0.', 'self.direction=0; self.entries=0; self.blocked=0; self.actions={}; self.debt=0.; self.trades=[]; self.fills=0; self.rejects=0; self.opened=0; self.closed=0; self.pending=False')
+          s=s.replace('self.direction=0; self.entries=0; self.blocked=0; self.actions={}; self.debt=0.', 'self.direction=0; self.entries=0; self.blocked=0; self.actions={}; self.debt=0.; self.trades=[]; self.fills=0; self.rejects=0; self.opened=0; self.closed=0; self.pending=False; self.reject_reasons={}')
           s=s.replace('if self.portfolio.is_net_flat(self.config.instrument_id):', 'if self.cache.positions_open_count(instrument_id=self.config.instrument_id) == 0 and not self.pending:')
           s=s.replace('self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=side,quantity=q)); self.entries+=1; self.direction=d; return', 'self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=side,quantity=q)); self.entries+=1; self.direction=d; self.pending=True; return')
           s=s.replace(' def on_position_closed(self,e): self.direction=0', ''' def on_order_filled(self,e): self.fills+=1; self.pending=False
-           def on_order_rejected(self,e): self.rejects+=1; self.pending=False
-           def on_order_denied(self,e): self.rejects+=1; self.pending=False
+           def _reject(self,e):
+            self.rejects+=1; self.pending=False
+            r=str(getattr(e,"reason","UNKNOWN")); self.reject_reasons[r]=self.reject_reasons.get(r,0)+1
+           def on_order_rejected(self,e): self._reject(e)
+           def on_order_denied(self,e): self._reject(e)
            def on_order_canceled(self,e): self.pending=False
            def on_position_opened(self,e): self.opened+=1; self.pending=False
            def on_position_closed(self,e):
             self.direction=0; self.closed+=1; self.pending=False
             self.trades.append({"pnl":parse_money(e.realized_pnl),"ts_closed":int(e.ts_closed or e.ts_event)})''')
           old='e.run(); trades=extract(e.generate_positions_report(),sym,tf); m=metr(trades,days=days); m.update({"signals":s.entries,"blocked":s.blocked,"actions":s.actions,"raw_ticks":len(ticks)}); e.dispose(); return trades,m'
-          new='e.run(); trades=[{"symbol":sym,"tf":tf,**x} for x in s.trades]; m=metr(trades,days=days); m.update({"signals":s.entries,"blocked":s.blocked,"fills":s.fills,"rejected":s.rejects,"opened":s.opened,"closed":s.closed,"actions":s.actions,"raw_ticks":len(ticks)}); e.dispose(); return trades,m'
+          new='e.run(); trades=[{"symbol":sym,"tf":tf,**x} for x in s.trades]; m=metr(trades,days=days); m.update({"signals":s.entries,"blocked":s.blocked,"fills":s.fills,"rejected":s.rejects,"reject_reasons":s.reject_reasons,"opened":s.opened,"closed":s.closed,"instrument":{"id":str(inst.id),"size_increment":str(inst.size_increment),"min_quantity":str(inst.min_quantity),"max_quantity":str(inst.max_quantity),"lot_size":str(getattr(inst,"lot_size",None)),"trade_size":str(s.config.trade_size)},"actions":s.actions,"raw_ticks":len(ticks)}); e.dispose(); return trades,m'
           if old not in s: raise SystemExit('run patch target missing')
           s=s.replace(old,new)
           mode=os.environ['MODE']

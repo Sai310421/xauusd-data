@@ -11,8 +11,10 @@ A second engine for XAUUSD Hour CFD QuoteBars on QuantConnect Cloud.
 - Not NautilusTrader
 - Not Dukascopy BI5 QuoteTick
 - Not `NAUTILUS_BT`, `RAW_BIDASK_PASS`, `BROKER_REALITY_BT`, or `VERIFIED`
+- Not the shared `lean_data/` tree (`LEAN_LOCAL_BT` lives there)
 
-Label every QC result exactly `QC_CLOUD_BT`.
+Label every QC Cloud result exactly `QC_CLOUD_BT`.
+Same-source Bid/Ask for Lean local is documented in `docs/SHARED_BIDASK_CATALOG_BRIDGE.md`.
 
 ## Fastest path (no CLI)
 
@@ -36,6 +38,7 @@ Repo: `Sai310421/xauusd-data`
 Actions:
 - `QC Cloud XAUUSD Hour Smoke`
 - `QC Cloud BT Hub`
+- `Shared BidAsk Materialize` (Lean-local tree only)
 
 Secrets (required for CLI cloud run):
 - `QC_USER_ID`
@@ -50,3 +53,4 @@ If secrets are absent the hub still writes an immutable request envelope and fai
 
 `Sai310421/xauusd-data -> Actions -> QC Cloud XAUUSD Hour Smoke`
 `Sai310421/xauusd-data -> Actions -> QC Cloud BT Hub`
+`Sai310421/xauusd-data -> Actions -> Shared BidAsk Materialize`

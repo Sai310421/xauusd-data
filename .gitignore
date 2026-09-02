@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+catalog/
+lean_data/
+results/shared-bidask/

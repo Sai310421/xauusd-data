@@ -6,9 +6,9 @@ from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 import numpy as np,pandas as pd,nautilus_trader
-from nautilus_trader.backtest import BacktestEngine
-from nautilus_trader.common import LogLevel
-from nautilus_trader.config import BacktestEngineConfig,LoggerConfig,RiskEngineConfig
+from nautilus_trader.backtest.engine import BacktestEngine
+from nautilus_trader.backtest.config import BacktestEngineConfig
+from nautilus_trader.config import LoggingConfig,RiskEngineConfig
 from nautilus_trader.model import BarType,Money,Venue
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar,QuoteTick
@@ -106,22 +106,48 @@ class S(Strategy):
   elif mode!="AB100D" and ((self.direction>0 and A.direction<0) or (self.direction<0 and A.direction>0)): self.close_all_positions(self.config.instrument_id)
  def on_position_closed(self,e): self.direction=0
  def on_stop(self): self.close_all_positions(self.config.instrument_id)
-def metr(rep):
- if rep is None or len(rep)==0:return {"N":0,"net":0.,"wr":0.,"pf":0.}
- df=rep.copy(); pc=next((c for c in df.columns if str(c).lower() in ("pnl","realized_pnl","realized pnl")),None)
- if pc is None:return {"N":len(df),"net":None,"wr":None,"pf":None}
- p=pd.to_numeric(df[pc],errors="coerce").fillna(0); w=p[p>0].sum(); l=-p[p<0].sum(); return {"N":int(len(p)),"net":float(p.sum()),"wr":float((p>0).mean()),"pf":float(w/l) if l>0 else (float("inf") if w>0 else 0.)}
-def run(inst,ticks,sym,tf,mode):
- e=BacktestEngine(config=BacktestEngineConfig(trader_id=f"AE-{mode}-{sym}-{tf}",logging=LoggerConfig(stdout_level=LogLevel.ERROR),risk_engine=RiskEngineConfig(bypass=True))); e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000")); e.add_instrument(inst); e.add_data(ticks); bt=BarType.from_str(f"{inst.id.value}-{TF_MIN[tf]}-MINUTE-BID-INTERNAL"); s=S(Cfg(instrument_id=inst.id,bar_type=bt,trade_size=Decimal("1"),tf_minutes=TF_MIN[tf],mode=mode)); e.add_strategy(s); e.run(); m=metr(e.generate_positions_report()); m.update({"signals":s.entries,"blocked":s.blocked,"actions":s.actions,"raw_ticks":len(ticks)}); e.dispose(); return m
+def parse_money(v):
+ if v is None:return 0.
+ if isinstance(v,(float,int,np.number)):return float(v)
+ s=str(v).replace(",","").strip()
+ try:return float(s.split()[0])
+ except Exception:return 0.
+def extract(rep,sym,tf):
+ if rep is None or rep.empty:return []
+ pc=next((c for c in rep.columns if str(c).lower() in ("realized_pnl","pnl","realizedpnl")),None)
+ if pc is None:pc=next((c for c in rep.columns if "pnl" in str(c).lower()),None)
+ tc=next((c for c in rep.columns if "closed" in str(c).lower() and ("ts" in str(c).lower() or "time" in str(c).lower())),None)
+ out=[]
+ for i,row in rep.iterrows():
+  pnl=parse_money(row[pc]) if pc is not None else 0.; ts=row[tc] if tc is not None else i
+  try:ts=pd.Timestamp(ts).value
+  except Exception:
+   try:ts=int(ts)
+   except Exception:ts=len(out)
+  out.append({"symbol":sym,"tf":tf,"pnl":pnl,"ts_closed":int(ts)})
+ return out
+def metr(trades,initial=1000.,days=30):
+ if not trades:return {"N":0,"WR_pct":0.,"PF":0.,"NetProfit":0.,"MaxDD_pct":0.,"RF":0.,"Monthly21_pct":0.,"Expectancy":0.}
+ a=np.array([t["pnl"] for t in trades],float); w=a[a>0]; l=a[a<0]; pf=float(w.sum()/abs(l.sum())) if len(l) and l.sum()!=0 else (float("inf") if len(w) else 0.); eq=initial; peak=initial; mdd=0.
+ for x in a:eq+=x; peak=max(peak,eq); mdd=max(mdd,peak-eq)
+ net=float(a.sum()); mddp=mdd/peak*100 if peak>0 else 0.; monthly=((max(eq,1e-9)/initial)**(21/days)-1)*100
+ return {"N":int(len(a)),"WR_pct":float((a>0).mean()*100),"PF":pf,"NetProfit":net,"MaxDD_pct":float(mddp),"RF":float(net/mdd) if mdd>0 else None,"Monthly21_pct":float(monthly),"Expectancy":float(a.mean())}
+def run(inst,ticks,sym,tf,mode,days):
+ cfg=BacktestEngineConfig(trader_id=f"AE-{mode}-{sym}-{tf}",logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)); e=BacktestEngine(config=cfg); e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000")); e.add_instrument(inst); e.add_data(ticks); bt=BarType.from_str(f"{inst.id.value}-{TF_MIN[tf]}-MINUTE-BID-INTERNAL"); s=S(Cfg(instrument_id=inst.id,bar_type=bt,trade_size=Decimal("1"),tf_minutes=TF_MIN[tf],mode=mode)); e.add_strategy(s); e.run(); trades=extract(e.generate_positions_report(),sym,tf); m=metr(trades,days=days); m.update({"signals":s.entries,"blocked":s.blocked,"actions":s.actions,"raw_ticks":len(ticks)}); e.dispose(); return trades,m
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument("--catalog",required=True); ap.add_argument("--symbols",nargs="+",required=True); ap.add_argument("--timeframes",nargs="+",required=True); ap.add_argument("--experiment-id",required=True); ap.add_argument("--raw-bidask-only",action="store_true"); a=ap.parse_args()
  if not a.raw_bidask_only:raise SystemExit("raw-bidask-only mandatory")
- cp=Path(a.catalog); cat=ParquetDataCatalog(str(cp)); insts={x.id.symbol.value.replace("/",""):x for x in cat.instruments()}; out={"verification_level":"NAUTILUS_BT_RAW_BIDASK","ohlc_resample_used":False,"nautilus_version":getattr(nautilus_trader,"__version__","unknown"),"cells":{}}
+ cp=Path(a.catalog); manifest=json.loads((cp/"catalog_manifest.json").read_text()); days=int(manifest["days"]); cat=ParquetDataCatalog(str(cp)); insts={x.id.symbol.value.replace("/",""):x for x in cat.instruments()}; out={"verification_level":"NAUTILUS_BT_RAW_BIDASK","ohlc_resample_used":False,"nautilus_version":getattr(nautilus_trader,"__version__","unknown"),"dataset_sha256":manifest.get("catalog_sha256"),"period":{"start":manifest.get("start"),"days":days,"end_exclusive":manifest.get("end_exclusive")},"cells":{}}; all_by_mode={m:[] for m in ["A","B","AB","AB100D"]}
  for sym in a.symbols:
   inst=insts.get(sym)
   if inst is None:raise SystemExit(f"instrument missing {sym}")
   ticks=cat.query_quote_ticks(identifiers=[inst.id.value])
+  if not ticks:raise SystemExit(f"no raw QuoteTicks {sym}")
   for tf in a.timeframes:
-   for mode in ["A","B","AB","AB100D"]:out["cells"][f"{sym}:{tf}:{mode}"]=run(inst,ticks,sym,tf,mode)
+   for mode in ["A","B","AB","AB100D"]:
+    tr,m=run(inst,ticks,sym,tf,mode,days); out["cells"][f"{sym}:{tf}:{mode}"]=m; all_by_mode[mode].extend(tr)
+ out["aggregate"]={}
+ for mode,tr in all_by_mode.items():
+  tr.sort(key=lambda x:(x["ts_closed"],x["symbol"],x["tf"])); out["aggregate"][mode]=metr(tr,days=days)
  root=Path("results/ae-bt")/a.experiment_id; root.mkdir(parents=True,exist_ok=True); (root/"summary.json").write_text(json.dumps(out,indent=2)); print(json.dumps(out,indent=2))
 if __name__=="__main__":main()

@@ -1,0 +1,36 @@
+{
+  "version": "QC_CLOUD_BT_STANDARD_v1.0",
+  "engine": "QuantConnect Lean Cloud",
+  "verification_level": "QC_CLOUD_BT",
+  "never_promote_to": ["NAUTILUS_BT", "RAW_BIDASK_PASS", "BROKER_REALITY_BT", "VERIFIED"],
+  "data": {
+    "kind": "QC_CFD_QUOTEBAR",
+    "symbol": "XAUUSD",
+    "security_type": "CFD",
+    "source": "QuantConnect CFD dataset (OANDA-sourced in cloud)",
+    "default_resolution": "Hour",
+    "allowed_resolutions": ["Minute", "Hour", "Daily"],
+    "bid_ask_quote_bars": true,
+    "raw_dukascopy_quotetick": false,
+    "ohlc_mid_only": false
+  },
+  "execution": {
+    "brokerage_model": "OANDA_BROKERAGE",
+    "account_type": "MARGIN",
+    "fill_from": "QuoteBar bid/ask",
+    "native_orders": true
+  },
+  "display": {
+    "initial": 1000,
+    "horizon": "21 business days",
+    "required_kpis": ["N", "WR_pct", "PF", "RF", "NetProfit", "Monthly21_pct", "MaxDD_pct"]
+  },
+  "credentials": {
+    "github_secrets": ["QC_USER_ID", "QC_API_TOKEN"],
+    "fail_closed_if_missing": true
+  },
+  "relation_to_nautilus": {
+    "canonical_nautilus": "docs/MULTI_CHAT_NAUTILUS_BT_PROTOCOL_v1.md",
+    "qc_role": "Second engine / data-source comparison, not a Nautilus substitute"
+  }
+}

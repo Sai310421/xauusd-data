@@ -42,6 +42,8 @@ jobs:
         run: |
           sed -i 's/cat.query_quote_ticks(identifiers=\[inst.id.value\])/cat.quote_ticks(instrument_ids=[inst.id.value])/g' research/ae_highn_2edge_math_raw6x3_bt.py
           sed -i 's/self.portfolio.is_net_flat(self.config.instrument_id)/self.cache.positions_open_count(instrument_id=self.config.instrument_id) == 0/g' research/ae_highn_2edge_math_raw6x3_bt.py
+          sed -i '/from nautilus_trader.trading.strategy import Strategy/a from nautilus_trader.analysis import ReportProvider' research/ae_highn_2edge_math_raw6x3_bt.py
+          sed -i 's/e.generate_positions_report()/ReportProvider.generate_positions_report(positions=e.cache.positions(), snapshots=e.cache.position_snapshots())/g' research/ae_highn_2edge_math_raw6x3_bt.py
       - name: Run cell group
         env:
           TF: ${{ matrix.tf }}

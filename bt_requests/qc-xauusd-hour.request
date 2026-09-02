@@ -1,0 +1,9 @@
+experiment_id: 20260903-0034-qc-grok-bridge
+engine: QuantConnect Lean Cloud
+algorithm: research/qc/xauusd_hour_cloud.py
+symbol: XAUUSD
+security: CFD
+resolution: Hour
+start: 2025-09-01
+end: 2026-08-28
+verification_level: QC_CLOUD_BT

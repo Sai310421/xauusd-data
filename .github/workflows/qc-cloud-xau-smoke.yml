@@ -1,0 +1,43 @@
+name: QC Cloud XAUUSD Hour Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/qc-cloud-xau-smoke.yml'
+      - 'research/qc/xauusd_hour_cloud.py'
+      - 'research/qc/qc_cloud_runner.py'
+      - 'research/qc_bt_standard_config.json'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPERIMENT_ID: qc-smoke-${{ github.run_id }}
+      QC_USER_ID: ${{ secrets.QC_USER_ID }}
+      QC_API_TOKEN: ${{ secrets.QC_API_TOKEN }}
+      SEED: '42'
+      NOTES: 'public QC hour smoke'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate algorithm syntax
+        run: python -m py_compile research/qc/xauusd_hour_cloud.py research/qc/qc_cloud_runner.py
+      - name: Run QC cloud runner (fail-closed without secrets)
+        run: python research/qc/qc_cloud_runner.py
+        continue-on-error: true
+      - name: Upload QC smoke envelope
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qc-cloud-xau-smoke-${{ github.run_id }}
+          path: results/qc-bt/
+          if-no-files-found: error
+          retention-days: 30

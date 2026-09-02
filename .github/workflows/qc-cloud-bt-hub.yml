@@ -1,0 +1,64 @@
+name: QC Cloud BT Hub
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique ID: YYYYMMDD-HHMM-qc-agent-shortid'
+        required: true
+        type: string
+      start_date:
+        description: 'Start date YYYY-MM-DD'
+        required: true
+        default: '2025-09-01'
+        type: string
+      end_date:
+        description: 'End date YYYY-MM-DD'
+        required: true
+        default: '2026-08-28'
+        type: string
+      notes:
+        description: 'Agent/chat notes'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qc-bt-${{ inputs.experiment_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPERIMENT_ID: ${{ inputs.experiment_id }}
+      QC_START: ${{ inputs.start_date }}
+      QC_END: ${{ inputs.end_date }}
+      NOTES: ${{ inputs.notes }}
+      QC_USER_ID: ${{ secrets.QC_USER_ID }}
+      QC_API_TOKEN: ${{ secrets.QC_API_TOKEN }}
+      SEED: '42'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate experiment ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPERIMENT_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'Invalid experiment_id'; exit 2; }
+      - name: Run QC cloud hub
+        run: python research/qc/qc_cloud_runner.py
+      - name: Upload isolated QC artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qc-cloud-${{ inputs.experiment_id }}
+          path: results/qc-bt/${{ inputs.experiment_id }}/
+          if-no-files-found: error
+          retention-days: 90

@@ -8,6 +8,7 @@ on:
       - 'bt_requests/math_edge_mvc.request'
       - 'research/build_raw_bidask_catalog_duka.py'
       - 'research/raw_bidask_catalog_guard.py'
+      - 'research/ensure_raw_bidask_catalog.sh'
       - '.github/workflows/raw-bidask-catalog-factory.yml'
 
 permissions:
@@ -23,6 +24,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
+  RAW_WORKERS: '12'
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   FACTORY_EVIDENCE: results/raw-factory/${{ github.run_id }}
 
@@ -36,6 +38,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Prepare factory evidence
         shell: bash
@@ -47,7 +50,7 @@ jobs:
             "git_sha=${GITHUB_SHA}" \
             "cache_key=${RAW_CACHE_KEY}" \
             "nautilus=${NAUTILUS_VERSION}" > "$FACTORY_EVIDENCE/run_identity.txt"
-          sha256sum research/build_raw_bidask_catalog_duka.py research/raw_bidask_catalog_guard.py > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
+          sha256sum research/build_raw_bidask_catalog_duka.py research/raw_bidask_catalog_guard.py research/ensure_raw_bidask_catalog.sh > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
 
       - name: Install pinned NautilusTrader
         run: |
@@ -61,40 +64,13 @@ jobs:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Validate restored cache
-        if: steps.raw-cache.outputs.cache-hit == 'true'
+      - name: Ensure catalog (hit or bootstrap)
         shell: bash
         run: |
           set -euo pipefail
-          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-          echo 'RAW_FACTORY_CACHE_HIT_VERIFIED=1'
-
-      - name: Build Raw BidAsk catalog once on cold cache
-        if: steps.raw-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          ok=0
-          for attempt in 1 2 3; do
-            echo "RAW_FACTORY_ATTEMPT=$attempt"
-            rm -rf "$RAW_CATALOG"
-            mkdir -p "$RAW_CATALOG"
-            if python research/build_raw_bidask_catalog_duka.py \
-              --start "$RAW_START" \
-              --days "$RAW_DAYS" \
-              --catalog "$RAW_CATALOG" \
-              --workers 32; then
-              if python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then
-                ok=1
-                break
-              fi
-            fi
-            sleep $((attempt * 10))
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo 'RAW_FACTORY_BUILD_FAILED'
-            exit 21
-          fi
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          echo "RAW_FACTORY_CACHE_HIT=${{ steps.raw-cache.outputs.cache-hit }}"
 
       - name: Capture verified catalog evidence
         if: always()

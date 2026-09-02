@@ -1,0 +1,79 @@
+name: Shared BidAsk Materialize
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: UTC start date
+        required: true
+        default: '2026-07-27'
+      days:
+        description: Number of calendar days
+        required: true
+        default: '2'
+      symbols:
+        description: Space-separated symbols
+        required: true
+        default: 'XAUUSD'
+      write_nautilus:
+        description: Also build Nautilus catalog
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-bidask-materialize
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}/research/shared_bidask:${{ github.workspace }}
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Nautilus if requested
+        if: ${{ inputs.write_nautilus }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0'
+
+      - name: Materialize Lean tree from Dukascopy BI5
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra=()
+          if [ "${{ inputs.write_nautilus }}" = "true" ]; then
+            extra+=(--write-nautilus)
+          fi
+          python research/shared_bidask/materialize.py \
+            --start "${{ inputs.start }}" \
+            --days "${{ inputs.days }}" \
+            --symbols ${{ inputs.symbols }} \
+            --lean-root lean_data \
+            --workers 16 \
+            "${extra[@]}"
+
+      - name: Guard Lean artifact
+        run: python research/shared_bidask/guard.py --require-lean
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-bidask-${{ github.run_id }}
+          path: |
+            results/shared-bidask/
+            lean_data/shared_manifest.json
+            lean_data/symbol-properties/
+          if-no-files-found: error
+          retention-days: 30

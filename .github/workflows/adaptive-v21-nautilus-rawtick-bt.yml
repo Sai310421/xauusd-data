@@ -23,69 +23,72 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        run: python -m pip install 'nautilus_trader==1.230.0' pandas pyarrow requests
-      - name: Checkout Dukascopy feed
-        uses: actions/checkout@v4
-        with:
-          repository: Sai310421/xauusd-duka-feed
-          path: duka-feed
-          fetch-depth: 1
-      - name: Restore actual Dukascopy cache key
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            duka-feed/nautilus/cache/duka
-            duka-feed/nautilus/cache/github
-          key: duka-
-          restore-keys: |
-            duka-
-      - name: Hydrate cache when runner has no cross-repository cache
-        working-directory: duka-feed
-        run: |
-          mkdir -p nautilus/cache/duka nautilus/cache/github
-          python3 -u scripts/duka_sync.py
-          find nautilus/cache/duka -type f | head -20 || true
-          du -sh nautilus/cache/duka || true
-      - name: Convert cached raw BID ASK records only
+        run: python -m pip install 'nautilus_trader==1.230.0' requests
+
+      - name: Download and decode genuine Dukascopy XAUUSD ticks
         run: |
           python - <<'PY'
+          import datetime as dt, json, lzma, struct, time
           from pathlib import Path
-          import json, gzip, csv
-          import pandas as pd
-          root=Path('duka-feed/nautilus/cache/duka'); out=Path('data/xauusd_quotes.jsonl'); out.parent.mkdir(parents=True,exist_ok=True)
-          n=0
-          with out.open('w',encoding='utf-8') as w:
-            for p in sorted(root.rglob('*')):
-              if not p.is_file(): continue
-              dfs=[]
+          import requests
+
+          # Dukascopy hourly tick record: ms, ask, bid, askVol, bidVol (20 bytes, big endian).
+          REC=struct.Struct('>IIIff')
+          SCALE=1000.0  # XAUUSD Dukascopy convention
+          HOST='https://datafeed.dukascopy.com/datafeed'
+          out=Path('data/xauusd_quotes.jsonl'); out.parent.mkdir(parents=True,exist_ok=True)
+          # Fast first-pass sample: five recent complete trading days. No OHLC/candles/resampling.
+          days=[dt.date(2026,8,24),dt.date(2026,8,25),dt.date(2026,8,26),dt.date(2026,8,27),dt.date(2026,8,28)]
+          rows=[]; ok_hours=0; bad=0
+          s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
+          for day in days:
+            for hour in range(24):
+              url=f'{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5'
               try:
-                if p.suffix.lower()=='.parquet': dfs=[pd.read_parquet(p)]
-                elif p.suffix.lower()=='.csv': dfs=[pd.read_csv(p)]
-                elif p.name.lower().endswith('.csv.gz'): dfs=[pd.read_csv(p,compression='gzip')]
-              except Exception: continue
-              for df in dfs:
-                cols={str(c).lower():c for c in df.columns}
-                bc=next((cols[x] for x in ('bid','bid_price','bidprice','bid_close') if x in cols),None)
-                ac=next((cols[x] for x in ('ask','ask_price','askprice','ask_close') if x in cols),None)
-                tc=next((cols[x] for x in ('timestamp','ts','time','datetime') if x in cols),None)
-                if bc is None or ac is None: continue
-                for _,r in df.iterrows():
-                  try: bid=float(r[bc]); ask=float(r[ac])
-                  except: continue
-                  if bid<=0 or ask<bid: continue
-                  z={'bid':bid,'ask':ask}
-                  if tc is not None: z['ts']=str(r[tc])
-                  w.write(json.dumps(z,separators=(',',':'))+'\n'); n+=1
-          print('RAW_BID_ASK_ROWS',n)
-          if n<500: raise SystemExit('NO_RAW_BID_ASK_ROWS_AFTER_HYDRATION')
+                r=s.get(url,timeout=20)
+                if r.status_code!=200 or len(r.content)<20:
+                  continue
+                try: blob=lzma.decompress(r.content)
+                except Exception:
+                  bad+=1; continue
+                base=dt.datetime(day.year,day.month,day.day,hour,tzinfo=dt.timezone.utc)
+                local=[]
+                for i in range(0,len(blob)-REC.size+1,REC.size):
+                  ms,ask_raw,bid_raw,ask_vol,bid_vol=REC.unpack_from(blob,i)
+                  ask=ask_raw/SCALE; bid=bid_raw/SCALE
+                  if ms>=3600000 or bid<=0 or ask<bid: continue
+                  ts=base+dt.timedelta(milliseconds=int(ms))
+                  local.append({'ts':ts.isoformat().replace('+00:00','Z'),'bid':bid,'ask':ask,'bid_size':float(bid_vol),'ask_size':float(ask_vol)})
+                if local:
+                  rows.extend(local); ok_hours+=1
+              except Exception:
+                bad+=1
+              time.sleep(0.02)
+          rows.sort(key=lambda x:x['ts'])
+          # Deduplicate exact quote events only; preserve genuine tick sequence.
+          seen=set(); clean=[]
+          for z in rows:
+            k=(z['ts'],z['bid'],z['ask'],z['bid_size'],z['ask_size'])
+            if k in seen: continue
+            seen.add(k); clean.append(z)
+          with out.open('w',encoding='utf-8') as f:
+            for z in clean: f.write(json.dumps(z,separators=(',',':'))+'\n')
+          print('RAW_TICK_HOURS',ok_hours,'RAW_TICK_ROWS',len(clean),'DECODE_ERRORS',bad)
+          if len(clean)<10000: raise SystemExit('INSUFFICIENT_GENUINE_RAW_TICKS')
           PY
+
       - name: Run v2.1 raw Bid Ask BT
         env:
           RESULT_DIR: results/adaptive-v21
         run: python research/adaptive_v21_nautilus_bt.py
+
       - name: Print KPI
         if: always()
-        run: cat results/adaptive-v21/summary.json 2>/dev/null || true
+        run: |
+          echo '=== KPI ==='
+          cat results/adaptive-v21/summary.json 2>/dev/null || true
+          find results/adaptive-v21 -maxdepth 1 -type f -print || true
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4

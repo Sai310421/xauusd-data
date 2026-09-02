@@ -10,104 +10,82 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONUNBUFFERED: '1'
+
 jobs:
   rawtick-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install pinned NautilusTrader
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install 'nautilus_trader==1.230.0' pandas pyarrow
-          python - <<'PY'
-          import nautilus_trader
-          print('nautilus_trader', nautilus_trader.__version__)
-          PY
-
-      - name: Checkout Dukascopy raw feed cache source
+      - name: Install dependencies
+        run: python -m pip install 'nautilus_trader==1.230.0' pandas pyarrow requests
+      - name: Checkout Dukascopy feed
         uses: actions/checkout@v4
         with:
           repository: Sai310421/xauusd-duka-feed
           path: duka-feed
           fetch-depth: 1
-
-      - name: Restore Dukascopy raw BID ASK cache
+      - name: Restore actual Dukascopy cache key
         uses: actions/cache/restore@v4
         with:
-          path: duka-feed/nautilus/cache/duka
-          key: duka-cache-${{ runner.os }}-
+          path: |
+            duka-feed/nautilus/cache/duka
+            duka-feed/nautilus/cache/github
+          key: duka-
           restore-keys: |
-            duka-cache-${{ runner.os }}-
-
-      - name: Build raw Bid Ask JSONL directly from Dukascopy cache
+            duka-
+      - name: Hydrate cache when runner has no cross-repository cache
+        working-directory: duka-feed
+        run: |
+          mkdir -p nautilus/cache/duka nautilus/cache/github
+          python3 -u scripts/duka_sync.py
+          find nautilus/cache/duka -type f | head -20 || true
+          du -sh nautilus/cache/duka || true
+      - name: Convert cached raw BID ASK records only
         run: |
           python - <<'PY'
           from pathlib import Path
-          import json
+          import json, gzip, csv
           import pandas as pd
-
-          root = Path('duka-feed/nautilus/cache/duka')
-          out = Path('data/xauusd_quotes.jsonl')
-          out.parent.mkdir(parents=True, exist_ok=True)
-          files = sorted(root.rglob('*')) if root.exists() else []
-          print('cache root exists:', root.exists(), 'files:', len(files))
-          rows = []
-          for p in files:
-              if not p.is_file():
-                  continue
+          root=Path('duka-feed/nautilus/cache/duka'); out=Path('data/xauusd_quotes.jsonl'); out.parent.mkdir(parents=True,exist_ok=True)
+          n=0
+          with out.open('w',encoding='utf-8') as w:
+            for p in sorted(root.rglob('*')):
+              if not p.is_file(): continue
+              dfs=[]
               try:
-                  if p.suffix.lower() == '.parquet':
-                      df = pd.read_parquet(p)
-                  elif p.suffix.lower() in {'.csv', '.gz'}:
-                      df = pd.read_csv(p)
-                  else:
-                      continue
-              except Exception:
-                  continue
-              cols = {str(c).lower(): c for c in df.columns}
-              bidc = next((cols[k] for k in ('bid','bid_price','bidprice') if k in cols), None)
-              askc = next((cols[k] for k in ('ask','ask_price','askprice') if k in cols), None)
-              tc = next((cols[k] for k in ('timestamp','ts','time','datetime') if k in cols), None)
-              if bidc is None or askc is None:
-                  continue
-              for _, r in df.iterrows():
-                  try:
-                      bid=float(r[bidc]); ask=float(r[askc])
-                  except Exception:
-                      continue
-                  if ask < bid or bid <= 0:
-                      continue
-                  rec={'bid':bid,'ask':ask}
-                  if tc is not None:
-                      rec['ts']=str(r[tc])
-                  rows.append(rec)
-          with out.open('w', encoding='utf-8') as f:
-              for r in rows:
-                  f.write(json.dumps(r, separators=(',',':'))+'\n')
-          print('raw bid/ask rows:', len(rows), 'output:', out)
-          if len(rows) < 500:
-              raise SystemExit('RAW_CACHE_NOT_AVAILABLE_OR_UNSUPPORTED_FORMAT')
+                if p.suffix.lower()=='.parquet': dfs=[pd.read_parquet(p)]
+                elif p.suffix.lower()=='.csv': dfs=[pd.read_csv(p)]
+                elif p.name.lower().endswith('.csv.gz'): dfs=[pd.read_csv(p,compression='gzip')]
+              except Exception: continue
+              for df in dfs:
+                cols={str(c).lower():c for c in df.columns}
+                bc=next((cols[x] for x in ('bid','bid_price','bidprice','bid_close') if x in cols),None)
+                ac=next((cols[x] for x in ('ask','ask_price','askprice','ask_close') if x in cols),None)
+                tc=next((cols[x] for x in ('timestamp','ts','time','datetime') if x in cols),None)
+                if bc is None or ac is None: continue
+                for _,r in df.iterrows():
+                  try: bid=float(r[bc]); ask=float(r[ac])
+                  except: continue
+                  if bid<=0 or ask<bid: continue
+                  z={'bid':bid,'ask':ask}
+                  if tc is not None: z['ts']=str(r[tc])
+                  w.write(json.dumps(z,separators=(',',':'))+'\n'); n+=1
+          print('RAW_BID_ASK_ROWS',n)
+          if n<500: raise SystemExit('NO_RAW_BID_ASK_ROWS_AFTER_HYDRATION')
           PY
-
-      - name: Run v2.1 raw Bid Ask execution gate
+      - name: Run v2.1 raw Bid Ask BT
         env:
           RESULT_DIR: results/adaptive-v21
         run: python research/adaptive_v21_nautilus_bt.py
-
-      - name: Print evidence
+      - name: Print KPI
         if: always()
-        run: |
-          find results/adaptive-v21 -maxdepth 2 -type f -print || true
-          for f in results/adaptive-v21/*.json; do
-            [ -f "$f" ] && { echo "==== $f ===="; cat "$f"; }
-          done
-
+        run: cat results/adaptive-v21/summary.json 2>/dev/null || true
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4

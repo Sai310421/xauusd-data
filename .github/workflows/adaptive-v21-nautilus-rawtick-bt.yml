@@ -53,3 +53,5 @@ jobs:
           path: results/adaptive-v21/
           if-no-files-found: error
           retention-days: 90
+
+# trigger: 2026-09-02T20:00+09:00

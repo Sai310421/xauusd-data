@@ -15,6 +15,7 @@ on:
       - 'research/math_edge_mvc_raw6x3_bt.py'
       - 'research/math_edge_candidates.py'
       - 'research/math_edge_ab_gate.py'
+      - 'research/ensure_raw_bidask_catalog.sh'
       - '.github/workflows/math-edge-mvc-raw6x3.yml'
 
 permissions:
@@ -26,6 +27,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
+  RAW_WORKERS: '12'
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('math-edge-mvc-{0}', github.run_id) }}
 
@@ -42,6 +44,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Prepare immutable evidence
         shell: bash
@@ -67,17 +70,22 @@ jobs:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Require factory-produced Raw BidAsk catalog
+      - name: Ensure Raw BidAsk catalog (restore or bootstrap)
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != 'true' ]; then
-            echo 'RAW_FACTORY_CACHE_MISS: run Raw BidAsk Catalog Factory first'
-            exit 22
-          fi
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
           cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
           find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
+
+      - name: Save catalog cache after bootstrap
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Run BASE vs MVC proxy on identical raw quotes
         shell: bash

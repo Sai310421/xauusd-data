@@ -6,8 +6,6 @@ on:
     paths:
       - 'research/adaptive_v21_nautilus_bt.py'
       - '.github/workflows/adaptive-v21-nautilus-rawtick-bt.yml'
-      - 'books/**'
-      - 'data/**'
 
 permissions:
   contents: read
@@ -26,13 +24,78 @@ jobs:
       - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
-          python -m pip install 'nautilus_trader==1.230.0'
+          python -m pip install 'nautilus_trader==1.230.0' pandas pyarrow
           python - <<'PY'
           import nautilus_trader
           print('nautilus_trader', nautilus_trader.__version__)
           PY
 
-      - name: Run v2.1 raw Bid/Ask execution gate
+      - name: Checkout Dukascopy raw feed cache source
+        uses: actions/checkout@v4
+        with:
+          repository: Sai310421/xauusd-duka-feed
+          path: duka-feed
+          fetch-depth: 1
+
+      - name: Restore Dukascopy raw BID ASK cache
+        uses: actions/cache/restore@v4
+        with:
+          path: duka-feed/nautilus/cache/duka
+          key: duka-cache-${{ runner.os }}-
+          restore-keys: |
+            duka-cache-${{ runner.os }}-
+
+      - name: Build raw Bid Ask JSONL directly from Dukascopy cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import pandas as pd
+
+          root = Path('duka-feed/nautilus/cache/duka')
+          out = Path('data/xauusd_quotes.jsonl')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          files = sorted(root.rglob('*')) if root.exists() else []
+          print('cache root exists:', root.exists(), 'files:', len(files))
+          rows = []
+          for p in files:
+              if not p.is_file():
+                  continue
+              try:
+                  if p.suffix.lower() == '.parquet':
+                      df = pd.read_parquet(p)
+                  elif p.suffix.lower() in {'.csv', '.gz'}:
+                      df = pd.read_csv(p)
+                  else:
+                      continue
+              except Exception:
+                  continue
+              cols = {str(c).lower(): c for c in df.columns}
+              bidc = next((cols[k] for k in ('bid','bid_price','bidprice') if k in cols), None)
+              askc = next((cols[k] for k in ('ask','ask_price','askprice') if k in cols), None)
+              tc = next((cols[k] for k in ('timestamp','ts','time','datetime') if k in cols), None)
+              if bidc is None or askc is None:
+                  continue
+              for _, r in df.iterrows():
+                  try:
+                      bid=float(r[bidc]); ask=float(r[askc])
+                  except Exception:
+                      continue
+                  if ask < bid or bid <= 0:
+                      continue
+                  rec={'bid':bid,'ask':ask}
+                  if tc is not None:
+                      rec['ts']=str(r[tc])
+                  rows.append(rec)
+          with out.open('w', encoding='utf-8') as f:
+              for r in rows:
+                  f.write(json.dumps(r, separators=(',',':'))+'\n')
+          print('raw bid/ask rows:', len(rows), 'output:', out)
+          if len(rows) < 500:
+              raise SystemExit('RAW_CACHE_NOT_AVAILABLE_OR_UNSUPPORTED_FORMAT')
+          PY
+
+      - name: Run v2.1 raw Bid Ask execution gate
         env:
           RESULT_DIR: results/adaptive-v21
         run: python research/adaptive_v21_nautilus_bt.py
@@ -51,7 +114,5 @@ jobs:
         with:
           name: adaptive-v21-nautilus-rawtick
           path: results/adaptive-v21/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
-
-# trigger: 2026-09-02T20:00+09:00

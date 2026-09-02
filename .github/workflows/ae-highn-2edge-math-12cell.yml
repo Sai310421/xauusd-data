@@ -13,7 +13,7 @@ env:
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  BT_REV: 'reject-reason-v4'
+  BT_REV: 'l1-market-v5'
 
 jobs:
   cell:
@@ -39,7 +39,7 @@ jobs:
         run: |
           test "${{ steps.raw-cache.outputs.cache-hit }}" = 'true'
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Patch 1.230 API + rejection diagnostics + event ledger + single mode
+      - name: Patch 1.230 API + L1 market + rejection diagnostics + event ledger + single mode
         env:
           MODE: ${{ matrix.mode }}
         run: |
@@ -48,7 +48,9 @@ jobs:
           from pathlib import Path
           p=Path('research/ae_highn_2edge_math_raw6x3_bt.py')
           s=p.read_text()
+          s=s.replace('from nautilus_trader.model.enums import AccountType,OmsType,OrderSide','from nautilus_trader.model.enums import AccountType,BookType,OmsType,OrderSide')
           s=s.replace('cat.query_quote_ticks(identifiers=[inst.id.value])','cat.quote_ticks(instrument_ids=[inst.id.value])')
+          s=s.replace('e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"))','e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"))')
           s=s.replace('self.direction=0; self.entries=0; self.blocked=0; self.actions={}; self.debt=0.', 'self.direction=0; self.entries=0; self.blocked=0; self.actions={}; self.debt=0.; self.trades=[]; self.fills=0; self.rejects=0; self.opened=0; self.closed=0; self.pending=False; self.reject_reasons={}')
           s=s.replace('if self.portfolio.is_net_flat(self.config.instrument_id):', 'if self.cache.positions_open_count(instrument_id=self.config.instrument_id) == 0 and not self.pending:')
           s=s.replace('self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=side,quantity=q)); self.entries+=1; self.direction=d; return', 'self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=side,quantity=q)); self.entries+=1; self.direction=d; self.pending=True; return')

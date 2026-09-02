@@ -23,6 +23,7 @@ on:
       - 'research/minimumspike_raw6x3_bt.py'
       - 'research/minimumspike_raw6x3_bt_compat.py'
       - 'research/select_top_cells.py'
+      - 'research/ensure_raw_bidask_catalog.sh'
       - '.github/workflows/nautilus-6symbol-3tf-raw-bidask.yml'
 
 permissions:
@@ -34,6 +35,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
+  RAW_WORKERS: '12'
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('raw6x3-{0}', github.run_id) }}
   RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt_compat' }}
@@ -43,7 +45,7 @@ jobs:
   raw-6x3-bt:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +54,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Prepare immutable evidence directory
         shell: bash
@@ -82,17 +85,22 @@ jobs:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Require factory-produced Raw BidAsk catalog
+      - name: Ensure Raw BidAsk catalog (restore or bootstrap)
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != 'true' ]; then
-            echo 'RAW_FACTORY_CACHE_MISS: run Raw BidAsk Catalog Factory first'
-            exit 22
-          fi
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
           cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
           find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
+
+      - name: Save catalog cache after bootstrap
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Run 6 symbols x 3 TF screening with Nautilus BacktestEngine
         shell: bash

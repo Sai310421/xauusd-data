@@ -7,6 +7,7 @@ import json
 import lzma
 import shutil
 import struct
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,7 +22,7 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
 
 REC = struct.Struct('>3i2f')
-HEADERS = {'User-Agent': 'raw6x3-nautilus/1.1', 'Accept': '*/*', 'Connection': 'close'}
+HEADERS = {'User-Agent': 'raw6x3-nautilus/1.2', 'Accept': '*/*', 'Connection': 'close'}
 SIM = Venue('SIM')
 
 SYMBOLS = {
@@ -63,28 +64,36 @@ def fetch_hour(symbol: str, scale: float, t: dt.datetime):
         f'https://www.dukascopy.com/datafeed/{symbol}/{t.year}/{t.month-1:02d}/{t.day:02d}/{t.hour:02d}h_ticks.bi5',
     ]
     last = None
-    for url in urls:
-        try:
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=20) as r:
-                raw = r.read()
-            if not raw:
-                continue
-            dec = lzma.decompress(raw)
-            rows = []
-            for i in range(0, len(dec) - REC.size + 1, REC.size):
-                ms, ask_i, bid_i, ask_v, bid_v = REC.unpack_from(dec, i)
-                ts = t + dt.timedelta(milliseconds=ms)
-                ask = ask_i / scale
-                bid = bid_i / scale
-                if ask <= 0 or bid <= 0 or ask < bid:
+    for attempt, delay in enumerate((0.0, 2.0, 6.0, 14.0)):
+        if delay:
+            time.sleep(delay)
+        for url in urls:
+            try:
+                req = urllib.request.Request(url, headers=HEADERS)
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    raw = r.read()
+                if not raw:
+                    last = 204
                     continue
-                rows.append((ts, bid, ask, float(bid_v), float(ask_v)))
-            return rows, 200
-        except urllib.error.HTTPError as e:
-            last = e.code
-        except Exception:
-            last = -1
+                dec = lzma.decompress(raw)
+                rows = []
+                for i in range(0, len(dec) - REC.size + 1, REC.size):
+                    ms, ask_i, bid_i, ask_v, bid_v = REC.unpack_from(dec, i)
+                    ts = t + dt.timedelta(milliseconds=ms)
+                    ask = ask_i / scale
+                    bid = bid_i / scale
+                    if ask <= 0 or bid <= 0 or ask < bid:
+                        continue
+                    rows.append((ts, bid, ask, float(bid_v), float(ask_v)))
+                return rows, 200
+            except urllib.error.HTTPError as e:
+                last = e.code
+                if e.code == 404:
+                    return [], 404
+                if e.code not in (429, 500, 502, 503, 504):
+                    break
+            except Exception:
+                last = -1
     return [], last
 
 
@@ -100,12 +109,19 @@ def sha256_tree(root: Path) -> str:
     return h.hexdigest()
 
 
+def drop_symbol_parquet(catalog_path: Path, symbol: str) -> None:
+    needle = f'{symbol}.SIM'.lower()
+    for p in catalog_path.rglob('*'):
+        if p.is_dir() and p.name.lower() == needle:
+            shutil.rmtree(p, ignore_errors=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument('--start', default='2026-07-27')
     ap.add_argument('--days', type=int, default=30)
     ap.add_argument('--catalog', default='catalog/raw_bidask')
-    ap.add_argument('--workers', type=int, default=32)
+    ap.add_argument('--workers', type=int, default=12)
     ap.add_argument('--symbols', nargs='+', default=list(SYMBOLS))
     ap.add_argument('--fresh', action='store_true')
     args = ap.parse_args()
@@ -126,7 +142,7 @@ def main() -> None:
         shutil.rmtree(catalog_path)
     catalog_path.mkdir(parents=True, exist_ok=True)
 
-    if manifest_path.exists():
+    if manifest_path.exists() and not args.fresh:
         m = json.loads(manifest_path.read_text(encoding='utf-8'))
         if (
             m.get('status') == 'COMPLETE'
@@ -137,7 +153,7 @@ def main() -> None:
             print(json.dumps({'status': 'CATALOG_CACHE_HIT', 'manifest': m}, indent=2))
             return
 
-    catalog = ParquetDataCatalog(str(catalog_path))
+    catalog = ParquetDataCatalog(str(catalog_path.resolve()))
     instruments = {symbol: make_instrument(symbol, SYMBOLS[symbol]) for symbol in selected}
     catalog.write_data(list(instruments.values()))
 
@@ -149,17 +165,19 @@ def main() -> None:
         total_ticks = 0
         status_counts = {}
         written_days = 0
+        empty_days = 0
 
         for day in iter_days(start, args.days):
             hours = [day.replace(hour=h) for h in range(24)]
             rows = []
-            with ThreadPoolExecutor(max_workers=args.workers) as ex:
+            with ThreadPoolExecutor(max_workers=max(1, args.workers)) as ex:
                 futs = {ex.submit(fetch_hour, symbol, meta['scale'], h): h for h in hours}
                 for fut in as_completed(futs):
                     r, status = fut.result()
                     rows.extend(r)
                     status_counts[str(status)] = status_counts.get(str(status), 0) + 1
             if not rows:
+                empty_days += 1
                 continue
             rows.sort(key=lambda x: x[0])
             df = pd.DataFrame(rows, columns=['datetime', 'bid_price', 'ask_price', 'bid_size', 'ask_size'])
@@ -174,6 +192,7 @@ def main() -> None:
             'instrument_id': instrument.id.value,
             'ticks': total_ticks,
             'written_days': written_days,
+            'empty_days': empty_days,
             'http_status_counts': status_counts,
         }
 
@@ -192,6 +211,7 @@ def main() -> None:
         'bar_policy': 'Nautilus INTERNAL bars built directly from raw QuoteTick stream; execution remains QuoteTick based',
         'instrument_provider': 'public-model CurrencyPair constructor; no nautilus_trader.testkit dependency',
         'catalog_write_api': 'ParquetDataCatalog.write_data',
+        'fetch_policy': '404 empty-hour skip; 429/5xx backoff; workers default 12',
         'stats': stats,
         'missing_symbols': missing,
     }

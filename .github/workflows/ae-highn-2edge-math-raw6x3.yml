@@ -48,6 +48,9 @@ jobs:
           if [ "${{ steps.raw-cache.outputs.cache-hit }}" != 'true' ]; then echo 'RAW_FACTORY_CACHE_MISS'; exit 22; fi
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
           cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
+      - name: Nautilus 1.230 catalog compatibility
+        run: |
+          sed -i 's/cat.query_quote_ticks(identifiers=\[inst.id.value\])/cat.quote_ticks(instrument_ids=[inst.id.value])/g' research/ae_highn_2edge_math_raw6x3_bt.py
       - name: Run XAUUSD M1 M5 M15 A B AB AB100D
         run: |
           python research/ae_highn_2edge_math_raw6x3_bt.py \

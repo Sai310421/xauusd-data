@@ -1,0 +1,33 @@
+{
+  "version": "SHARED_BIDASK_v1.0",
+  "source": "Dukascopy BI5 QuoteTick Bid/Ask",
+  "data_kind": "RAW_BIDASK",
+  "ohlc_resample_used": false,
+  "primary_fetch": "research/shared_bidask/source.py",
+  "materialize": "research/shared_bidask/materialize.py",
+  "artifacts": {
+    "nautilus_catalog": {
+      "path": "catalog/raw_bidask",
+      "engine": "NautilusTrader",
+      "verification_level": "NAUTILUS_BT",
+      "builder": "research/build_raw_bidask_catalog_duka.py"
+    },
+    "lean_data": {
+      "path": "lean_data",
+      "engine": "QuantConnect Lean local",
+      "verification_level": "LEAN_LOCAL_BT",
+      "tick_layout": "{securityType}/{market}/tick/{ticker}/{yyyyMMdd}_quote.zip",
+      "hour_layout": "{securityType}/{market}/hour/{ticker}.zip",
+      "xauusd_security_type": "cfd",
+      "fx_security_type": "forex",
+      "market": "dukascopy"
+    },
+    "qc_cloud": {
+      "path": null,
+      "engine": "QuantConnect Cloud",
+      "verification_level": "QC_CLOUD_BT",
+      "note": "Cannot mount ParquetDataCatalog or lean_data. Official CFD only."
+    }
+  },
+  "never_mix_labels": true
+}

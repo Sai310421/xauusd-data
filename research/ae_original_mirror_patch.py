@@ -37,6 +37,14 @@ new='e.run(); trades=[{"symbol":sym,"tf":tf,**x} for x in s.trades]; m=metr(trad
 if old not in s: raise SystemExit('metrics target missing')
 s=s.replace(old,new)
 
+# One Nautilus engine per Python process to avoid global Rust logger reinitialization panic.
+needle='ap.add_argument("--experiment-id",required=True); ap.add_argument("--raw-bidask-only",action="store_true"); a=ap.parse_args()'
+repl='ap.add_argument("--experiment-id",required=True); ap.add_argument("--mode",choices=["A","B","AB","AB100D"],required=True); ap.add_argument("--raw-bidask-only",action="store_true"); a=ap.parse_args()'
+if needle not in s: raise SystemExit('argparse target missing')
+s=s.replace(needle,repl)
+s=s.replace('all_by_mode={m:[] for m in ["A","B","AB","AB100D"]}', 'all_by_mode={a.mode:[]}')
+s=s.replace('for mode in ["A","B","AB","AB100D"]:', 'for mode in [a.mode]:')
+
 p.write_text(s)
 compile(s,str(p),'exec')
 print('AE_ORIGINAL_MIRROR_PATCH_OK')

@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-DEFAULT_SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF"]
+DEFAULT_SYMBOLS = ["XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "EURJPY", "GBPJPY", "AUDJPY", "XAGUSD"]
 TFS = ["M1", "M5", "M15"]
 
 

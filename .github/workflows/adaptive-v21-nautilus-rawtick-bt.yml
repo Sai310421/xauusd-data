@@ -1,12 +1,12 @@
-name: Adaptive v2.2 Fib ICT Raw Tick Reconstruction Gate
+name: Adaptive v2.2 Fib ICT Raw Tick Execution Gate
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'research/adaptive_v21_nautilus_bt.py'
       - 'research/fib_ict_source_of_truth_v22.py'
       - 'research/fib_ict_rawtick_detectors_v22.py'
+      - 'research/a0_rawtick_execution_bt_v22.py'
       - '.github/workflows/adaptive-v21-nautilus-rawtick-bt.yml'
 
 permissions:
@@ -16,7 +16,7 @@ env:
   PYTHONUNBUFFERED: '1'
 
 jobs:
-  source-fidelity-gate:
+  a0-rawtick-kpi:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -26,77 +26,54 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: python -m pip install 'nautilus_trader==1.230.0' requests
-
-      - name: Source-of-truth invariants
-        run: python research/fib_ict_source_of_truth_v22.py
-
-      - name: Raw-tick detector invariants
-        run: python research/fib_ict_rawtick_detectors_v22.py
-
-      - name: Reconstruction profitability lock
-        run: python research/adaptive_v21_nautilus_bt.py
-
-      - name: Download and validate genuine Dukascopy XAUUSD QuoteTicks
+      - name: Source invariants
+        run: |
+          python research/fib_ict_source_of_truth_v22.py
+          python research/fib_ict_rawtick_detectors_v22.py
+      - name: Download genuine Dukascopy XAUUSD QuoteTicks
         run: |
           python - <<'PY'
-          import datetime as dt, json, lzma, struct, time
+          import datetime as dt,json,lzma,struct,time
           from pathlib import Path
           import requests
-          REC=struct.Struct('>IIIff')
-          SCALE=1000.0
-          HOST='https://datafeed.dukascopy.com/datafeed'
+          REC=struct.Struct('>IIIff'); SCALE=1000.; HOST='https://datafeed.dukascopy.com/datafeed'
           out=Path('data/xauusd_quotes.jsonl'); out.parent.mkdir(parents=True,exist_ok=True)
           days=[dt.date(2026,8,24),dt.date(2026,8,25),dt.date(2026,8,26),dt.date(2026,8,27),dt.date(2026,8,28)]
-          rows=[]; ok_hours=0; bad=0
-          s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
+          rows=[]; ok=0; bad=0; s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
           for day in days:
             for hour in range(24):
-              url=f'{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5'
               try:
-                r=s.get(url,timeout=20)
+                r=s.get(f'{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5',timeout=20)
                 if r.status_code!=200 or len(r.content)<20: continue
-                try: blob=lzma.decompress(r.content)
-                except Exception: bad+=1; continue
-                base=dt.datetime(day.year,day.month,day.day,hour,tzinfo=dt.timezone.utc)
-                local=[]
+                blob=lzma.decompress(r.content); base=dt.datetime(day.year,day.month,day.day,hour,tzinfo=dt.timezone.utc); local=[]
                 for i in range(0,len(blob)-REC.size+1,REC.size):
-                  ms,ask_raw,bid_raw,ask_vol,bid_vol=REC.unpack_from(blob,i)
-                  ask=ask_raw/SCALE; bid=bid_raw/SCALE
+                  ms,ar,br,av,bv=REC.unpack_from(blob,i); ask=ar/SCALE; bid=br/SCALE
                   if ms>=3600000 or bid<=0 or ask<bid: continue
-                  ts=base+dt.timedelta(milliseconds=int(ms))
-                  local.append({'ts':ts.isoformat().replace('+00:00','Z'),'bid':bid,'ask':ask,'bid_size':float(bid_vol),'ask_size':float(ask_vol)})
-                if local: rows.extend(local); ok_hours+=1
+                  ts=base+dt.timedelta(milliseconds=int(ms)); local.append({'ts':ts.isoformat().replace('+00:00','Z'),'bid':bid,'ask':ask,'bid_size':float(bv),'ask_size':float(av)})
+                if local: rows.extend(local); ok+=1
               except Exception: bad+=1
-              time.sleep(0.02)
-          rows.sort(key=lambda x:x['ts'])
-          seen=set(); clean=[]
+              time.sleep(.02)
+          rows.sort(key=lambda x:x['ts']); seen=set(); clean=[]
           for z in rows:
             k=(z['ts'],z['bid'],z['ask'],z['bid_size'],z['ask_size'])
-            if k in seen: continue
-            seen.add(k); clean.append(z)
+            if k not in seen: seen.add(k); clean.append(z)
           with out.open('w',encoding='utf-8') as f:
             for z in clean: f.write(json.dumps(z,separators=(',',':'))+'\n')
-          print('RAW_TICK_HOURS',ok_hours,'RAW_TICK_ROWS',len(clean),'DECODE_ERRORS',bad)
+          print('RAW_TICK_HOURS',ok,'RAW_TICK_ROWS',len(clean),'DECODE_ERRORS',bad)
           if len(clean)<10000: raise SystemExit('INSUFFICIENT_GENUINE_RAW_TICKS')
           PY
-
-      - name: Parse detector against real QuoteTicks without profitability claims
-        run: |
-          python - <<'PY'
-          import json
-          from datetime import datetime
-          from research.fib_ict_rawtick_detectors_v22 import Quote, RawTickConfig, detect_a0
-          qs=[]
-          with open('data/xauusd_quotes.jsonl',encoding='utf-8') as f:
-            for line in f:
-              z=json.loads(line)
-              qs.append(Quote(datetime.fromisoformat(z['ts'].replace('Z','+00:00')).timestamp(),float(z['bid']),float(z['ask'])))
-          # Explicit raw-event translation parameters; these are diagnostic, not optimized KPI settings.
-          cfg=RawTickConfig(liquidity_lookback_sec=300,structure_lookback_sec=180,reclaim_deadline_sec=60,displacement_window_sec=60)
-          setups=detect_a0(qs,cfg)
-          print('A0_RAWTICK_SETUPS',len(setups))
-          for x in setups[:5]:
-            print(x.side,x.confirmed_at,x.liquidity,x.sweep_extreme,x.mss_level,x.ote_zone,x.ote_primary,[e.name for e in x.audit])
-          if not setups:
-            raise SystemExit('A0_DETECTOR_REPRODUCED_ZERO_SETUPS_REQUIRES_FIX')
-          PY
+      - name: Run A0 executable-side raw tick KPI
+        env:
+          RESULT_DIR: results/a0-v22
+        run: python research/a0_rawtick_execution_bt_v22.py
+      - name: Print KPI
+        if: always()
+        run: cat results/a0-v22/summary.json 2>/dev/null || true
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a0-v22-rawtick-kpi
+          path: results/a0-v22/
+          if-no-files-found: warn
+          retention-days: 90

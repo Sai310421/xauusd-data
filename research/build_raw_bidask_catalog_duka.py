@@ -21,7 +21,7 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
 
 REC = struct.Struct('>3i2f')
-HEADERS = {'User-Agent': 'raw6x3-nautilus/1.1', 'Accept': '*/*', 'Connection': 'close'}
+HEADERS = {'User-Agent': 'raw10-nautilus/1.0', 'Accept': '*/*', 'Connection': 'close'}
 SIM = Venue('SIM')
 
 SYMBOLS = {
@@ -31,6 +31,10 @@ SYMBOLS = {
     'USDJPY': {'pair': 'USD/JPY', 'scale': 1000.0, 'price_precision': 3},
     'AUDUSD': {'pair': 'AUD/USD', 'scale': 100000.0, 'price_precision': 5},
     'USDCHF': {'pair': 'USD/CHF', 'scale': 100000.0, 'price_precision': 5},
+    'EURJPY': {'pair': 'EUR/JPY', 'scale': 1000.0, 'price_precision': 3},
+    'GBPJPY': {'pair': 'GBP/JPY', 'scale': 1000.0, 'price_precision': 3},
+    'AUDJPY': {'pair': 'AUD/JPY', 'scale': 1000.0, 'price_precision': 3},
+    'XAGUSD': {'pair': 'XAG/USD', 'scale': 1000.0, 'price_precision': 3},
 }
 
 

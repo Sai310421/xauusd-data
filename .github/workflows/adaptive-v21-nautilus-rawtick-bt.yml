@@ -30,29 +30,53 @@ jobs:
         run: |
           python research/fib_ict_source_of_truth_v22.py
           python research/fib_ict_rawtick_detectors_v22.py
-      - name: Download genuine Dukascopy XAUUSD QuoteTicks
+      - name: Download genuine Dukascopy XAUUSD QuoteTicks with retry
         run: |
           python - <<'PY'
-          import datetime as dt,json,lzma,struct,time
+          import datetime as dt,json,lzma,struct,time,random
           from pathlib import Path
           import requests
           REC=struct.Struct('>IIIff'); SCALE=1000.; HOST='https://datafeed.dukascopy.com/datafeed'
           out=Path('data/xauusd_quotes.jsonl'); out.parent.mkdir(parents=True,exist_ok=True)
-          days=[dt.date(2026,8,24),dt.date(2026,8,25),dt.date(2026,8,26),dt.date(2026,8,27),dt.date(2026,8,28)]
-          rows=[]; ok=0; bad=0; s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
+          primary=[dt.date(2026,8,24),dt.date(2026,8,25),dt.date(2026,8,26),dt.date(2026,8,27),dt.date(2026,8,28)]
+          fallback=[dt.date(2026,8,17),dt.date(2026,8,18),dt.date(2026,8,19),dt.date(2026,8,20),dt.date(2026,8,21)]
+          days=primary+fallback
+          rows=[]; ok=0; bad=0
+          s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0','Accept':'*/*','Connection':'keep-alive'})
+          def fetch(url):
+            last=None
+            for attempt in range(5):
+              try:
+                r=s.get(url,timeout=(10,30))
+                if r.status_code==200 and len(r.content)>=20:
+                  return r.content
+                last=f'HTTP_{r.status_code}_LEN_{len(r.content)}'
+              except Exception as e:
+                last=repr(e)
+              time.sleep((1.0*(2**attempt))+random.uniform(0,.4))
+            print('RAW_TICK_FETCH_FAILED',url,last)
+            return None
           for day in days:
             for hour in range(24):
+              url=f'{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5'
+              blobz=fetch(url)
+              if not blobz: continue
               try:
-                r=s.get(f'{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5',timeout=20)
-                if r.status_code!=200 or len(r.content)<20: continue
-                blob=lzma.decompress(r.content); base=dt.datetime(day.year,day.month,day.day,hour,tzinfo=dt.timezone.utc); local=[]
-                for i in range(0,len(blob)-REC.size+1,REC.size):
-                  ms,ar,br,av,bv=REC.unpack_from(blob,i); ask=ar/SCALE; bid=br/SCALE
-                  if ms>=3600000 or bid<=0 or ask<bid: continue
-                  ts=base+dt.timedelta(milliseconds=int(ms)); local.append({'ts':ts.isoformat().replace('+00:00','Z'),'bid':bid,'ask':ask,'bid_size':float(bv),'ask_size':float(av)})
-                if local: rows.extend(local); ok+=1
-              except Exception: bad+=1
-              time.sleep(.02)
+                blob=lzma.decompress(blobz)
+              except Exception as e:
+                bad+=1; print('RAW_TICK_DECODE_FAILED',url,repr(e)); continue
+              base=dt.datetime(day.year,day.month,day.day,hour,tzinfo=dt.timezone.utc); local=[]
+              for i in range(0,len(blob)-REC.size+1,REC.size):
+                ms,ar,br,av,bv=REC.unpack_from(blob,i); ask=ar/SCALE; bid=br/SCALE
+                if ms>=3600000 or bid<=0 or ask<bid: continue
+                ts=base+dt.timedelta(milliseconds=int(ms)); local.append({'ts':ts.isoformat().replace('+00:00','Z'),'bid':bid,'ask':ask,'bid_size':float(bv),'ask_size':float(av)})
+              if local:
+                rows.extend(local); ok+=1
+                print('RAW_TICK_HOUR_OK',day.isoformat(),hour,len(local))
+              if len(rows)>=50000 and day in fallback:
+                break
+            if len(rows)>=50000 and day in fallback:
+              break
           rows.sort(key=lambda x:x['ts']); seen=set(); clean=[]
           for z in rows:
             k=(z['ts'],z['bid'],z['ask'],z['bid_size'],z['ask_size'])
@@ -60,7 +84,7 @@ jobs:
           with out.open('w',encoding='utf-8') as f:
             for z in clean: f.write(json.dumps(z,separators=(',',':'))+'\n')
           print('RAW_TICK_HOURS',ok,'RAW_TICK_ROWS',len(clean),'DECODE_ERRORS',bad)
-          if len(clean)<10000: raise SystemExit('INSUFFICIENT_GENUINE_RAW_TICKS')
+          if len(clean)<10000: raise SystemExit('INSUFFICIENT_GENUINE_RAW_TICKS_AFTER_RETRY')
           PY
       - name: Run A0 executable-side raw tick KPI
         env:

@@ -3,6 +3,7 @@ name: Raw BidAsk Catalog Factory
 on:
   workflow_dispatch:
   push:
+    branches: [ae-harmonic-sequence-v1]
     paths:
       - 'bt_requests/raw6x3.request'
       - 'bt_requests/math_edge_mvc.request'
@@ -14,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  group: raw-bidask-duka-10sym-2026-07-27-30d-v1
   cancel-in-progress: false
 
 env:
@@ -23,7 +24,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: '2026-07-27'
   RAW_DAYS: '30'
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  RAW_CACHE_KEY: raw-bidask-duka-10sym-2026-07-27-30d-v1
   FACTORY_EVIDENCE: results/raw-factory/${{ github.run_id }}
 
 jobs:
@@ -52,7 +53,7 @@ jobs:
       - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas
 
       - name: Restore shared immutable Raw BidAsk catalog cache
         id: raw-cache
@@ -69,7 +70,7 @@ jobs:
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
           echo 'RAW_FACTORY_CACHE_HIT_VERIFIED=1'
 
-      - name: Build Raw BidAsk catalog once on cold cache
+      - name: Build Raw BidAsk 10-symbol catalog once on cold cache
         if: steps.raw-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
@@ -83,7 +84,8 @@ jobs:
               --start "$RAW_START" \
               --days "$RAW_DAYS" \
               --catalog "$RAW_CATALOG" \
-              --workers 32; then
+              --workers 32 \
+              --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF EURJPY GBPJPY AUDJPY XAGUSD; then
               if python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"; then
                 ok=1
                 break

@@ -1,0 +1,57 @@
+name: AE Math Controller v4 Exit Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ae-highn-2edge-math-bt]
+    paths:
+      - '.github/workflows/ae-math-controller-v4-exit-diagnostic.yml'
+      - 'research/ae_math_v4_patch.py'
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  BT_REV: 'math-controller-v4-exit-diagnostic'
+
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+        exit_mode: [A_EXIT, B_EXIT, AB_EXIT, TAIL_ONLY]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Raw gate
+        run: |
+          test "${{ steps.raw-cache.outputs.cache-hit }}" = 'true'
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Apply v4 patch
+        run: python research/ae_math_v4_patch.py
+      - name: Run Raw diagnostic cell
+        env:
+          TF: ${{ matrix.tf }}
+          EXIT_MODE: ${{ matrix.exit_mode }}
+          EXP: aemath4-${{ github.run_id }}-${{ matrix.tf }}-${{ matrix.exit_mode }}
+        run: |
+          python research/ae_highn_2edge_math_raw6x3_bt.py --catalog "$RAW_CATALOG" --symbols XAUUSD --timeframes "$TF" --experiment-id "$EXP" --raw-bidask-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aemath4-${{ github.run_id }}-${{ matrix.tf }}-${{ matrix.exit_mode }}
+          path: results/ae-bt/aemath4-${{ github.run_id }}-${{ matrix.tf }}-${{ matrix.exit_mode }}/
+          if-no-files-found: warn
+          retention-days: 90

@@ -5,6 +5,7 @@ on:
     branches: [ae-harmonic-sequence-v1]
     paths:
       - 'research/ae_harmonic_sequence_patch.py'
+      - 'research/ae_harmonic_sequence_hotfix.py'
       - '.github/workflows/ae-harmonic-sequence-v1.yml'
   workflow_dispatch:
 
@@ -41,6 +42,8 @@ jobs:
         run: git show "${ORIGINAL_BASE_SHA}:research/ae_highn_2edge_math_raw6x3_bt.py" > research/ae_harmonic_sequence_runner.py
       - name: Apply ordered harmonic sequence patch
         run: python research/ae_harmonic_sequence_patch.py
+      - name: Restore controller initialization
+        run: python research/ae_harmonic_sequence_hotfix.py
       - name: Run B sequence validation
         env:
           TF: ${{ matrix.tf }}

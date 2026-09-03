@@ -6,6 +6,7 @@ on:
     paths:
       - 'research/ae_harmonic_sequence_patch.py'
       - 'research/ae_harmonic_sequence_hotfix.py'
+      - 'research/ae_harmonic_sequence_bexit_patch.py'
       - '.github/workflows/ae-harmonic-sequence-v1.yml'
   workflow_dispatch:
 
@@ -44,6 +45,8 @@ jobs:
         run: python research/ae_harmonic_sequence_patch.py
       - name: Restore controller initialization
         run: python research/ae_harmonic_sequence_hotfix.py
+      - name: Make B exit follow harmonic sequence only
+        run: python research/ae_harmonic_sequence_bexit_patch.py
       - name: Run B sequence validation
         env:
           TF: ${{ matrix.tf }}

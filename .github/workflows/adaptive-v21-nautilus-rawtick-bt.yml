@@ -1,10 +1,12 @@
-name: Adaptive v2.1 Nautilus Raw Tick BT
+name: Adaptive v2.2 Fib ICT Raw Tick Reconstruction Gate
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - 'research/adaptive_v21_nautilus_bt.py'
+      - 'research/fib_ict_source_of_truth_v22.py'
+      - 'research/fib_ict_rawtick_detectors_v22.py'
       - '.github/workflows/adaptive-v21-nautilus-rawtick-bt.yml'
 
 permissions:
@@ -14,7 +16,7 @@ env:
   PYTHONUNBUFFERED: '1'
 
 jobs:
-  rawtick-gate:
+  source-fidelity-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -25,19 +27,25 @@ jobs:
       - name: Install dependencies
         run: python -m pip install 'nautilus_trader==1.230.0' requests
 
-      - name: Download and decode genuine Dukascopy XAUUSD ticks
+      - name: Source-of-truth invariants
+        run: python research/fib_ict_source_of_truth_v22.py
+
+      - name: Raw-tick detector invariants
+        run: python research/fib_ict_rawtick_detectors_v22.py
+
+      - name: Reconstruction profitability lock
+        run: python research/adaptive_v21_nautilus_bt.py
+
+      - name: Download and validate genuine Dukascopy XAUUSD QuoteTicks
         run: |
           python - <<'PY'
           import datetime as dt, json, lzma, struct, time
           from pathlib import Path
           import requests
-
-          # Dukascopy hourly tick record: ms, ask, bid, askVol, bidVol (20 bytes, big endian).
           REC=struct.Struct('>IIIff')
-          SCALE=1000.0  # XAUUSD Dukascopy convention
+          SCALE=1000.0
           HOST='https://datafeed.dukascopy.com/datafeed'
           out=Path('data/xauusd_quotes.jsonl'); out.parent.mkdir(parents=True,exist_ok=True)
-          # Fast first-pass sample: five recent complete trading days. No OHLC/candles/resampling.
           days=[dt.date(2026,8,24),dt.date(2026,8,25),dt.date(2026,8,26),dt.date(2026,8,27),dt.date(2026,8,28)]
           rows=[]; ok_hours=0; bad=0
           s=requests.Session(); s.headers['User-Agent']='Mozilla/5.0'
@@ -46,11 +54,9 @@ jobs:
               url=f'{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{hour:02d}h_ticks.bi5'
               try:
                 r=s.get(url,timeout=20)
-                if r.status_code!=200 or len(r.content)<20:
-                  continue
+                if r.status_code!=200 or len(r.content)<20: continue
                 try: blob=lzma.decompress(r.content)
-                except Exception:
-                  bad+=1; continue
+                except Exception: bad+=1; continue
                 base=dt.datetime(day.year,day.month,day.day,hour,tzinfo=dt.timezone.utc)
                 local=[]
                 for i in range(0,len(blob)-REC.size+1,REC.size):
@@ -59,13 +65,10 @@ jobs:
                   if ms>=3600000 or bid<=0 or ask<bid: continue
                   ts=base+dt.timedelta(milliseconds=int(ms))
                   local.append({'ts':ts.isoformat().replace('+00:00','Z'),'bid':bid,'ask':ask,'bid_size':float(bid_vol),'ask_size':float(ask_vol)})
-                if local:
-                  rows.extend(local); ok_hours+=1
-              except Exception:
-                bad+=1
+                if local: rows.extend(local); ok_hours+=1
+              except Exception: bad+=1
               time.sleep(0.02)
           rows.sort(key=lambda x:x['ts'])
-          # Deduplicate exact quote events only; preserve genuine tick sequence.
           seen=set(); clean=[]
           for z in rows:
             k=(z['ts'],z['bid'],z['ask'],z['bid_size'],z['ask_size'])
@@ -77,23 +80,23 @@ jobs:
           if len(clean)<10000: raise SystemExit('INSUFFICIENT_GENUINE_RAW_TICKS')
           PY
 
-      - name: Run v2.1 raw Bid Ask BT
-        env:
-          RESULT_DIR: results/adaptive-v21
-        run: python research/adaptive_v21_nautilus_bt.py
-
-      - name: Print KPI
-        if: always()
+      - name: Parse detector against real QuoteTicks without profitability claims
         run: |
-          echo '=== KPI ==='
-          cat results/adaptive-v21/summary.json 2>/dev/null || true
-          find results/adaptive-v21 -maxdepth 1 -type f -print || true
-
-      - name: Upload evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: adaptive-v21-nautilus-rawtick
-          path: results/adaptive-v21/
-          if-no-files-found: warn
-          retention-days: 90
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from research.fib_ict_rawtick_detectors_v22 import Quote, RawTickConfig, detect_a0
+          qs=[]
+          with open('data/xauusd_quotes.jsonl',encoding='utf-8') as f:
+            for line in f:
+              z=json.loads(line)
+              qs.append(Quote(datetime.fromisoformat(z['ts'].replace('Z','+00:00')).timestamp(),float(z['bid']),float(z['ask'])))
+          # Explicit raw-event translation parameters; these are diagnostic, not optimized KPI settings.
+          cfg=RawTickConfig(liquidity_lookback_sec=300,structure_lookback_sec=180,reclaim_deadline_sec=60,displacement_window_sec=60)
+          setups=detect_a0(qs,cfg)
+          print('A0_RAWTICK_SETUPS',len(setups))
+          for x in setups[:5]:
+            print(x.side,x.confirmed_at,x.liquidity,x.sweep_extreme,x.mss_level,x.ote_zone,x.ote_primary,[e.name for e in x.audit])
+          if not setups:
+            raise SystemExit('A0_DETECTOR_REPRODUCED_ZERO_SETUPS_REQUIRES_FIX')
+          PY

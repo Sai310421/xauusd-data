@@ -21,8 +21,9 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}
       NAUTILUS_VERSION: '1.230.0'
       RAW_CATALOG: catalog/raw_bidask
-      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      RAW_CACHE_KEY: raw-bidask-duka-10sym-2026-07-27-30d-v1
       ORIGINAL_BASE_SHA: 069bb651bb8c3e7fb93f882d0247bc93eaaebd9e
+      SYMBOLS: XAUUSD,EURUSD,GBPUSD,USDJPY,AUDUSD,USDCHF,EURJPY,GBPJPY,AUDJPY,XAGUSD
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +36,9 @@ jobs:
         with:
           path: ${{ env.RAW_CATALOG }}
           key: ${{ env.RAW_CACHE_KEY }}
+          restore-keys: |
+            raw-bidask-duka-10sym-
+            raw-bidask-duka-6sym-2026-07-27-30d-v2
       - name: Raw gate
         run: |
           test -d "$RAW_CATALOG"
@@ -50,17 +54,17 @@ jobs:
       - name: Run B sequence validation
         env:
           TF: ${{ matrix.tf }}
-          EXP: ae-harmonic-sequence-${{ github.run_id }}-${{ matrix.tf }}
+          EXP: ae-harmonic-10sym-${{ github.run_id }}-${{ matrix.tf }}
         run: |
           python research/ae_harmonic_sequence_runner.py \
             --catalog "$RAW_CATALOG" \
-            --symbols XAUUSD \
+            --symbols "$SYMBOLS" \
             --timeframes "$TF" \
             --mode B \
             --experiment-id "$EXP" \
             --raw-bidask-only
       - uses: actions/upload-artifact@v4
         with:
-          name: ae-harmonic-sequence-${{ github.run_id }}-${{ matrix.tf }}
-          path: results/ae-bt/ae-harmonic-sequence-${{ github.run_id }}-${{ matrix.tf }}/
+          name: ae-harmonic-10sym-${{ github.run_id }}-${{ matrix.tf }}
+          path: results/ae-bt/ae-harmonic-10sym-${{ github.run_id }}-${{ matrix.tf }}/
           retention-days: 90

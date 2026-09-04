@@ -85,6 +85,77 @@ Use only as a calibration modifier after H is estimated with uncertainty. Never 
 
 Failure modes: H estimator variance, non-fBM market microstructure, jumps, regime switching.
 
+## 5. High-Dimensional Reflected Recovery Controller
+Status: IMPLEMENTED
+Priority: A / Control OS Candidate
+Implementation: `research/ae_reflected_recovery_controller.py`
+Tests: `research/test_ae_reflected_recovery_controller.py`
+
+### ORIGINAL class
+Multidimensional singular / reflected stochastic control keeps a controlled state inside an admissible region by applying finite-variation control only when the state reaches the intervention boundary.
+
+Generic controlled diffusion:
+
+dX_t = b(X_t)dt + Sigma(X_t)dW_t + G(X_t)dU_t
+
+A typical value function is:
+
+V(x) = inf_U E_x[ integral exp(-rho t)c(X_t)dt + integral exp(-rho t)k(X_t)^T d|U_t| ]
+
+The HJB variational inequality contains gradient constraints. For control direction g_j:
+
+-k_j^+ <= g_j(x)^T grad V(x) <= k_j^-
+
+inside the no-action region. At the boundary, minimal intervention is applied to reflect the state toward the admissible region.
+
+### AE DERIVED mapping
+First implementation uses an explicit low-dimensional state instead of an opaque learned 30-100D policy:
+
+X_t = [Debt, DebtDrift, MAE, RecoveryAge, TailProbability, SpreadStress, VolatilityStress, ShockScore, DD, MarginLevel, p_NaturalRecovery].
+
+Recovery hazard:
+
+H_t = sum_i w_i * normalized_state_i
+
+Natural-recovery adjusted hazard:
+
+S_t = clip(H_t - lambda_NR * p_NR,t, 0, 1)
+
+where:
+
+p_NR,t = P(tau_EBE <= T | X_t).
+
+Action mapping:
+
+- S_t < theta_1 -> WAIT
+- theta_1 <= S_t < theta_2 -> STOP_ADD
+- theta_2 <= S_t < theta_3 -> REDUCE by the minimum reflected fraction
+- theta_3 <= S_t < theta_4 -> HEDGE_LOCK
+- S_t >= theta_4 -> SELECTIVE_RECOVERY
+
+Shock, hard DD, and margin safety boundaries override the reflected policy and route to EMERGENCY_IMPULSE.
+
+The initial proportional REDUCE amount is continuous between the REDUCE and HEDGE boundaries rather than forcing full liquidation. This is an AE DERIVED approximation to minimal reflected intervention.
+
+### State -> Action -> Intended effect
+- Low hazard + high Economic-BE probability -> WAIT -> preserve natural recovery and avoid churn.
+- Rising hazard -> STOP_ADD -> stop increasing debt while retaining recovery optionality.
+- Medium-high hazard -> REDUCE minimally -> move the state back toward the admissible region while limiting transaction cost.
+- High hazard -> HEDGE_LOCK -> freeze further directional debt growth.
+- Tail/recovery boundary -> SELECTIVE_RECOVERY -> isolate the bad state and route recovery deliberately.
+- Shock / DD / margin breach -> EMERGENCY_IMPULSE -> bypass slow reflection for discontinuous risk.
+
+### Failure modes
+- Bad normalization limits or weights can make the hazard score meaningless.
+- p_NR estimation error can delay needed intervention or trigger intervention too early.
+- Fixed boundaries may lag regime changes.
+- Jump/gap events can cross several reflected boundaries instantaneously.
+- A low-dimensional explicit proxy may omit relevant state interactions.
+- The implementation is not evidence of edge until same-catalog Raw Bid/Ask A/B validation passes.
+
+### Required next validation
+Run BASE vs REFLECTED under identical Raw Bid/Ask QuoteTick data, execution assumptions, strategy SHA and exposure reporting. First promotion target is PROXY_PASS only after unit tests and deterministic synthetic path tests; canonical promotion requires Nautilus Raw Bid/Ask evidence.
+
 ## Promotion gates
 All candidate A/B tests must use the same raw Bid/Ask catalog hash, same execution assumptions, same baseline strategy hash, and same initial display basis.
 

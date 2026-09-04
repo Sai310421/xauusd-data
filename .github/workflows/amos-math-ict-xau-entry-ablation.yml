@@ -1,0 +1,121 @@
+name: AMOS Math-ICT XAU Raw Entry Ablation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'research/amos_math_ict_raw6x3_bt.py'
+      - 'research/amos_math_ict_raw6x3_bt_compat.py'
+      - 'research/amos_math_ict_v1_4/**'
+      - '.github/workflows/amos-math-ict-xau-entry-ablation.yml'
+  push:
+    branches: [amos-math-ict-v1-4-prenautilus]
+    paths:
+      - 'research/amos_math_ict_raw6x3_bt.py'
+      - 'research/amos_math_ict_raw6x3_bt_compat.py'
+      - 'research/amos_math_ict_v1_4/**'
+      - '.github/workflows/amos-math-ict-xau-entry-ablation.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  PYTHONHASHSEED: '260829'
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+
+jobs:
+  xau-entry-ablation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        entry_variant: [E00, E01, E02, E03, E04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+
+      - name: Restore Raw BidAsk catalog
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Raw Catalog Gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.raw-cache.outputs.cache-hit }}" = 'true' || { echo 'RAW_FACTORY_CACHE_MISS'; exit 22; }
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+
+      - name: Native Reality API Probe
+        run: python research/probe_nautilus_native_reality.py
+
+      - name: Compile strategy modules
+        run: |
+          python -m py_compile \
+            research/amos_math_ict_raw6x3_bt.py \
+            research/amos_math_ict_raw6x3_bt_compat.py \
+            research/amos_math_ict_v1_4/*.py
+
+      - name: Run XAUUSD M1 M5 M15 Raw Tick gate twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for REP in 1 2; do
+            EXP="amos-math-ict-${{ matrix.entry_variant }}-X04-${GITHUB_RUN_ID}-r${REP}"
+            python -m research.amos_math_ict_raw6x3_bt_compat \
+              --catalog "$RAW_CATALOG" \
+              --symbols XAUUSD \
+              --timeframes M1 M5 M15 \
+              --experiment-id "$EXP" \
+              --entry-variant "${{ matrix.entry_variant }}" \
+              --exit-variant X04 \
+              --raw-bidask-only
+          done
+          echo "EXPERIMENT_ROOT=results/ae-bt" >> "$GITHUB_ENV"
+
+      - name: Repeatability Gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, pathlib, math
+          run_id=os.environ['GITHUB_RUN_ID']
+          v='${{ matrix.entry_variant }}'
+          roots=[pathlib.Path(f'results/ae-bt/amos-math-ict-{v}-X04-{run_id}-r{i}/summary.json') for i in (1,2)]
+          xs=[json.loads(p.read_text()) for p in roots]
+          a=xs[0]['portfolio_realized_close_ordered']; b=xs[1]['portfolio_realized_close_ordered']
+          keys=['N','WR_pct','PF','NetProfit','MaxDD_pct','Monthly21_pct']
+          bad=[]
+          for k in keys:
+              av=a.get(k); bv=b.get(k)
+              if av is None and bv is None: continue
+              if isinstance(av,float) and math.isinf(av) and isinstance(bv,float) and math.isinf(bv): continue
+              if av != bv: bad.append((k,av,bv))
+          if bad: raise SystemExit(f'REPEATABILITY_FAIL: {bad}')
+          print('REPEATABILITY_PASS', {k:a.get(k) for k in keys})
+          PY
+
+      - name: Upload immutable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-math-ict-${{ matrix.entry_variant }}-X04-${{ github.run_id }}
+          path: results/ae-bt/amos-math-ict-${{ matrix.entry_variant }}-X04-${{ github.run_id }}-r*/
+          if-no-files-found: error
+          retention-days: 90

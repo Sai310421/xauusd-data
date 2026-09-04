@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 
@@ -11,18 +12,18 @@ def _install_quote_tick_compat() -> str:
         return "query_quote_ticks"
     if hasattr(ParquetDataCatalog, "query"):
         def query_quote_ticks(self, identifiers=None, start=None, end=None, **kwargs):
-            # NautilusTrader v1.230.0 exposes the generic PyO3 catalog query
-            # interface. The "quotes" discriminator returns concrete QuoteTick
-            # objects and preserves the raw Bid/Ask event stream.
+            # NautilusTrader v1.230.0 generic catalog query expects the concrete
+            # data class, not a string discriminator. Passing QuoteTick keeps the
+            # read path on the immutable raw Bid/Ask stream.
             return self.query(
-                "quotes",
+                QuoteTick,
                 identifiers=identifiers,
                 start=start,
                 end=end,
                 **kwargs,
             )
         ParquetDataCatalog.query_quote_ticks = query_quote_ticks
-        return 'query("quotes")'
+        return "query(QuoteTick)"
     if hasattr(ParquetDataCatalog, "quotes"):
         def query_quote_ticks(self, identifiers=None, start=None, end=None, **kwargs):
             return self.quotes(

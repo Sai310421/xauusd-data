@@ -68,7 +68,10 @@ def main() -> None:
 
             shutil.copy2(child_summary_path, cells_dir / f'{symbol}_{tf}_summary.json')
             if child_trades_path.exists() and child_trades_path.stat().st_size > 0:
-                df = pd.read_csv(child_trades_path)
+                try:
+                    df = pd.read_csv(child_trades_path)
+                except pd.errors.EmptyDataError:
+                    df = pd.DataFrame()
                 if not df.empty:
                     all_trades.extend(df.to_dict(orient='records'))
             shutil.rmtree(child_dir, ignore_errors=True)

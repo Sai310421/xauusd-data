@@ -1,8 +1,15 @@
 from __future__ import annotations
-import json, os
+import json, os, sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+
+# Make the repository root importable when this file is executed directly as
+# `python research/a0_rawtick_execution_bt_v22.py` in GitHub Actions.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from research.fib_ict_rawtick_detectors_v22 import Quote,RawTickConfig,detect_a0,raw_entry_price,raw_exit_price
 
 @dataclass
@@ -29,7 +36,6 @@ def run(qs:list[Quote]):
  setups=detect_a0(qs,cfg); trades=[]
  for s in setups:
   i=first_after(qs,s.confirmed_at); zone_lo,zone_hi=s.ote_zone
-  # Causal trigger: OTE area must be reached after Fib is armed, then executable quote must reclaim primary in thesis direction.
   touched=False; touch_i=None
   expiry=s.confirmed_at+1800
   while i<len(qs) and qs[i].ts<=expiry:
@@ -37,11 +43,9 @@ def run(qs:list[Quote]):
    obs=q.ask if s.side=='LONG' else q.bid
    if zone_lo<=obs<=zone_hi:
     touched=True; touch_i=i; break
-   # thesis invalid before entry
    if (s.side=='LONG' and q.bid<=s.sweep_extreme) or (s.side=='SHORT' and q.ask>=s.sweep_extreme): break
    i+=1
   if not touched: continue
-  # Trigger is a post-arrival reclaim of the strategy primary, never the touch itself.
   j=touch_i+1; entry_i=None
   while j<len(qs) and qs[j].ts<=expiry:
    q=qs[j]

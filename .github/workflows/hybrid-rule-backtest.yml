@@ -1,0 +1,50 @@
+name: AMOS Hybrid Rule Backtest 5-Window
+
+on:
+  workflow_dispatch:
+    inputs:
+      driver:
+        description: 'Hybrid Rule Raw Bid/Ask BT driver path'
+        required: true
+        default: 'research/hybrid_rule_rawtick_bt.py'
+
+permissions:
+  contents: read
+
+jobs:
+  hybrid-rule:
+    strategy:
+      fail-fast: false
+      matrix:
+        window: ['1h','1d','5d','30d','90d']
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AMOS_BT_WINDOW: ${{ matrix.window }}
+      AMOS_RAW_ONLY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Hybrid Rule driver
+        shell: bash
+        run: |
+          test -f "${{ inputs.driver }}" || { echo 'BLOCKED_NO_HYBRID_RULE_DRIVER'; exit 2; }
+      - name: Install Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0'
+      - name: Run Hybrid Rule Raw Bid/Ask BT
+        run: python "${{ inputs.driver }}" --window "${AMOS_BT_WINDOW}"
+      - name: Upload window evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-rule-${{ matrix.window }}
+          path: results/hybrid-rule/${{ matrix.window }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+# Required windows are fixed: 1h -> 1d -> 5d -> 30d -> 90d.
+# Missing strategy driver is BLOCKED, never replaced with an unrelated strategy or OHLC approximation.

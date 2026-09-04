@@ -123,7 +123,8 @@ class MinimumSpikeRawStrategy(Strategy):
     def on_quote_tick(self, tick: QuoteTick) -> None:
         bid = self._f(tick.bid_price)
         ask = self._f(tick.ask_price)
-        if self.armed is not None and self.entry_ref is None and self.portfolio.is_net_flat(self.config.instrument_id):
+        is_flat = not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id)
+        if self.armed is not None and self.entry_ref is None and is_flat:
             instrument = self.cache.instrument(self.config.instrument_id)
             order = self.order_factory.market(
                 instrument_id=self.config.instrument_id,

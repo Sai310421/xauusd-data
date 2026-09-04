@@ -13,7 +13,7 @@ on:
       runner:
         description: 'Strategy runner module'
         required: true
-        default: 'research.minimumspike_raw6x3_bt_compat'
+        default: 'research.minimumspike_raw6x3_bt_isolated'
       top_k:
         description: 'Number of symbol/TF cells selected for downstream validation'
         required: true
@@ -22,6 +22,7 @@ on:
     paths:
       - 'research/minimumspike_raw6x3_bt.py'
       - 'research/minimumspike_raw6x3_bt_compat.py'
+      - 'research/minimumspike_raw6x3_bt_isolated.py'
       - 'research/select_top_cells.py'
       - 'research/ensure_raw_bidask_catalog.sh'
       - '.github/workflows/nautilus-6symbol-3tf-raw-bidask.yml'
@@ -38,7 +39,7 @@ env:
   RAW_WORKERS: '12'
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('raw6x3-{0}', github.run_id) }}
-  RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt_compat' }}
+  RUNNER_MODULE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'research.minimumspike_raw6x3_bt_isolated' }}
   TOP_K: ${{ github.event_name == 'workflow_dispatch' && inputs.top_k || '6' }}
 
 jobs:
@@ -66,7 +67,7 @@ jobs:
             "source_sha=${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}" \
             "experiment_id=${EXPERIMENT_ID}" \
             "raw_cache_key=${RAW_CACHE_KEY}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
-          sha256sum research/minimumspike_raw6x3_bt.py research/minimumspike_raw6x3_bt_compat.py research/select_top_cells.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_and_selector_sha256.txt"
+          sha256sum research/minimumspike_raw6x3_bt.py research/minimumspike_raw6x3_bt_compat.py research/minimumspike_raw6x3_bt_isolated.py research/select_top_cells.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_and_selector_sha256.txt"
 
       - name: Install pinned NautilusTrader
         run: |

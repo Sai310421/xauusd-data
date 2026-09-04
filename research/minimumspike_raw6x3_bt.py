@@ -273,7 +273,7 @@ def main() -> None:
             ))
             engine.add_strategy(strat)
             engine.run()
-            report = engine.generate_positions_report()
+            report = engine.trader.generate_positions_report()
             trades = extract_trades(report, symbol, tf)
             all_trades.extend(trades)
             cell_metrics[f'{symbol}:{tf}'] = {**metrics(trades, days=days), 'raw_ticks': len(ticks), 'signals_submitted': strat.entries}

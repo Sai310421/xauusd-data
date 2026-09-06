@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "policy": "Experiential is advisory/shadow-only around deterministic BT and trading execution",
+  "routes": {
+    "cheap_worker": {
+      "provider": "experiential",
+      "model_env": "EXPLABS_WORKER_MODEL",
+      "default_model": "qwen3.8-27b",
+      "purpose": "bulk parsing, classification, first-pass review"
+    },
+    "code_reviewer": {
+      "provider": "experiential",
+      "model_env": "EXPLABS_CODE_MODEL",
+      "default_model": "deepseek-v4-flash",
+      "purpose": "EA/Python/GitHub Actions code review and patch suggestions"
+    },
+    "reasoning_shadow": {
+      "provider": "experiential",
+      "model_env": "EXPLABS_REASONING_MODEL",
+      "default_model": "gpt-5.6-luna",
+      "purpose": "math EDGE diagnosis, hypothesis generation, supervisor shadow judgment"
+    }
+  },
+  "gateway_fallback_order": [
+    "experiential",
+    "unorouter",
+    "direct_provider",
+    "local_ollama"
+  ],
+  "guardrails": {
+    "may_modify_bt_results": false,
+    "may_place_trades": false,
+    "may_override_frozen_core": false,
+    "may_generate_patch_candidates": true,
+    "may_summarize_results": true
+  }
+}

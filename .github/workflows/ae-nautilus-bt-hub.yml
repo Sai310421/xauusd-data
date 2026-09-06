@@ -122,6 +122,17 @@ jobs:
           p.write_text(json.dumps(m,indent=2),encoding='utf-8')
           PY
 
+      - name: UnoRouter advisory post-BT review
+        if: always()
+        continue-on-error: true
+        env:
+          UNOROUTER_API_KEY: ${{ secrets.UNOROUTER_API_KEY }}
+          UNOROUTER_BASE_URL: https://api.unorouter.com/v1
+          UNOROUTER_TIMEOUT_SECONDS: '45'
+          UNOROUTER_RETRIES: '1'
+        run: |
+          python agents/ahae/integrations/post_bt_unorouter_review.py "results/ae-bt/$EXPERIMENT_ID"
+
       - name: Upload isolated experiment artifact
         if: always()
         uses: actions/upload-artifact@v4

@@ -7,6 +7,12 @@ on:
         description: UnoRouter model ID
         required: false
         default: glm-5.3-flash:free
+  push:
+    branches: [main]
+    paths:
+      - 'agents/ahae/integrations/unorouter_client.py'
+      - 'agents/ahae/integrations/unorouter_routes.json'
+      - '.github/workflows/unorouter-smoke.yml'
 
 permissions:
   contents: read
@@ -14,11 +20,14 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     env:
       UNOROUTER_API_KEY: ${{ secrets.UNOROUTER_API_KEY }}
       UNOROUTER_BASE_URL: https://api.unorouter.com/v1
-      UNOROUTER_SMOKE_MODEL: ${{ inputs.model }}
+      UNOROUTER_SMOKE_MODEL: ${{ inputs.model || '' }}
+      UNOROUTER_TIMEOUT_SECONDS: '45'
+      UNOROUTER_RETRIES: '1'
+      UNOROUTER_SMOKE_MODELS: glm-5.3-flash:free,codestral-latest:free,glm-5.3-flash-thinking:free
     steps:
       - uses: actions/checkout@v4
 
@@ -35,5 +44,5 @@ jobs:
             exit 1
           fi
 
-      - name: UnoRouter health check
+      - name: UnoRouter health check with retry/failover
         run: python agents/ahae/integrations/unorouter_client.py

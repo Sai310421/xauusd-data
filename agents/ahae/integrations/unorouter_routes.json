@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "policy": "LLM is advisory/shadow-only for deterministic BT and trading execution",
+  "routes": {
+    "cheap_worker": {
+      "provider": "unorouter",
+      "model_env": "UNOROUTER_WORKER_MODEL",
+      "default_model": "glm-5.3-flash:free",
+      "purpose": "bulk parsing, first-pass code review, classification"
+    },
+    "code_reviewer": {
+      "provider": "unorouter",
+      "model_env": "UNOROUTER_CODE_MODEL",
+      "default_model": "codestral-latest:free",
+      "purpose": "EA/Python workflow code review and patch suggestions"
+    },
+    "reasoning_shadow": {
+      "provider": "unorouter",
+      "model_env": "UNOROUTER_REASONING_MODEL",
+      "default_model": "glm-5.3-flash-thinking:free",
+      "purpose": "math EDGE diagnosis, hypothesis generation, supervisor shadow judgment"
+    }
+  },
+  "fallback_order": [
+    "direct_provider",
+    "unorouter",
+    "local_ollama"
+  ],
+  "guardrails": {
+    "may_modify_bt_results": false,
+    "may_place_trades": false,
+    "may_override_frozen_core": false,
+    "may_generate_patch_candidates": true,
+    "may_summarize_results": true
+  }
+}

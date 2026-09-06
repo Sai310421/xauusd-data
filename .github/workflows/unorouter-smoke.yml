@@ -1,0 +1,39 @@
+name: UnoRouter AMOS Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: UnoRouter model ID
+        required: false
+        default: glm-5.3-flash:free
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      UNOROUTER_API_KEY: ${{ secrets.UNOROUTER_API_KEY }}
+      UNOROUTER_BASE_URL: https://api.unorouter.com/v1
+      UNOROUTER_SMOKE_MODEL: ${{ inputs.model }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate secret
+        shell: bash
+        run: |
+          if [ -z "$UNOROUTER_API_KEY" ]; then
+            echo "UNOROUTER_API_KEY GitHub Actions secret is not configured."
+            echo "Add it under repository Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: UnoRouter health check
+        run: python agents/ahae/integrations/unorouter_client.py

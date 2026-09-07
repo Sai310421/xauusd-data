@@ -1,0 +1,44 @@
+name: Unified AMOS LLM Router Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'agents/ahae/integrations/unified_llm_router.py'
+      - 'agents/ahae/integrations/unified_llm_routes.json'
+      - 'agents/ahae/integrations/experiential_client.py'
+      - 'agents/ahae/integrations/unorouter_client.py'
+      - '.github/workflows/unified-llm-router-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      EXPLABS_API_KEY: ${{ secrets.EXPLABS_API_KEY }}
+      UNOROUTER_API_KEY: ${{ secrets.UNOROUTER_API_KEY }}
+      EXPLABS_BASE_URL: https://api.experientiallabs.ai/v1
+      UNOROUTER_BASE_URL: https://api.unorouter.com/v1
+      EXPLABS_TIMEOUT_SECONDS: '45'
+      UNOROUTER_TIMEOUT_SECONDS: '45'
+      EXPLABS_RETRIES: '1'
+      UNOROUTER_RETRIES: '1'
+      AMOS_LLM_CB_FAILURES: '2'
+      AMOS_LLM_CB_COOLDOWN_SECONDS: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate gateway secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EXPLABS_API_KEY" || { echo 'EXPLABS_API_KEY missing'; exit 1; }
+          test -n "$UNOROUTER_API_KEY" || { echo 'UNOROUTER_API_KEY missing'; exit 1; }
+      - name: Unified router health check
+        working-directory: agents/ahae/integrations
+        run: python unified_llm_router.py

@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'research/g75_tsugi_nautilus_raw_bt.py'
+      - 'research/g75_tsugi_nautilus_raw_bt_compat.py'
       - '.github/workflows/g75-tsugi-nautilus-raw-bt.yml'
   workflow_dispatch:
 
@@ -54,7 +55,7 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
       - name: Run G75 TSUGI A-B-C on Raw BidAsk
         run: |
-          python research/g75_tsugi_nautilus_raw_bt.py \
+          python research/g75_tsugi_nautilus_raw_bt_compat.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --timeframes M1 M5 M15 \

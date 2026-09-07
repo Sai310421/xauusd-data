@@ -1,0 +1,58 @@
+name: Graphify AE Knowledge Graph
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/**'
+      - 'docs/**'
+      - '.github/workflows/**'
+      - 'graphify.yaml'
+      - 'graphify/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-dataprep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Graphify
+        run: npm install -g @sentropic/graphify
+
+      - name: Validate AE ontology profile
+        run: graphify profile validate --config graphify.yaml
+
+      - name: Deterministic dataprep
+        run: graphify profile dataprep . --config graphify.yaml
+
+      - name: Rebuild existing local graph when present
+        shell: bash
+        run: |
+          if [ -f .graphify/graph.json ]; then
+            graphify hook-rebuild --scope tracked
+            graphify flows build || true
+          else
+            echo 'No committed .graphify/graph.json yet; profile/dataprep validation completed.'
+            echo 'Initial semantic graph build remains assistant/provider orchestrated by Graphify.'
+          fi
+
+      - name: Upload Graphify validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphify-ae-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            .graphify/profile/**
+            .graphify/GRAPH_REPORT.md
+            .graphify/graph.json
+          retention-days: 30

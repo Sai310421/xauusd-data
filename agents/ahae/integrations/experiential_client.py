@@ -71,7 +71,7 @@ class ExperientialClient:
                 "Authorization": f"Bearer {self.config.api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "AMOS-ODS-Experiential/1.0",
+                "User-Agent": "AMOS-ODS-Experiential/1.1",
             },
             method="POST",
         )
@@ -98,9 +98,37 @@ class ExperientialClient:
     def text(self, **kwargs: Any) -> str:
         data = self.chat(**kwargs)
         try:
-            return data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
+            choice = data["choices"][0]
+            message = choice.get("message") or {}
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise ExperientialError(f"Unexpected Experiential response shape: {data}") from exc
+
+        # OpenAI-compatible providers may put reasoning separately while content is null.
+        candidates = [
+            message.get("content"),
+            message.get("reasoning_content"),
+            message.get("reasoning"),
+            choice.get("text") if isinstance(choice, dict) else None,
+        ]
+        for value in candidates:
+            if isinstance(value, str) and value.strip():
+                return value
+            if isinstance(value, list):
+                parts: List[str] = []
+                for item in value:
+                    if isinstance(item, str):
+                        parts.append(item)
+                    elif isinstance(item, dict):
+                        text = item.get("text") or item.get("content")
+                        if isinstance(text, str):
+                            parts.append(text)
+                joined = "\n".join(p for p in parts if p.strip())
+                if joined:
+                    return joined
+
+        raise ExperientialError(
+            "Experiential returned no textual content; response=" + json.dumps(data, ensure_ascii=False)[:2000]
+        )
 
 
 def smoke_test() -> None:
@@ -126,7 +154,7 @@ def smoke_test() -> None:
                     {"role": "user", "content": "health check"},
                 ],
                 temperature=0.0,
-                max_tokens=16,
+                max_tokens=32,
             )
             if "AMOS_EXPLABS_OK" in text:
                 print(f"Experiential smoke test OK ({model})")

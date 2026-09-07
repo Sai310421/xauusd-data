@@ -1,0 +1,17 @@
+edge_id,name,aliases,status,priority,layer
+ME001,Multi-Variable Conformal Joint Reachable Set,"MVC;joint conformal",implemented,A,uncertainty
+ME002,Certified Wasserstein Robust Utility,"Wasserstein DRO;robust utility",formalized,A,robust-control
+ME003,Conformal Kelly Uncertainty Governor,"Conformal Kelly",formalized,B,risk-sizing
+ME004,Hurst Non-Brownian DD Scaling,"Hurst DD",formalized,B,risk
+ME005,High-Dimensional Reflected Recovery Controller,"reflected control;singular control",implemented,A,control-os
+ME006,Additive-Functional Levy Recovery Hazard Clock,"Levy hazard;path hazard",formalized,A,recovery
+ME007,Drawdown-Duration Occupation-Time Recovery Controller,"occupation time;DD duration",formalized,A,recovery
+ME008,Path-Signature Non-Markovian Feedback Controller,"path signature;signature control",formalized,A,control-os
+ME009,Committor Competing-First-Passage Recovery Router,"committor;first hit router",formalized,A,recovery
+ME010,Spectral Stochastic Safety Barrier,"spectral barrier;SCBF",formalized,A,risk-os
+ME011,State-Action Wasserstein Robust Policy Controller,"robust MDP;state action DRO",formalized,A,robust-control
+ME012,State-Dependent CVaR Asymmetric Exposure Governor,"CVaR governor",formalized,A,risk-sizing
+ME013,Friction-Adaptive Reflected No-Trade Controller,"no trade band;friction reflection",formalized,A,execution
+ME014,Free-Energy Entropic Kelly Governor,"entropic Kelly;KL robust sizing",formalized,A,risk-sizing
+ME015,Stochastic Resetting First-Passage Recovery Controller,"resetting;restart first passage",formalized,A,recovery
+ME016,Azema-Yor Drawdown-Constrained Growth Transform,"Azema-Yor;drawdown transform",formalized,A,growth-risk

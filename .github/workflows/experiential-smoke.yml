@@ -23,7 +23,9 @@ jobs:
     env:
       EXPLABS_API_KEY: ${{ secrets.EXPLABS_API_KEY }}
       EXPLABS_BASE_URL: https://api.experientiallabs.ai/v1
-      EXPLABS_SMOKE_MODEL: ${{ inputs.model }}
+      EXPLABS_SMOKE_MODEL: ${{ inputs.model || 'qwen3.8-27b' }}
+      EXPLABS_TIMEOUT_SECONDS: '45'
+      EXPLABS_RETRIES: '1'
     steps:
       - uses: actions/checkout@v4
 

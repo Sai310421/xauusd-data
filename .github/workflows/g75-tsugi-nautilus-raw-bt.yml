@@ -5,8 +5,7 @@ on:
     branches: [main]
     paths:
       - 'research/g75_tsugi_nautilus_raw_bt.py'
-      - 'research/g75_tsugi_nautilus_single_cell.py'
-      - 'research/g75_tsugi_aggregate.py'
+      - 'research/g75_tsugi_tick_strict_cell.py'
       - '.github/workflows/g75-tsugi-nautilus-raw-bt.yml'
   workflow_dispatch:
 
@@ -17,7 +16,7 @@ env:
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  EXPERIMENT_ID: g75-tsugi-abc-${{ github.run_id }}
+  EXPERIMENT_ID: g75-tsugi-strict-${{ github.run_id }}
 
 jobs:
   bt-cell:
@@ -44,9 +43,9 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
       - name: Guard Raw XAUUSD catalog
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Run isolated cell
+      - name: Run strict Raw Tick cell
         run: |
-          python research/g75_tsugi_nautilus_single_cell.py \
+          python research/g75_tsugi_tick_strict_cell.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --tf "${{ matrix.tf }}" \
@@ -56,7 +55,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-tsugi-${{ matrix.tf }}-${{ matrix.variant }}-${{ github.run_id }}
+          name: g75-tsugi-strict-${{ matrix.tf }}-${{ matrix.variant }}-${{ github.run_id }}
           path: results/ae-bt/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.tf }}_${{ matrix.variant }}.json
           if-no-files-found: error
           retention-days: 90

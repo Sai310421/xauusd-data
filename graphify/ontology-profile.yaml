@@ -35,6 +35,8 @@ node_types:
     aliases: [artifact, evidence, result file]
   LegacyAsset:
     aliases: [legacy, old bot, old ea, prior experiment, 過去資産]
+    registry: legacy_assets
+    status_policy: hardenable
   EvidenceLevel:
     aliases: [evidence level, verification level, 検証レベル]
 
@@ -107,6 +109,12 @@ registries:
     label_column: name
     alias_columns: [aliases]
     node_type: MathEdge
+  legacy_assets:
+    source: legacy_assets
+    id_column: asset_id
+    label_column: name
+    alias_columns: [aliases]
+    node_type: LegacyAsset
 
 citation_policy:
   minimum_granularity: file

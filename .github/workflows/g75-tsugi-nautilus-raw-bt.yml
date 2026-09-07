@@ -5,7 +5,8 @@ on:
     branches: [main]
     paths:
       - 'research/g75_tsugi_nautilus_raw_bt.py'
-      - 'research/g75_tsugi_nautilus_raw_bt_compat.py'
+      - 'research/g75_tsugi_nautilus_single_cell.py'
+      - 'research/g75_tsugi_aggregate.py'
       - '.github/workflows/g75-tsugi-nautilus-raw-bt.yml'
   workflow_dispatch:
 
@@ -15,16 +16,18 @@ permissions:
 env:
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
-  RAW_START: '2026-07-27'
-  RAW_DAYS: '30'
-  RAW_WORKERS: '12'
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: g75-tsugi-abc-${{ github.run_id }}
 
 jobs:
-  bt:
+  bt-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+        variant: [A, B, C]
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,36 +38,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
       - name: Restore Raw BidAsk catalog cache
-        id: raw-cache
         uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
-      - name: Ensure Raw BidAsk catalog
-        shell: bash
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run isolated cell
         run: |
-          set -euo pipefail
-          chmod +x research/ensure_raw_bidask_catalog.sh
-          research/ensure_raw_bidask_catalog.sh
-          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Save catalog cache if bootstrapped
-        if: steps.raw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: catalog/raw_bidask
-          key: ${{ env.RAW_CACHE_KEY }}
-      - name: Run G75 TSUGI A-B-C on Raw BidAsk
-        run: |
-          python research/g75_tsugi_nautilus_raw_bt_compat.py \
+          python research/g75_tsugi_nautilus_single_cell.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
-            --timeframes M1 M5 M15 \
+            --tf "${{ matrix.tf }}" \
+            --variant "${{ matrix.variant }}" \
             --raw-bidask-only
-      - name: Upload evidence
+      - name: Upload cell evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-tsugi-nautilus-${{ env.EXPERIMENT_ID }}
-          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          name: g75-tsugi-${{ matrix.tf }}-${{ matrix.variant }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.tf }}_${{ matrix.variant }}.json
           if-no-files-found: error
           retention-days: 90

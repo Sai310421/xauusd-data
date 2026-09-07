@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "policy": "Advisory/shadow-only. Deterministic BT and trading execution remain isolated.",
+  "roles": {
+    "cheap_worker": {
+      "gateway_order": ["experiential", "unorouter"],
+      "experiential": {
+        "model_env": "EXPLABS_WORKER_MODEL",
+        "default_model": "qwen3.8-27b"
+      },
+      "unorouter": {
+        "model_env": "UNOROUTER_WORKER_MODEL",
+        "default_model": "glm-5.3-flash:free"
+      }
+    },
+    "code_reviewer": {
+      "gateway_order": ["experiential", "unorouter"],
+      "experiential": {
+        "model_env": "EXPLABS_CODE_MODEL",
+        "default_model": "deepseek-v4-flash"
+      },
+      "unorouter": {
+        "model_env": "UNOROUTER_CODE_MODEL",
+        "default_model": "codestral-latest:free"
+      }
+    },
+    "reasoning_shadow": {
+      "gateway_order": ["experiential", "unorouter"],
+      "experiential": {
+        "model_env": "EXPLABS_REASONING_MODEL",
+        "default_model": "gpt-5.6-luna"
+      },
+      "unorouter": {
+        "model_env": "UNOROUTER_REASONING_MODEL",
+        "default_model": "glm-5.3-flash-thinking:free"
+      }
+    }
+  },
+  "health_policy": {
+    "retry_in_provider_client": true,
+    "circuit_breaker_failures": 2,
+    "circuit_breaker_cooldown_seconds": 60,
+    "failover_on": ["429", "5xx", "timeout", "network_error", "empty_response"]
+  },
+  "guardrails": {
+    "may_modify_bt_results": false,
+    "may_place_trades": false,
+    "may_override_frozen_core": false,
+    "may_generate_patch_candidates": true,
+    "may_summarize_results": true,
+    "may_propose_next_bt": true
+  }
+}

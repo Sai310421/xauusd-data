@@ -10,6 +10,7 @@ inputs:
     - .github/workflows
   registries:
     - graphify/registries/math_edges.csv
+    - graphify/legacy/legacy_assets.csv
   exclude:
     - results
     - .graphify/cache

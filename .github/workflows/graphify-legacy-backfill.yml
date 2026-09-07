@@ -1,0 +1,67 @@
+name: Graphify Legacy Backfill
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/**'
+      - 'docs/**'
+      - '.github/workflows/**'
+      - 'graphify.yaml'
+      - 'graphify/**'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  legacy-backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build conservative legacy registry
+        run: |
+          set -euo pipefail
+          python research/graphify_legacy_backfill.py
+          test -s graphify/legacy/legacy_assets.csv
+          test -s graphify/legacy/legacy_assets.json
+          test -s graphify/legacy/LEGACY_BACKFILL_REPORT.md
+
+      - name: Validate no legacy auto-promotion to VERIFIED
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p=json.load(open('graphify/legacy/legacy_assets.json',encoding='utf-8'))
+          bad=[a for a in p['assets'] if a['status'] in {'verified','raw_bidask_pass','nautilus_pass'}]
+          if bad:
+              raise SystemExit(f'illegal legacy auto-promotion: {bad}')
+          print('legacy promotion guard: PASS')
+          PY
+
+      - name: Evidence summary
+        run: |
+          cat graphify/legacy/LEGACY_BACKFILL_REPORT.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload legacy graph evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphify-legacy-backfill-${{ github.run_id }}
+          path: |
+            graphify/legacy/legacy_assets.csv
+            graphify/legacy/legacy_assets.json
+            graphify/legacy/LEGACY_BACKFILL_REPORT.md
+          if-no-files-found: error
+          retention-days: 90

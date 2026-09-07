@@ -1,0 +1,32 @@
+version: 1
+
+profile:
+  path: graphify/ontology-profile.yaml
+
+inputs:
+  corpus:
+    - research
+    - docs
+    - .github/workflows
+  registries:
+    - graphify/registries/math_edges.csv
+  exclude:
+    - results
+    - .graphify/cache
+    - data
+    - catalogs
+    - __pycache__
+
+dataprep:
+  pdf_ocr: auto
+  prefer_ocr_markdown: true
+  use_extracted_pdf_images: true
+  full_page_screenshot_vision: false
+  citation_minimum: file
+  preserve_source_structure: true
+
+outputs:
+  state_dir: .graphify
+  write_html: true
+  write_wiki: true
+  write_profile_report: true

@@ -44,3 +44,5 @@ jobs:
 
       - name: Experiential health check
         run: python agents/ahae/integrations/experiential_client.py
+
+      # Touch 2026-09-08 after spending unlock to force a fresh post-verification smoke run.

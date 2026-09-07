@@ -1,0 +1,108 @@
+id: ae-math-edge-knowledge-graph
+version: 1
+default_language: ja
+
+node_types:
+  MathEdge:
+    aliases: [edge, math edge, 数理edge, 数式候補]
+    registry: math_edges
+    status_policy: hardenable
+  Equation:
+    aliases: [formula, equation, 数式]
+    source_backed: true
+  StateVariable:
+    aliases: [state, state variable, 状態変数]
+  Action:
+    aliases: [action, intervention, 操作, 介入]
+  Controller:
+    aliases: [controller, governor, router, control layer]
+  Strategy:
+    aliases: [strategy, bot, EA, G75]
+  Workflow:
+    aliases: [workflow, github actions, pipeline]
+  Dataset:
+    aliases: [dataset, catalog, raw bidask, raw quote tick]
+  BacktestRun:
+    aliases: [run, backtest, nautilus run]
+  KPI:
+    aliases: [metric, KPI, PF, RF, WR, DD, Monthly21, NetProfit]
+  FailureMode:
+    aliases: [failure mode, assumption break, 失敗条件]
+  SourcePaper:
+    aliases: [paper, preprint, literature, source]
+    source_backed: true
+  Artifact:
+    aliases: [artifact, evidence, result file]
+
+relation_types:
+  formalized_by:
+    source: MathEdge
+    target: Equation
+  observes:
+    source: MathEdge
+    target: StateVariable
+  triggers:
+    source: MathEdge
+    target: Action
+  implemented_in:
+    source: MathEdge
+    target: Controller
+  controls:
+    source: Controller
+    target: Action
+  attached_to:
+    source: Controller
+    target: Strategy
+  tested_by:
+    source: [MathEdge, Controller, Strategy]
+    target: BacktestRun
+  uses_dataset:
+    source: BacktestRun
+    target: Dataset
+  executed_by:
+    source: BacktestRun
+    target: Workflow
+  produces:
+    source: BacktestRun
+    target: Artifact
+  reports:
+    source: BacktestRun
+    target: KPI
+  improves:
+    source: MathEdge
+    target: KPI
+  worsens:
+    source: MathEdge
+    target: KPI
+  fails_when:
+    source: MathEdge
+    target: FailureMode
+  derived_from:
+    source: MathEdge
+    target: SourcePaper
+  calls:
+    source: [Controller, Strategy, Workflow]
+    target: [Controller, Strategy, Workflow]
+  depends_on:
+    source: [MathEdge, Controller, Strategy, Workflow]
+    target: [MathEdge, Controller, Strategy, Workflow, Dataset]
+
+registries:
+  math_edges:
+    source: math_edges
+    id_column: edge_id
+    label_column: name
+    alias_columns: [aliases]
+    node_type: MathEdge
+
+citation_policy:
+  minimum_granularity: file
+  require_source_file: true
+  allow_bbox: when_available
+
+hardening:
+  statuses: [candidate, formalized, implemented, proxy_pass, nautilus_pass, raw_bidask_pass, broker_reality_pass, verified, rejected, superseded]
+  default_status: candidate
+  promotion_requires:
+    - source_citation
+    - allowed_relation_type

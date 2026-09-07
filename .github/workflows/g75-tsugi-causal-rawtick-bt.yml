@@ -1,0 +1,41 @@
+name: G75 TSUGI Causal Raw BidAsk BT
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/g75_tsugi_causal_rawtick_cell.py'
+      - '.github/workflows/g75-tsugi-causal-rawtick-bt.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: g75-tsugi-causal-${{ github.run_id }}
+jobs:
+  bt-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+        variant: [A, B, C]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run causal Raw BidAsk cell
+        run: python research/g75_tsugi_causal_rawtick_cell.py --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --tf "${{ matrix.tf }}" --variant "${{ matrix.variant }}" --raw-bidask-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g75-tsugi-causal-${{ matrix.tf }}-${{ matrix.variant }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.tf }}_${{ matrix.variant }}.json
+          retention-days: 90

@@ -32,7 +32,7 @@ class CanonicalParity(Strategy):
     def mark(self,c): return sum((c-e)*self.side for e in self.entries) if self.active else 0.
     def dd(self,c):
         eq=self.config.initial_balance+self.realized+self.mark(c); self.peak=max(self.peak,eq); d=max(0.,(self.peak-eq)/max(self.peak,1e-9)*100); self.maxdd=max(self.maxdd,d); return d
-    def cap(self): return max(1,self.config.max_layers//2) if self.variant!='A' and self.mode in ('REDUCED','RECOVERY') else self.config.max_layers
+    def cap(self): return max(1,self.config.max_layers//2) if self.config.variant!='A' and self.mode in ('REDUCED','RECOVERY') else self.config.max_layers
     def rec_ok(self):
         if self.mode!='RECOVERY' or len(self.rec_hist)<5:return True
         h=self.rec_hist[-20:]; return sum(x for x in h if x>0)>abs(sum(x for x in h if x<0))
@@ -58,14 +58,13 @@ class CanonicalParity(Strategy):
         if self.debt>0:self.debt_bars+=1;self.maxdebt=max(self.maxdebt,self.debt)
         if self.anchor is None:self.anchor=c;return
         if self.stopped:return
-        # Controller observes existing basket at prior state before this bar's canonical operations.
         d=self.dd(c)
-        if self.variant!='A':
+        if self.config.variant!='A':
             if d>=self.config.hard_dd_pct:
                 self.hard+=1
                 if self.active:self.close(c,'HARD')
                 self.stopped=True;self.mode='STOPPED';return
-            if self.variant=='C' and self.active and self.mode!='RECOVERY' and d>=self.config.lock_dd_pct:
+            if self.config.variant=='C' and self.active and self.mode!='RECOVERY' and d>=self.config.lock_dd_pct:
                 self.lock(c);return
             if self.mode not in ('RECOVERY','STOPPED'):
                 if d>=self.config.soft_dd_pct:
@@ -91,7 +90,7 @@ class CanonicalParity(Strategy):
         self.dd(c)
     def summary(self):
         pf=self.gw/self.gl if self.gl else (math.inf if self.gw else 0.)
-        return {'variant':self.variant,'cycles':self.cycles,'WR_pct':100*self.wins/max(1,self.cycles),'PF':pf,'realized_usd_0p01lot_equiv':self.realized,'return_pct_on_1000':self.realized/10,'max_DD_pct':self.maxdd,'adds':self.adds,'max_layers':self.maxlayers,'mode_final':self.mode,'debt_final':self.debt,'max_debt':self.maxdebt,'soft_events':self.soft,'lock_events':self.locks,'hard_events':self.hard,'recovery_cycles':self.rec_cycles,'recovery_success':self.rec_success,'debt_clear_bars_p50':sorted(self.clear_bars)[len(self.clear_bars)//2] if self.clear_bars else None,'stopped':self.stopped}
+        return {'variant':self.config.variant,'cycles':self.cycles,'WR_pct':100*self.wins/max(1,self.cycles),'PF':pf,'realized_usd_0p01lot_equiv':self.realized,'return_pct_on_1000':self.realized/10,'max_DD_pct':self.maxdd,'adds':self.adds,'max_layers':self.maxlayers,'mode_final':self.mode,'debt_final':self.debt,'max_debt':self.maxdebt,'soft_events':self.soft,'lock_events':self.locks,'hard_events':self.hard,'recovery_cycles':self.rec_cycles,'recovery_success':self.rec_success,'debt_clear_bars_p50':sorted(self.clear_bars)[len(self.clear_bars)//2] if self.clear_bars else None,'stopped':self.stopped}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--catalog',required=True);p.add_argument('--experiment-id',required=True);p.add_argument('--tf',choices=TF_MIN,required=True);p.add_argument('--variant',choices=['A','B','C'],required=True);p.add_argument('--raw-bidask-only',action='store_true');a=p.parse_args()

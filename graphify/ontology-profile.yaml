@@ -33,6 +33,10 @@ node_types:
     source_backed: true
   Artifact:
     aliases: [artifact, evidence, result file]
+  LegacyAsset:
+    aliases: [legacy, old bot, old ea, prior experiment, 過去資産]
+  EvidenceLevel:
+    aliases: [evidence level, verification level, 検証レベル]
 
 relation_types:
   formalized_by:
@@ -54,7 +58,7 @@ relation_types:
     source: Controller
     target: Strategy
   tested_by:
-    source: [MathEdge, Controller, Strategy]
+    source: [MathEdge, Controller, Strategy, LegacyAsset]
     target: BacktestRun
   uses_dataset:
     source: BacktestRun
@@ -84,8 +88,17 @@ relation_types:
     source: [Controller, Strategy, Workflow]
     target: [Controller, Strategy, Workflow]
   depends_on:
-    source: [MathEdge, Controller, Strategy, Workflow]
-    target: [MathEdge, Controller, Strategy, Workflow, Dataset]
+    source: [MathEdge, Controller, Strategy, Workflow, LegacyAsset]
+    target: [MathEdge, Controller, Strategy, Workflow, Dataset, LegacyAsset]
+  legacy_alias_of:
+    source: LegacyAsset
+    target: [MathEdge, Controller, Strategy]
+  evidenced_by:
+    source: [MathEdge, Controller, Strategy, LegacyAsset, BacktestRun]
+    target: Artifact
+  has_evidence_level:
+    source: [MathEdge, Controller, Strategy, LegacyAsset, BacktestRun]
+    target: EvidenceLevel
 
 registries:
   math_edges:
@@ -101,7 +114,7 @@ citation_policy:
   allow_bbox: when_available
 
 hardening:
-  statuses: [candidate, formalized, implemented, proxy_pass, nautilus_pass, raw_bidask_pass, broker_reality_pass, verified, rejected, superseded]
+  statuses: [candidate, legacy_unverified, legacy_evidence_found, formalized, implemented, proxy_pass, nautilus_pass, raw_bidask_pass, broker_reality_pass, verified, rejected, superseded]
   default_status: candidate
   promotion_requires:
     - source_citation

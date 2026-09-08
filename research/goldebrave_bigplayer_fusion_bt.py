@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import deque
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -44,14 +45,11 @@ class FusionStrategy(GoldeBraveStrategy):
         super().__init__(config)
         self.layer_entries["D_BIGPLAYER"] = 0
         self.layer_pnl["D_BIGPLAYER"] = 0.0
-
-        # Closed-bar MT5 tick-volume emulator.
         self.bp_bucket = None
         self.bp_bucket_ticks = 0
         self.bp_completed_volume: dict[int, int] = {}
         self.bp_ring = deque(maxlen=self.BP_LOOKBACK)
         self.bp_last_processed_bar_ns = None
-
         self.bp_signals = {
             "z_pass": 0,
             "imb_buy": 0, "imb_sell": 0,
@@ -62,8 +60,6 @@ class FusionStrategy(GoldeBraveStrategy):
         self.bp_entries_attempted = 0
         self.bp_closed_bars_seen = 0
         self.bp_volume_alignment_miss = 0
-
-        # Make the 777-style rejection problem observable by reason and layer.
         self.reject_reason = {
             "max_pending_side": 0,
             "buy_not_above_ask": 0,
@@ -73,9 +69,29 @@ class FusionStrategy(GoldeBraveStrategy):
         }
         self.reject_by_layer: dict[str, int] = {}
         self.place_attempts_by_layer: dict[str, int] = {}
+        self.operational_day_resets = 0
+
+    def _day_key(self, ns: int):
+        """Reproduce mq5: dayKey = iTime(H1, g_hour).
+
+        g_hour is the shifted broker/session hour. Subtracting that many H1 bars from the
+        current H1 open yields the operational day-start H1 timestamp, which stays constant
+        through the day. The prior reconstruction incorrectly included hour in the key.
+        """
+        dt = datetime.fromtimestamp(ns / 1e9, tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
+        return int((dt - timedelta(hours=self.shifted_hour(ns))).timestamp())
+
+    def _session_rebuild(self, ns: int, changed_tf: str):
+        dk = self._day_key(ns)
+        if self.day_key != dk:
+            # mq5 RefreshEntriesToday() counts only today's entry deals; forward simulation
+            # is equivalent to resetting this counter at the operational day boundary.
+            self.entries_today = 0
+            self.operational_day_resets += 1
+        return super()._session_rebuild(ns, changed_tf)
 
     def _day_range(self, ns: int):
-        # GoldeBrave source: BarsSinceDayStart() = g_hour * 4 M15 bars (minimum 1).
+        # mq5 BarsSinceDayStart = g_hour*3600 / PeriodSeconds(M15), minimum 1.
         n = max(self.shifted_hour(ns) * 4, 1)
         xs = list(self.bars["M15"])[-n:]
         if not xs:
@@ -93,7 +109,6 @@ class FusionStrategy(GoldeBraveStrategy):
             reason = "buy_not_above_ask"
         elif side < 0 and price >= self.last_bid:
             reason = "sell_not_below_bid"
-
         before = self.rejected_stops
         ok = super()._place(side, price, layer, ns, track_placed=track_placed)
         if not ok and self.rejected_stops > before:
@@ -108,9 +123,7 @@ class FusionStrategy(GoldeBraveStrategy):
         if self.bp_bucket is None:
             self.bp_bucket = bucket
         elif bucket != self.bp_bucket:
-            # Freeze exact count for the just-closed bucket before processing the new bucket.
             self.bp_completed_volume[self.bp_bucket] = self.bp_bucket_ticks
-            # Keep memory bounded; 260 buckets is enough for 200-bar rolling + diagnostics.
             cutoff = bucket - 260
             for k in [x for x in self.bp_completed_volume if x < cutoff]:
                 del self.bp_completed_volume[k]
@@ -139,16 +152,11 @@ class FusionStrategy(GoldeBraveStrategy):
         ss = float(sum(v * v for v in values))
         mean = s / n
         variance = max(0.0, (ss / n) - mean * mean)
-        # Exact mq5 correction: sqrt(variance * n / (n - 1)).
         return mean, float(np.sqrt(variance * n / (n - 1)))
 
     def _closed_bar_tick_volume(self, b):
-        # Nautilus internal time bars emit at/near the close boundary. The bar just closed is
-        # therefore the previous M15 quote bucket. Fall back to current bucket key for engine
-        # timestamp conventions and record every miss instead of silently fabricating volume.
         close_bucket = b.ts_ns // M15_NS
-        candidates = (close_bucket - 1, close_bucket)
-        for key in candidates:
+        for key in (close_bucket - 1, close_bucket):
             if key in self.bp_completed_volume:
                 return self.bp_completed_volume[key]
         self.bp_volume_alignment_miss += 1
@@ -159,20 +167,16 @@ class FusionStrategy(GoldeBraveStrategy):
         self.bp_closed_bars_seen += 1
         if len(bars) < self.BP_SWING_LOOKBACK + 2:
             return
-
         vol = self._closed_bar_tick_volume(b)
         if vol is None:
             return
-
-        # MQL5 diff path does AddToRolling(tick_volume[1]) BEFORE AnalyzeBar(1).
+        # mq5 AddToRolling(tick_volume[1]) occurs before AnalyzeBar(1).
         self.bp_ring.append(float(vol))
         if len(self.bp_ring) < max(2, self.BP_LOOKBACK // 2):
             return
-
         h = self.shifted_hour(b.ts_ns)
         if h not in self.config.trade_hours or self.spread_break:
             return
-
         mu, sd = self._sample_mean_std(self.bp_ring)
         if sd <= 0.0 or mu <= 0.0:
             return
@@ -180,7 +184,6 @@ class FusionStrategy(GoldeBraveStrategy):
         if z < self.BP_VOL_SIGMA:
             return
         self.bp_signals["z_pass"] += 1
-
         atr = self._atr(self.bars["M15"], 14)
         if atr is None or atr <= 0:
             return
@@ -192,13 +195,10 @@ class FusionStrategy(GoldeBraveStrategy):
         upper = b.h - max(b.o, b.c)
         lower = min(b.o, b.c) - b.l
         bullish, bearish = b.c > b.o, b.c < b.o
-
         imb_buy = bullish and (rng / atr) >= self.BP_RANGE_MULT and body_ratio >= 0.60
         imb_sell = bearish and (rng / atr) >= self.BP_RANGE_MULT and body_ratio >= 0.60
         abs_buy = lower >= body * self.BP_WICK_RATIO and lower > upper
         abs_sell = upper >= body * self.BP_WICK_RATIO and upper > lower
-
-        # MQL5 series array uses i+1 .. i+SwingLookback = older closed bars.
         prev = bars[-(self.BP_SWING_LOOKBACK + 1):-1]
         if len(prev) < self.BP_SWING_LOOKBACK:
             return
@@ -206,7 +206,6 @@ class FusionStrategy(GoldeBraveStrategy):
         swing_lo = min(x.l for x in prev)
         sweep_buy = b.l < swing_lo and b.c > swing_lo
         sweep_sell = b.h > swing_hi and b.c < swing_hi
-
         for name, flag in (
             ("imb_buy", imb_buy), ("imb_sell", imb_sell),
             ("abs_buy", abs_buy), ("abs_sell", abs_sell),
@@ -218,9 +217,6 @@ class FusionStrategy(GoldeBraveStrategy):
             self.bp_signals["combo_buy"] += 1
         if sweep_sell and imb_sell:
             self.bp_signals["combo_sell"] += 1
-
-        # Fusion trading rule is intentionally separate from indicator parity:
-        # combo > sweep > imbalance > absorption. All indicator events remain auditable above.
         buy_score = 3 * int(sweep_buy and imb_buy) + 2 * int(sweep_buy) + 2 * int(imb_buy) + int(abs_buy)
         sell_score = 3 * int(sweep_sell and imb_sell) + 2 * int(sweep_sell) + 2 * int(imb_sell) + int(abs_sell)
         if buy_score == sell_score:
@@ -233,7 +229,7 @@ class FusionStrategy(GoldeBraveStrategy):
 
     def summary(self):
         x = super().summary()
-        x["strategy_id"] = "GoldeBrave_v4_plus_BigPlayer_v4_3_parity_v2"
+        x["strategy_id"] = "GoldeBrave_v4_plus_BigPlayer_v4_3_parity_v3"
         x["bigplayer"] = {
             "timeframe": "M15 latest closed bar / MT5 bar[1] semantics",
             "tick_volume_proxy": "exact Raw QuoteTick count for each closed M15 bucket",
@@ -252,6 +248,7 @@ class FusionStrategy(GoldeBraveStrategy):
             "rolling_count_final": len(self.bp_ring),
         }
         x["parity_telemetry"] = {
+            "operational_day_resets": self.operational_day_resets,
             "place_attempts_by_layer": self.place_attempts_by_layer,
             "reject_by_layer": self.reject_by_layer,
             "reject_reason": self.reject_reason,
@@ -269,7 +266,6 @@ def main():
     args = ap.parse_args()
     if not args.raw_bidask_only:
         raise SystemExit("raw-bidask-only mandatory")
-
     catalog = ParquetDataCatalog(str(Path(args.catalog)))
     instrument = next((x for x in catalog.instruments() if x.id.symbol.value.replace("/", "") == "XAUUSD"), None)
     if instrument is None:
@@ -277,16 +273,8 @@ def main():
     ticks = catalog.query(data_cls=QuoteTick, identifiers=[instrument.id.value])
     if not ticks:
         raise SystemExit("no raw XAUUSD QuoteTicks")
-
     engine = BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"), risk_engine=RiskEngineConfig(bypass=True)))
-    engine.add_venue(
-        venue=SIM,
-        oms_type=OmsType.HEDGING,
-        account_type=AccountType.MARGIN,
-        base_currency=USD,
-        starting_balances=[Money(args.initial_balance, USD)],
-        default_leverage=Decimal("2000"),
-    )
+    engine.add_venue(venue=SIM, oms_type=OmsType.HEDGING, account_type=AccountType.MARGIN, base_currency=USD, starting_balances=[Money(args.initial_balance, USD)], default_leverage=Decimal("2000"))
     engine.add_instrument(instrument)
     engine.add_data(ticks)
     iid = instrument.id.value
@@ -296,10 +284,9 @@ def main():
     st = FusionStrategy(GoldeBraveConfig(instrument_id=instrument.id, m1=m1, m15=m15, h1=h1, initial_balance=args.initial_balance))
     engine.add_strategy(st)
     engine.run()
-
     s = st.summary()
     s.update({
-        "verification_level": "NAUTILUS_RAW_BIDASK_MT5_PARITY_V2",
+        "verification_level": "NAUTILUS_RAW_BIDASK_MT5_PARITY_V3",
         "engine": "NautilusTrader BacktestEngine",
         "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
         "raw_ticks": len(ticks),

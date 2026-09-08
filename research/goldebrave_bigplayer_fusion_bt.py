@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from collections import deque
 from decimal import Decimal
 from pathlib import Path
@@ -22,16 +21,17 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from research.goldebrave_nautilus_raw_bt import GoldeBraveConfig, GoldeBraveStrategy
 
 SIM = Venue("SIM")
+M15_NS = 900_000_000_000
 
 
 class FusionStrategy(GoldeBraveStrategy):
-    """GoldeBrave v4 + BigPlayerDetector v4.3 independent parallel layer.
+    """GoldeBrave v4 + BigPlayerDetector v4.3 with MT5 parity strengthening.
 
-    A/B/C are preserved. D_BIGPLAYER is an additional causal M15 entry engine using
-    the uploaded detector's default logic: LookbackBars=200, VolumeSigmaThreshold=2.0,
-    RangeMultiplier=1.5, WickRatioThreshold=1.2, SwingLookback=20.
-
-    Tick volume is reconstructed causally as raw QuoteTick count per M15 bucket.
+    A/B/C remain GoldeBrave. D_BIGPLAYER is independent.
+    BigPlayer is evaluated on the latest *closed* M15 bar, matching MQL5 bar[1].
+    Tick volume is reconstructed as raw QuoteTick count for that exact closed M15 bucket.
+    The rolling statistics include the current closed bar before z-score evaluation and use
+    the same sample-standard-deviation correction as the uploaded mq5.
     """
 
     BP_LOOKBACK = 200
@@ -44,54 +44,142 @@ class FusionStrategy(GoldeBraveStrategy):
         super().__init__(config)
         self.layer_entries["D_BIGPLAYER"] = 0
         self.layer_pnl["D_BIGPLAYER"] = 0.0
-        self.bp_volumes = deque(maxlen=400)
+
+        # Closed-bar MT5 tick-volume emulator.
         self.bp_bucket = None
         self.bp_bucket_ticks = 0
-        self.bp_signals = {"imb_buy": 0, "imb_sell": 0, "abs_buy": 0, "abs_sell": 0, "sweep_buy": 0, "sweep_sell": 0, "combo_buy": 0, "combo_sell": 0}
+        self.bp_completed_volume: dict[int, int] = {}
+        self.bp_ring = deque(maxlen=self.BP_LOOKBACK)
+        self.bp_last_processed_bar_ns = None
+
+        self.bp_signals = {
+            "z_pass": 0,
+            "imb_buy": 0, "imb_sell": 0,
+            "abs_buy": 0, "abs_sell": 0,
+            "sweep_buy": 0, "sweep_sell": 0,
+            "combo_buy": 0, "combo_sell": 0,
+        }
         self.bp_entries_attempted = 0
+        self.bp_closed_bars_seen = 0
+        self.bp_volume_alignment_miss = 0
+
+        # Make the 777-style rejection problem observable by reason and layer.
+        self.reject_reason = {
+            "max_pending_side": 0,
+            "buy_not_above_ask": 0,
+            "sell_not_below_bid": 0,
+            "missing_quote": 0,
+            "other": 0,
+        }
+        self.reject_by_layer: dict[str, int] = {}
+        self.place_attempts_by_layer: dict[str, int] = {}
 
     def _day_range(self, ns: int):
-        # Exact EA intent: BarsSinceDayStart = shifted_hour * 4 M15 bars, minimum 1.
+        # GoldeBrave source: BarsSinceDayStart() = g_hour * 4 M15 bars (minimum 1).
         n = max(self.shifted_hour(ns) * 4, 1)
         xs = list(self.bars["M15"])[-n:]
         if not xs:
             return None
         return max(x.h for x in xs), min(x.l for x in xs)
 
+    def _place(self, side, price, layer, ns, track_placed=False):
+        self.place_attempts_by_layer[layer] = self.place_attempts_by_layer.get(layer, 0) + 1
+        reason = None
+        if self.config.max_pending_per_side > 0 and self._pending_count(side) >= self.config.max_pending_per_side:
+            reason = "max_pending_side"
+        elif self.last_ask is None or self.last_bid is None:
+            reason = "missing_quote"
+        elif side > 0 and price <= self.last_ask:
+            reason = "buy_not_above_ask"
+        elif side < 0 and price >= self.last_bid:
+            reason = "sell_not_below_bid"
+
+        before = self.rejected_stops
+        ok = super()._place(side, price, layer, ns, track_placed=track_placed)
+        if not ok and self.rejected_stops > before:
+            reason = reason or "other"
+            self.reject_reason[reason] += 1
+            self.reject_by_layer[layer] = self.reject_by_layer.get(layer, 0) + 1
+        return ok
+
     def on_quote_tick(self, tick: QuoteTick):
         ns = int(tick.ts_event)
-        bucket = ns // 900_000_000_000
+        bucket = ns // M15_NS
         if self.bp_bucket is None:
             self.bp_bucket = bucket
         elif bucket != self.bp_bucket:
-            self.bp_volumes.append(self.bp_bucket_ticks)
-            self.bp_bucket_ticks = 0
+            # Freeze exact count for the just-closed bucket before processing the new bucket.
+            self.bp_completed_volume[self.bp_bucket] = self.bp_bucket_ticks
+            # Keep memory bounded; 260 buckets is enough for 200-bar rolling + diagnostics.
+            cutoff = bucket - 260
+            for k in [x for x in self.bp_completed_volume if x < cutoff]:
+                del self.bp_completed_volume[k]
             self.bp_bucket = bucket
+            self.bp_bucket_ticks = 0
         self.bp_bucket_ticks += 1
         super().on_quote_tick(tick)
 
     def on_bar(self, bar: Bar):
         super().on_bar(bar)
         bt = str(bar.bar_type)
-        if "15-MINUTE" in bt and self.last_bid is not None:
-            self._bigplayer(self._bar(bar).ts_ns)
-
-    def _bigplayer(self, ns: int):
-        bars = list(self.bars["M15"])
-        if len(bars) < max(self.BP_LOOKBACK, self.BP_SWING_LOOKBACK + 2, 16) or len(self.bp_volumes) < self.BP_LOOKBACK:
+        if "15-MINUTE" not in bt or self.last_bid is None:
             return
-        h = self.shifted_hour(ns)
+        b = self._bar(bar)
+        if self.bp_last_processed_bar_ns == b.ts_ns:
+            return
+        self.bp_last_processed_bar_ns = b.ts_ns
+        self._bigplayer_closed_bar(b)
+
+    @staticmethod
+    def _sample_mean_std(values):
+        n = len(values)
+        if n <= 1:
+            return 0.0, 0.0
+        s = float(sum(values))
+        ss = float(sum(v * v for v in values))
+        mean = s / n
+        variance = max(0.0, (ss / n) - mean * mean)
+        # Exact mq5 correction: sqrt(variance * n / (n - 1)).
+        return mean, float(np.sqrt(variance * n / (n - 1)))
+
+    def _closed_bar_tick_volume(self, b):
+        # Nautilus internal time bars emit at/near the close boundary. The bar just closed is
+        # therefore the previous M15 quote bucket. Fall back to current bucket key for engine
+        # timestamp conventions and record every miss instead of silently fabricating volume.
+        close_bucket = b.ts_ns // M15_NS
+        candidates = (close_bucket - 1, close_bucket)
+        for key in candidates:
+            if key in self.bp_completed_volume:
+                return self.bp_completed_volume[key]
+        self.bp_volume_alignment_miss += 1
+        return None
+
+    def _bigplayer_closed_bar(self, b):
+        bars = list(self.bars["M15"])
+        self.bp_closed_bars_seen += 1
+        if len(bars) < self.BP_SWING_LOOKBACK + 2:
+            return
+
+        vol = self._closed_bar_tick_volume(b)
+        if vol is None:
+            return
+
+        # MQL5 diff path does AddToRolling(tick_volume[1]) BEFORE AnalyzeBar(1).
+        self.bp_ring.append(float(vol))
+        if len(self.bp_ring) < max(2, self.BP_LOOKBACK // 2):
+            return
+
+        h = self.shifted_hour(b.ts_ns)
         if h not in self.config.trade_hours or self.spread_break:
             return
 
-        b = bars[-1]
-        vols = np.asarray(list(self.bp_volumes)[-self.BP_LOOKBACK:], dtype=float)
-        mu, sd = float(vols.mean()), float(vols.std(ddof=0))
-        if sd <= 0:
+        mu, sd = self._sample_mean_std(self.bp_ring)
+        if sd <= 0.0 or mu <= 0.0:
             return
-        z = (float(self.bp_bucket_ticks or vols[-1]) - mu) / sd
+        z = (float(vol) - mu) / sd
         if z < self.BP_VOL_SIGMA:
             return
+        self.bp_signals["z_pass"] += 1
 
         atr = self._atr(self.bars["M15"], 14)
         if atr is None or atr <= 0:
@@ -100,23 +188,30 @@ class FusionStrategy(GoldeBraveStrategy):
         if rng <= 0:
             return
         body = abs(b.c - b.o)
-        br = body / rng
+        body_ratio = body / rng
         upper = b.h - max(b.o, b.c)
         lower = min(b.o, b.c) - b.l
         bullish, bearish = b.c > b.o, b.c < b.o
 
-        imb_buy = bullish and rng / atr >= self.BP_RANGE_MULT and br >= 0.60
-        imb_sell = bearish and rng / atr >= self.BP_RANGE_MULT and br >= 0.60
+        imb_buy = bullish and (rng / atr) >= self.BP_RANGE_MULT and body_ratio >= 0.60
+        imb_sell = bearish and (rng / atr) >= self.BP_RANGE_MULT and body_ratio >= 0.60
         abs_buy = lower >= body * self.BP_WICK_RATIO and lower > upper
         abs_sell = upper >= body * self.BP_WICK_RATIO and upper > lower
 
+        # MQL5 series array uses i+1 .. i+SwingLookback = older closed bars.
         prev = bars[-(self.BP_SWING_LOOKBACK + 1):-1]
+        if len(prev) < self.BP_SWING_LOOKBACK:
+            return
         swing_hi = max(x.h for x in prev)
         swing_lo = min(x.l for x in prev)
         sweep_buy = b.l < swing_lo and b.c > swing_lo
         sweep_sell = b.h > swing_hi and b.c < swing_hi
 
-        for name, flag in (("imb_buy", imb_buy), ("imb_sell", imb_sell), ("abs_buy", abs_buy), ("abs_sell", abs_sell), ("sweep_buy", sweep_buy), ("sweep_sell", sweep_sell)):
+        for name, flag in (
+            ("imb_buy", imb_buy), ("imb_sell", imb_sell),
+            ("abs_buy", abs_buy), ("abs_sell", abs_sell),
+            ("sweep_buy", sweep_buy), ("sweep_sell", sweep_sell),
+        ):
             if flag:
                 self.bp_signals[name] += 1
         if sweep_buy and imb_buy:
@@ -124,28 +219,43 @@ class FusionStrategy(GoldeBraveStrategy):
         if sweep_sell and imb_sell:
             self.bp_signals["combo_sell"] += 1
 
-        # Independent entry engine: strongest direction wins. Combo > sweep > imbalance > absorption.
+        # Fusion trading rule is intentionally separate from indicator parity:
+        # combo > sweep > imbalance > absorption. All indicator events remain auditable above.
         buy_score = 3 * int(sweep_buy and imb_buy) + 2 * int(sweep_buy) + 2 * int(imb_buy) + int(abs_buy)
         sell_score = 3 * int(sweep_sell and imb_sell) + 2 * int(sweep_sell) + 2 * int(imb_sell) + int(abs_sell)
         if buy_score == sell_score:
             return
         side = 1 if buy_score > sell_score else -1
-
-        # Place just beyond the signal bar, retaining GoldeBrave dynamic SL/TP/BE/trail.
         px = (b.h + self.off()) if side > 0 else (b.l - self.off())
         self.bp_entries_attempted += 1
         if not self._near(side, px):
-            self._place(side, px, "D_BIGPLAYER", ns)
+            self._place(side, px, "D_BIGPLAYER", b.ts_ns)
 
     def summary(self):
         x = super().summary()
-        x["strategy_id"] = "GoldeBrave_v4_plus_BigPlayer_v4_3"
+        x["strategy_id"] = "GoldeBrave_v4_plus_BigPlayer_v4_3_parity_v2"
         x["bigplayer"] = {
-            "timeframe": "M15 causal",
-            "tick_volume_proxy": "Raw QuoteTick count per M15 bucket",
-            "defaults": {"LookbackBars": 200, "VolumeSigmaThreshold": 2.0, "RangeMultiplier": 1.5, "WickRatioThreshold": 1.2, "SwingLookback": 20},
+            "timeframe": "M15 latest closed bar / MT5 bar[1] semantics",
+            "tick_volume_proxy": "exact Raw QuoteTick count for each closed M15 bucket",
+            "rolling_semantics": "current closed bar added before z-score; sample std correction n/(n-1)",
+            "defaults": {
+                "LookbackBars": 200,
+                "VolumeSigmaThreshold": 2.0,
+                "RangeMultiplier": 1.5,
+                "WickRatioThreshold": 1.2,
+                "SwingLookback": 20,
+            },
             "signals": self.bp_signals,
             "entry_attempts": self.bp_entries_attempted,
+            "closed_bars_seen": self.bp_closed_bars_seen,
+            "volume_alignment_miss": self.bp_volume_alignment_miss,
+            "rolling_count_final": len(self.bp_ring),
+        }
+        x["parity_telemetry"] = {
+            "place_attempts_by_layer": self.place_attempts_by_layer,
+            "reject_by_layer": self.reject_by_layer,
+            "reject_reason": self.reject_reason,
+            "reject_rate_pct": 100.0 * self.rejected_stops / max(sum(self.place_attempts_by_layer.values()), 1),
         }
         return x
 
@@ -159,6 +269,7 @@ def main():
     args = ap.parse_args()
     if not args.raw_bidask_only:
         raise SystemExit("raw-bidask-only mandatory")
+
     catalog = ParquetDataCatalog(str(Path(args.catalog)))
     instrument = next((x for x in catalog.instruments() if x.id.symbol.value.replace("/", "") == "XAUUSD"), None)
     if instrument is None:
@@ -168,7 +279,14 @@ def main():
         raise SystemExit("no raw XAUUSD QuoteTicks")
 
     engine = BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"), risk_engine=RiskEngineConfig(bypass=True)))
-    engine.add_venue(venue=SIM, oms_type=OmsType.HEDGING, account_type=AccountType.MARGIN, base_currency=USD, starting_balances=[Money(args.initial_balance, USD)], default_leverage=Decimal("2000"))
+    engine.add_venue(
+        venue=SIM,
+        oms_type=OmsType.HEDGING,
+        account_type=AccountType.MARGIN,
+        base_currency=USD,
+        starting_balances=[Money(args.initial_balance, USD)],
+        default_leverage=Decimal("2000"),
+    )
     engine.add_instrument(instrument)
     engine.add_data(ticks)
     iid = instrument.id.value
@@ -178,8 +296,15 @@ def main():
     st = FusionStrategy(GoldeBraveConfig(instrument_id=instrument.id, m1=m1, m15=m15, h1=h1, initial_balance=args.initial_balance))
     engine.add_strategy(st)
     engine.run()
+
     s = st.summary()
-    s.update({"verification_level": "NAUTILUS_RAW_BIDASK_CAUSAL_FUSION", "engine": "NautilusTrader BacktestEngine", "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"), "raw_ticks": len(ticks), "ohlc_resample_used": False})
+    s.update({
+        "verification_level": "NAUTILUS_RAW_BIDASK_MT5_PARITY_V2",
+        "engine": "NautilusTrader BacktestEngine",
+        "nautilus_version": getattr(nautilus_trader, "__version__", "unknown"),
+        "raw_ticks": len(ticks),
+        "ohlc_resample_used": False,
+    })
     out = Path("results/goldebrave_bigplayer") / args.experiment_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(json.dumps(s, indent=2, ensure_ascii=False), encoding="utf-8")

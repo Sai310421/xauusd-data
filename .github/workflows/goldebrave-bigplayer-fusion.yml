@@ -5,10 +5,12 @@ on:
     branches: [feature/amos-dual-arena-v1]
     paths:
       - 'research/goldebrave_bigplayer_fusion_bt.py'
+      - 'research/goldebrave_nautilus_raw_bt.py'
       - '.github/workflows/goldebrave-bigplayer-fusion.yml'
   pull_request:
     paths:
       - 'research/goldebrave_bigplayer_fusion_bt.py'
+      - 'research/goldebrave_nautilus_raw_bt.py'
       - '.github/workflows/goldebrave-bigplayer-fusion.yml'
   workflow_dispatch:
 
@@ -34,10 +36,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
-      - name: Syntax gate
+      - name: Syntax and import gate
         run: |
           python -m py_compile research/goldebrave_nautilus_raw_bt.py
           python -m py_compile research/goldebrave_bigplayer_fusion_bt.py
+          python -c "from research.goldebrave_bigplayer_fusion_bt import FusionStrategy; print('fusion import OK')"
       - name: Restore Raw BidAsk catalog
         uses: actions/cache/restore@v4
         with:
@@ -47,7 +50,7 @@ jobs:
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - name: Run fusion BT
         run: |
-          python research/goldebrave_bigplayer_fusion_bt.py \
+          python -m research.goldebrave_bigplayer_fusion_bt \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --raw-bidask-only \

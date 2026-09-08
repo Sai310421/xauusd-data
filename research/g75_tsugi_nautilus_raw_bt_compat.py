@@ -1,11 +1,7 @@
-"""NautilusTrader 1.230.0 catalog API compatibility shim for G75 TSUGI BT."""
-from nautilus_trader.model.data import QuoteTick
-from nautilus_trader.persistence.catalog import ParquetDataCatalog
+"""Nautilus catalog compatibility entrypoint for G75 TSUGI BT."""
+from nautilus_catalog_compat import install_query_quote_ticks_alias
 
-if not hasattr(ParquetDataCatalog, "query_quote_ticks"):
-    def _query_quote_ticks(self, identifiers=None, start=None, end=None):
-        return self.query(data_cls=QuoteTick, identifiers=identifiers, start=start, end=end)
-    ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
+install_query_quote_ticks_alias()
 
 from g75_tsugi_nautilus_raw_bt import main
 

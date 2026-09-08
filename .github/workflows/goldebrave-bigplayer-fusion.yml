@@ -43,7 +43,7 @@ jobs:
           python -m py_compile research/goldebrave_nautilus_raw_bt.py
           python -m py_compile research/goldebrave_bigplayer_fusion_bt.py
           python -m py_compile research/goldebrave_bigplayer_parity_v4_bt.py
-          python -c "from research.goldebrave_bigplayer_parity_v4_bt import ParityV4Strategy; print('parity v4 import OK')"
+          python -c "from research.goldebrave_bigplayer_parity_v4_bt import ParityV4Strategy; print('parity v5 import OK')"
       - name: Restore Raw BidAsk catalog
         uses: actions/cache/restore@v4
         with:
@@ -51,7 +51,7 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
       - name: Guard Raw XAUUSD
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Run parity v4 fusion BT
+      - name: Run parity v5 fusion BT
         run: |
           python -m research.goldebrave_bigplayer_parity_v4_bt \
             --catalog "$RAW_CATALOG" \

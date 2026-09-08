@@ -32,6 +32,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Apply Nautilus 1.230 catalog compatibility patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('research/goldebrave_nautilus_raw_bt.py')
+          s = p.read_text(encoding='utf-8')
+          old = 'catalog.query_quote_ticks(identifiers=[instrument.id.value])'
+          new = 'catalog.query(data_cls=QuoteTick, identifiers=[instrument.id.value])'
+          if old not in s:
+              raise SystemExit('expected legacy catalog call not found')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
       - name: Syntax gate
         run: python -m py_compile research/goldebrave_nautilus_raw_bt.py
       - name: Install pinned NautilusTrader

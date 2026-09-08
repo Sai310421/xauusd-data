@@ -1,0 +1,60 @@
+name: Armada Cleanroom Nautilus Raw BidAsk BT
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/armada_nautilus_raw_cell.py'
+      - '.github/workflows/armada-nautilus-raw-bt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: armada-cleanroom-${{ github.run_id }}
+
+jobs:
+  bt-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+        family: [R1, R2, R3, R4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Armada clean-room cell
+        run: |
+          python research/armada_nautilus_raw_cell.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf "${{ matrix.tf }}" \
+            --family "${{ matrix.family }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-${{ matrix.tf }}-${{ matrix.family }}-${{ github.run_id }}
+          path: results/armada-nautilus/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.tf }}_${{ matrix.family }}.json
+          if-no-files-found: error
+          retention-days: 90

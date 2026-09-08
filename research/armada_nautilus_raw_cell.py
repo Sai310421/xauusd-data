@@ -57,7 +57,7 @@ class ArmadaCandidate(Strategy):
         self.closes=deque(maxlen=120); self.highs=deque(maxlen=120); self.lows=deque(maxlen=120)
         self.trs=deque(maxlen=60); self.prev_close=None
         self.active=False; self.side=0; self.entry=None; self.entry_tick=0; self.entry_bar=0
-        self.best=None; self.worst=None; self.stop=None; self.pending=0
+        self.best=None; self.worst=None; self.trail_stop=None; self.pending=0
         self.tick_i=0; self.bar_i=0; self.last_bid=None; self.last_ask=None
         self.realized=0.0; self.peak=config.initial_balance; self.max_dd=0.0
         self.gw=0.0; self.gl=0.0; self.wins=0; self.losses=0; self.trades=[]
@@ -120,7 +120,7 @@ class ArmadaCandidate(Strategy):
         if self.active:return
         px=ask if side>0 else bid
         self._submit(side); self.active=True; self.side=side; self.entry=px
-        self.entry_tick=self.tick_i; self.entry_bar=self.bar_i; self.best=px; self.worst=px; self.stop=None
+        self.entry_tick=self.tick_i; self.entry_bar=self.bar_i; self.best=px; self.worst=px; self.trail_stop=None
 
     def _close(self,bid:float,ask:float,reason:str):
         if not self.active:return
@@ -134,7 +134,7 @@ class ArmadaCandidate(Strategy):
         self.realized+=pnl
         if pnl>0:self.wins+=1;self.gw+=pnl
         elif pnl<0:self.losses+=1;self.gl+=abs(pnl)
-        self.active=False; self.side=0; self.entry=None; self.stop=None; self.best=None; self.worst=None
+        self.active=False; self.side=0; self.entry=None; self.trail_stop=None; self.best=None; self.worst=None
 
     def on_bar(self,bar:Bar):
         self.bar_i+=1
@@ -157,9 +157,9 @@ class ArmadaCandidate(Strategy):
         favorable=(mark-self.entry)*self.side
         if favorable>=self.config.protect_atr*atr:
             candidate=(self.best-self.config.trail_atr*atr) if self.side>0 else (self.best+self.config.trail_atr*atr)
-            self.stop=candidate if self.stop is None else (max(self.stop,candidate) if self.side>0 else min(self.stop,candidate))
-        if self.stop is not None:
-            hit=mark<=self.stop if self.side>0 else mark>=self.stop
+            self.trail_stop=candidate if self.trail_stop is None else (max(self.trail_stop,candidate) if self.side>0 else min(self.trail_stop,candidate))
+        if self.trail_stop is not None:
+            hit=mark<=self.trail_stop if self.side>0 else mark>=self.trail_stop
             if hit:self._close(bid,ask,'TRAIL');return
         tf_minutes=TF_MIN.get(next((name for name,m in TF_MIN.items() if f'-{m}-MINUTE-' in str(self.config.bar_type)), 'M1'),1)
         if (self.bar_i-self.entry_bar)*tf_minutes>=self.config.max_hold_minutes:

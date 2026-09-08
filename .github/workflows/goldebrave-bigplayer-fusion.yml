@@ -1,0 +1,64 @@
+name: GoldeBrave + BigPlayer Nautilus Fusion
+
+on:
+  push:
+    branches: [feature/amos-dual-arena-v1]
+    paths:
+      - 'research/goldebrave_bigplayer_fusion_bt.py'
+      - '.github/workflows/goldebrave-bigplayer-fusion.yml'
+  pull_request:
+    paths:
+      - 'research/goldebrave_bigplayer_fusion_bt.py'
+      - '.github/workflows/goldebrave-bigplayer-fusion.yml'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: gb-bp-${{ github.run_id }}
+
+permissions:
+  contents: read
+
+jobs:
+  fusion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Nautilus
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - name: Syntax gate
+        run: |
+          python -m py_compile research/goldebrave_nautilus_raw_bt.py
+          python -m py_compile research/goldebrave_bigplayer_fusion_bt.py
+      - name: Restore Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Guard Raw XAUUSD
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run fusion BT
+        run: |
+          python research/goldebrave_bigplayer_fusion_bt.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only \
+            --initial-balance 100000
+      - name: Show KPI
+        if: always()
+        run: cat "results/goldebrave_bigplayer/$EXPERIMENT_ID/summary.json" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goldebrave-bigplayer-${{ github.run_id }}
+          path: results/goldebrave_bigplayer/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'research/armada_nautilus_raw_cell.py'
+      - 'research/armada_nautilus_raw_cell_compat.py'
+      - 'research/nautilus_catalog_compat.py'
+      - 'research/nautilus_catalog_compat_probe.py'
       - '.github/workflows/armada-nautilus-raw-bt.yml'
   workflow_dispatch:
 
@@ -18,7 +21,43 @@ env:
   EXPERIMENT_ID: armada-cleanroom-${{ github.run_id }}
 
 jobs:
+  catalog-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Probe Nautilus catalog API compatibility
+        run: |
+          PYTHONPATH=research python research/nautilus_catalog_compat_probe.py \
+            --catalog "$RAW_CATALOG" \
+            --symbol XAUUSD \
+            --output results/nautilus-compat/armada_catalog_probe.json
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-catalog-compat-${{ github.run_id }}
+          path: results/nautilus-compat/armada_catalog_probe.json
+          if-no-files-found: error
+          retention-days: 90
+
   bt-cell:
+    needs: catalog-preflight
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +70,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install NautilusTrader
+      - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
@@ -40,11 +79,12 @@ jobs:
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
       - name: Guard Raw XAUUSD catalog
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Run Armada clean-room cell
+      - name: Run Armada clean-room cell through compatibility entrypoint
         run: |
-          python research/armada_nautilus_raw_cell.py \
+          PYTHONPATH=research python research/armada_nautilus_raw_cell_compat.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --tf "${{ matrix.tf }}" \

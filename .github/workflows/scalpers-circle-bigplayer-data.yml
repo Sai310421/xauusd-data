@@ -1,0 +1,78 @@
+name: Scalpers Circle BigPlayer Raw Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: UTC start date incl warmup
+        required: true
+        default: '2026-06-14'
+      end:
+        description: UTC end date
+        required: true
+        default: '2026-09-08'
+  push:
+    paths:
+      - 'scripts/scalpers_circle_dukascopy_m1.py'
+      - '.github/workflows/scalpers-circle-bigplayer-data.yml'
+
+jobs:
+  raw-tick-to-m1:
+    name: ${{ matrix.symbol }} RAW Tick -> M1
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [EURUSD, GBPUSD, USDCHF, AUDUSD, USDCAD, NZDUSD]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Resolve dates
+        id: dates
+        shell: bash
+        run: |
+          echo "start=${{ github.event.inputs.start || '2026-06-14' }}" >> "$GITHUB_OUTPUT"
+          echo "end=${{ github.event.inputs.end || '2026-09-08' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Dukascopy RAW ticks and aggregate M1
+        run: |
+          python scripts/scalpers_circle_dukascopy_m1.py \
+            --start '${{ steps.dates.outputs.start }}' \
+            --end '${{ steps.dates.outputs.end }}' \
+            --symbols '${{ matrix.symbol }}' \
+            --out 'artifacts/scalpers_circle_m1/${{ matrix.symbol }}' \
+            --workers 12
+
+      - name: Validate output
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+          sym='${{ matrix.symbol }}'
+          p=Path('artifacts/scalpers_circle_m1')/sym/f'{sym}.csv'
+          x=pd.read_csv(p,parse_dates=['timestamp'])
+          assert len(x)>1000, len(x)
+          assert x.timestamp.is_monotonic_increasing
+          assert (x.tick_volume>0).all()
+          assert (x.high>=x[['open','close','low']].max(axis=1)).all()
+          assert (x.low<=x[['open','close','high']].min(axis=1)).all()
+          print(sym, 'rows=',len(x),'from=',x.timestamp.min(),'to=',x.timestamp.max(),'ticks=',int(x.tick_volume.sum()))
+          PY
+
+      - name: Upload M1 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scalpers-circle-${{ matrix.symbol }}-rawtick-m1
+          path: artifacts/scalpers_circle_m1/${{ matrix.symbol }}/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6

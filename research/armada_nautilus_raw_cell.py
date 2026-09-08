@@ -19,6 +19,14 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
 
+# NautilusTrader 1.230.0 compatibility: ParquetDataCatalog no longer exposes
+# query_quote_ticks directly in this runtime. Keep the runner on native QuoteTick
+# catalog data by mapping the convenience call to catalog.query(...).
+if not hasattr(ParquetDataCatalog, 'query_quote_ticks'):
+    def _query_quote_ticks(self, identifiers=None, start=None, end=None):
+        return self.query(data_cls=QuoteTick, identifiers=identifiers, start=start, end=end)
+    ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
+
 SIM = Venue('SIM')
 TF_MIN = {'M1':1,'M5':5,'M15':15}
 
@@ -74,7 +82,6 @@ class ArmadaCandidate(Strategy):
         trend_strength=abs(slope)/atr
         fam=self.config.family
         if fam=='R1':
-            # trend continuation after shallow pullback
             if slope>0 and c[-1]>ema20 and c[-2]<=ema20: return 1
             if slope<0 and c[-1]<ema20 and c[-2]>=ema20: return -1
             return 0
@@ -90,7 +97,6 @@ class ArmadaCandidate(Strategy):
             if z<=-1.8:return 1
             if z>=1.8:return -1
             return 0
-        # R4: trend regimes use breakout/continuation; quiet regimes use mean reversion.
         if trend_strength>=0.8:
             hh=float(h[-21:-1].max()); ll=float(l[-21:-1].min())
             if c[-1]>hh or (slope>0 and c[-1]>ema20 and c[-2]<=ema20): return 1
@@ -136,8 +142,6 @@ class ArmadaCandidate(Strategy):
         tr=max(h-l,abs(h-self.prev_close) if self.prev_close is not None else 0,abs(l-self.prev_close) if self.prev_close is not None else 0)
         self.trs.append(tr); self.prev_close=c; self.closes.append(c); self.highs.append(h); self.lows.append(l)
         if not self.active and self.pending==0:self.pending=self._signal()
-        if self.active:
-            max_bars=max(1,self.config.max_hold_minutes//TF_MIN_INV[self.config.bar_type.spec.step]) if False else None
 
     def on_quote_tick(self,tick:QuoteTick):
         self.tick_i+=1; bid=self._f(tick.bid_price); ask=self._f(tick.ask_price); self.last_bid=bid; self.last_ask=ask
@@ -157,12 +161,7 @@ class ArmadaCandidate(Strategy):
         if self.stop is not None:
             hit=mark<=self.stop if self.side>0 else mark>=self.stop
             if hit:self._close(bid,ask,'TRAIL');return
-        max_bars=max(1,self.config.max_hold_minutes//TF_MIN[self.config.bar_type.spec.step] if False else 999999)
-        # BarType internals vary across Nautilus versions; use elapsed bar count with TF encoded in config externally.
-        tf_minutes=1
-        s=str(self.config.bar_type)
-        for name,m in TF_MIN.items():
-            if f'-{m}-MINUTE-' in s: tf_minutes=m
+        tf_minutes=TF_MIN.get(next((name for name,m in TF_MIN.items() if f'-{m}-MINUTE-' in str(self.config.bar_type)), 'M1'),1)
         if (self.bar_i-self.entry_bar)*tf_minutes>=self.config.max_hold_minutes:
             self._close(bid,ask,'TIME')
 

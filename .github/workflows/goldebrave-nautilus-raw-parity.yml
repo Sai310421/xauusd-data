@@ -32,12 +32,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply Nautilus 1.230 compatibility patches
+      - name: Apply Nautilus 1.230 and MT5 source-parity patches
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('research/goldebrave_nautilus_raw_bt.py')
           s = p.read_text(encoding='utf-8')
+
           replacements = {
               'catalog.query_quote_ticks(identifiers=[instrument.id.value])': 'catalog.query(data_cls=QuoteTick, identifiers=[instrument.id.value])',
               'f"{iid}-60-MINUTE-BID-INTERNAL"': 'f"{iid}-1-HOUR-BID-INTERNAL"',
@@ -46,6 +47,31 @@ jobs:
               if old not in s:
                   raise SystemExit(f'expected compatibility target not found: {old}')
               s = s.replace(old, new)
+
+          # Exact GoldeBrave_v4.mq5 DayRange parity:
+          # BarsSinceDayStart() = (g_hour*3600)/PeriodSeconds(M15), minimum 1.
+          # The previous recreation incorrectly used UTC calendar-day bars.
+          old = '''    def _day_range(self, ns: int):
+        day = self._calendar_day(ns)
+        xs = [b for b in self.bars["M15"] if self._calendar_day(b.ts_ns) == day]
+        if not xs:
+            return None
+        return max(x.h for x in xs), min(x.l for x in xs)
+'''
+          new = '''    def _day_range(self, ns: int):
+        # MT5 source parity: BarsSinceDayStart() uses shifted g_hour, not UTC calendar date.
+        # BarrierTF default=M15, so n = max(g_hour * 4, 1), then iHighest/iLowest over shift 0..n-1.
+        h = self.shifted_hour(ns)
+        n = max(int((h * 3600) / (15 * 60)), 1)
+        xs = list(self.bars["M15"])[-n:]
+        if not xs:
+            return None
+        return max(x.h for x in xs), min(x.l for x in xs)
+'''
+          if old not in s:
+              raise SystemExit('expected _day_range implementation not found')
+          s = s.replace(old, new)
+
           p.write_text(s, encoding='utf-8')
           PY
       - name: Syntax gate

@@ -8,6 +8,7 @@ on:
       - 'research/goldebrave_bigplayer_parity_v4_bt.py'
       - 'research/goldebrave_bigplayer_parity_v7_bt.py'
       - 'research/goldebrave_bigplayer_parity_v8_bt.py'
+      - 'research/goldebrave_bigplayer_parity_v9_bt.py'
       - 'research/goldebrave_nautilus_raw_bt.py'
       - '.github/workflows/goldebrave-bigplayer-fusion.yml'
   pull_request:
@@ -16,6 +17,7 @@ on:
       - 'research/goldebrave_bigplayer_parity_v4_bt.py'
       - 'research/goldebrave_bigplayer_parity_v7_bt.py'
       - 'research/goldebrave_bigplayer_parity_v8_bt.py'
+      - 'research/goldebrave_bigplayer_parity_v9_bt.py'
       - 'research/goldebrave_nautilus_raw_bt.py'
       - '.github/workflows/goldebrave-bigplayer-fusion.yml'
   workflow_dispatch:
@@ -24,7 +26,7 @@ env:
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  EXPERIMENT_ID: gb-bp-v8-${{ github.run_id }}
+  EXPERIMENT_ID: gb-bp-v9-${{ github.run_id }}
 
 permissions:
   contents: read
@@ -49,7 +51,8 @@ jobs:
           python -m py_compile research/goldebrave_bigplayer_parity_v4_bt.py
           python -m py_compile research/goldebrave_bigplayer_parity_v7_bt.py
           python -m py_compile research/goldebrave_bigplayer_parity_v8_bt.py
-          python -c "from research.goldebrave_bigplayer_parity_v8_bt import ParityV8Strategy; print('parity v8 exact ZigZag import OK')"
+          python -m py_compile research/goldebrave_bigplayer_parity_v9_bt.py
+          python -c "from research.goldebrave_bigplayer_parity_v9_bt import ParityV9Strategy; print('parity v9 pending lifecycle import OK')"
       - name: Restore Raw BidAsk catalog
         uses: actions/cache/restore@v4
         with:
@@ -57,9 +60,9 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
       - name: Guard Raw XAUUSD
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Run parity v8 exact ZigZag fusion BT
+      - name: Run parity v9 pending lifecycle audit
         run: |
-          python -m research.goldebrave_bigplayer_parity_v8_bt \
+          python -m research.goldebrave_bigplayer_parity_v9_bt \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --raw-bidask-only \
@@ -70,7 +73,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: goldebrave-bigplayer-v8-${{ github.run_id }}
+          name: goldebrave-bigplayer-v9-${{ github.run_id }}
           path: results/goldebrave_bigplayer/${{ env.EXPERIMENT_ID }}/
           if-no-files-found: error
           retention-days: 90

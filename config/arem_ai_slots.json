@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "decision_api": {
+    "entry": {"input": "FeatureFrame", "output": ["NO_ENTRY", "ENTRY"]},
+    "direction": {"input": "FeatureFrame", "output": ["BUY", "SELL"]},
+    "exit": {"input": "FeatureFrame+PositionState", "output": ["HOLD", "CLOSE"]}
+  },
+  "slots": {
+    "ENTRY_AI": {
+      "default": "ExtraTrees",
+      "replaceable": true,
+      "candidates": ["ExtraTrees", "LightGBM", "XGBoost", "Hydra66Adapter", "Transformer"]
+    },
+    "DIRECTION_AI": {
+      "default": "ExtraTrees",
+      "replaceable": true,
+      "candidates": ["ExtraTrees", "LightGBM", "XGBoost", "Hydra66Adapter", "Transformer"]
+    },
+    "EXIT_AI": {
+      "default": "ExtraTrees_HOLD_CLOSE",
+      "replaceable": true,
+      "candidates": ["ExtraTrees", "LightGBM", "VisionAIAdapter", "Transformer"]
+    },
+    "NUMERIC_FEATURE_PROVIDER": {
+      "default": "PriceState+CrossSymbol",
+      "replaceable": true,
+      "candidates": ["PriceState+CrossSymbol", "Hydra66"]
+    },
+    "VISUAL_EVIDENCE": {
+      "default": "OFF",
+      "replaceable": true,
+      "candidates": ["OFF", "Vision_AI_Trader"]
+    },
+    "RISK_SUPERVISOR": {
+      "default": "Deterministic",
+      "replaceable": false
+    }
+  },
+  "promotion": ["TRAIN", "WFO", "OOS", "REALITY_BT", "SHADOW", "DEMO", "LIVE"]
+}

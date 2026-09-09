@@ -1,0 +1,102 @@
+name: AE Positive Alpha Factory v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ae-positive-alpha-factory-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+
+jobs:
+  minimumspike-6x3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - name: Restore canonical Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw BidAsk only
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Run MinimumSpike 6 symbols x 3 TF
+        run: |
+          EXPERIMENT_ID="positive-alpha-minimumspike-${GITHUB_RUN_ID}"
+          python -m research.minimumspike_raw6x3_bt_isolated \
+            --catalog "$RAW_CATALOG" \
+            --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF \
+            --timeframes M1 M5 M15 \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only
+          python research/select_top_cells.py \
+            --summary "results/ae-bt/$EXPERIMENT_ID/summary.json" \
+            --out "results/ae-bt/$EXPERIMENT_ID/selected_cells.json" \
+            --top-k 8 --min-n 10 --min-pf 1.0 --max-dd 30 --max-per-symbol 3 || true
+      - name: Upload MinimumSpike evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: positive-alpha-minimumspike-${{ github.run_id }}
+          path: results/ae-bt/positive-alpha-minimumspike-${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  armada-xau:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+        family: [R1, R2, R3, R4]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore canonical Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Armada candidate
+        run: |
+          EXPERIMENT_ID="positive-alpha-armada-${GITHUB_RUN_ID}"
+          PYTHONPATH=research python research/armada_nautilus_raw_cell_compat.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf "${{ matrix.tf }}" \
+            --family "${{ matrix.family }}" \
+            --raw-bidask-only
+      - name: Upload Armada evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: positive-alpha-armada-${{ matrix.tf }}-${{ matrix.family }}-${{ github.run_id }}
+          path: results/armada-nautilus/positive-alpha-armada-${{ github.run_id }}/cells/${{ matrix.tf }}_${{ matrix.family }}.json
+          if-no-files-found: error
+          retention-days: 90

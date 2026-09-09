@@ -1,5 +1,5 @@
 {
-  "version": "0.1",
+  "version": "0.2",
   "name": "AREM Multi-Myfxbook EDGE Foundation",
   "objective": "Learn reusable empirical and mathematical EDGE representations from multiple strategy track records without averaging away regime-specific edge.",
   "data_contract": {
@@ -9,6 +9,38 @@
     "required_keys": ["timestamp", "symbol", "strategy_id", "market_state", "teacher_action"],
     "optional_keys": ["profit", "mfe", "mae", "duration", "cost", "confidence", "regime"]
   },
+  "sources": [
+    {
+      "strategy_id": "SRC001_SCALPERS_CIRCLE",
+      "name": "Scalpers Circle Republic",
+      "source_type": "MYFXBOOK",
+      "status": "ENTRY_DIRECTION_CLONE_TRAINED_EXIT_PENDING",
+      "teacher_rows": 9457,
+      "fx_teacher_rows": 9456,
+      "symbols": ["EURUSD", "GBPUSD", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD"],
+      "raw_market_status": "6_OF_6_COMPLETE",
+      "statement_to_utc_hours": 3,
+      "entry_price_alignment_median_error_pips": 0.3,
+      "edge_family_candidates": ["MOMENTUM", "MEAN_REVERSION", "CROSS_SYMBOL", "TIME", "EXIT"],
+      "clone_metrics_initial_oos": {
+        "entry": {
+          "recall": 0.9534591195,
+          "f1": 0.7699339766,
+          "false_entry_rate": 0.0523270440
+        },
+        "direction": {
+          "balanced_accuracy": 0.9356354240,
+          "mcc": 0.8581925142,
+          "buy_f1": 0.9844632768,
+          "sell_f1": 0.8735632184
+        },
+        "exit": {
+          "status": "PENDING"
+        }
+      },
+      "promotion_state": "RESEARCH_ONLY_NOT_DEMO_READY"
+    }
+  ],
   "edge_families": [
     "TREND", "MEAN_REVERSION", "BREAKOUT", "LIQUIDITY", "STRUCTURE", "MOMENTUM",
     "VOLATILITY", "CROSS_SYMBOL", "TIME", "ORDERFLOW", "EXIT", "RISK", "RECOVERY"
@@ -39,6 +71,14 @@
     "SHADOW",
     "DEMO"
   ],
+  "validation": {
+    "time_oos": true,
+    "strategy_oos": true,
+    "regime_oos": true,
+    "cost_stress": true,
+    "class_specific_metrics": true,
+    "economic_metrics": ["PF", "WR", "EXPECTANCY", "MAX_DD", "RETURN", "RUIN_PROBABILITY"]
+  },
   "promotion_gates": {
     "strategy_clone_required": true,
     "no_entry_required": true,

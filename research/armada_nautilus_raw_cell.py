@@ -10,7 +10,7 @@ import nautilus_trader
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.backtest.config import BacktestEngineConfig
 from nautilus_trader.config import LoggingConfig, RiskEngineConfig
-from nautilus_trader.model import BarType, Money, Venue
+from nautilus_trader.model import BarType, Money
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, QuoteTick
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
@@ -27,7 +27,6 @@ if not hasattr(ParquetDataCatalog, 'query_quote_ticks'):
         return self.query(data_cls=QuoteTick, identifiers=identifiers, start=start, end=end)
     ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
 
-SIM = Venue('SIM')
 TF_MIN = {'M1':1,'M5':5,'M15':15}
 
 class ArmadaConfig(StrategyConfig, frozen=True):
@@ -189,12 +188,16 @@ def main():
     ticks=catalog.query_quote_ticks(identifiers=[instrument.id.value])
     if not ticks:raise SystemExit('no raw XAUUSD QuoteTicks')
     engine=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
-    engine.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
+    # Critical execution fix: the simulated venue must match the venue embedded in
+    # the catalog instrument ID (for example XAUUSD.DUKA). Using a hard-coded SIM
+    # venue lets signal/virtual accounting run but prevents native order routing/fills.
+    exec_venue=instrument.id.venue
+    engine.add_venue(venue=exec_venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
     engine.add_instrument(instrument); engine.add_data(ticks)
     bt=BarType.from_str(f'{instrument.id.value}-{TF_MIN[a.tf]}-MINUTE-BID-INTERNAL')
     st=ArmadaCandidate(ArmadaConfig(instrument_id=instrument.id,bar_type=bt,family=a.family))
     engine.add_strategy(st); engine.run(); pos=engine.trader.generate_positions_report(); fills=engine.trader.generate_order_fills_report()
-    obj={'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM','engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),'raw_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),'native_positions':int(len(pos)) if pos is not None else 0,'native_fills':int(len(fills)) if fills is not None else 0,'disclaimer':'Clean-room behavioral hypothesis, not original Armada source.'}
+    obj={'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM','engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),'raw_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),'native_positions':int(len(pos)) if pos is not None else 0,'native_fills':int(len(fills)) if fills is not None else 0,'execution_venue':str(exec_venue),'disclaimer':'Clean-room behavioral hypothesis, not original Armada source.'}
     out=Path('results/armada-nautilus')/a.experiment_id/'cells'; out.mkdir(parents=True,exist_ok=True); (out/f'{a.tf}_{a.family}.json').write_text(json.dumps(obj,indent=2),encoding='utf-8'); print(json.dumps(obj,indent=2)); engine.dispose()
 
 if __name__=='__main__':main()

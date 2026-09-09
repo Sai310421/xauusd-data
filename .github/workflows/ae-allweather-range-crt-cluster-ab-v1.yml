@@ -1,0 +1,63 @@
+name: AE AllWeather Range CRT Cluster A-B v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/ae_allweather_range_crt_cluster_v1.py'
+      - 'research/ae_allweather_nautilus_raw_ab_v1.py'
+      - '.github/workflows/ae-allweather-range-crt-cluster-ab-v1.yml'
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: ae-allweather-ab-${{ github.run_id }}
+  PYTHONPATH: ${{ github.workspace }}
+
+jobs:
+  ab-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [BASE, CLUSTER]
+        tf: [1, 5, 15]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore canonical Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run A-B cell
+        run: |
+          python research/ae_allweather_nautilus_raw_ab_v1.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --mode "${{ matrix.mode }}" \
+            --tf "${{ matrix.tf }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ae-allweather-${{ matrix.mode }}-M${{ matrix.tf }}-${{ github.run_id }}
+          path: results/ae-allweather-ab/${{ env.EXPERIMENT_ID }}/${{ matrix.mode }}_M${{ matrix.tf }}.json
+          if-no-files-found: error
+          retention-days: 90

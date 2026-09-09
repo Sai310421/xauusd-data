@@ -1,0 +1,27 @@
+name: AREM Multi-EDGE Foundation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'config/arem_multi_myfxbook_foundation.json'
+      - 'config/arem_ai_slots.json'
+      - 'scripts/arem_behavioral_clone_train.py'
+      - 'scripts/arem_multi_edge_registry.py'
+
+jobs:
+  validate-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate registry and architecture
+        run: python scripts/arem_multi_edge_registry.py
+      - name: Upload foundation manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: arem-multi-edge-foundation-manifest
+          path: artifacts/arem_multi_edge_foundation/
+          if-no-files-found: error

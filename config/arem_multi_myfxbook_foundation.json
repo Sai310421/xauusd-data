@@ -1,0 +1,60 @@
+{
+  "version": "0.1",
+  "name": "AREM Multi-Myfxbook EDGE Foundation",
+  "objective": "Learn reusable empirical and mathematical EDGE representations from multiple strategy track records without averaging away regime-specific edge.",
+  "data_contract": {
+    "strategy_id": "string",
+    "source_type": ["MYFXBOOK", "STATEMENT", "JOURNAL", "SYNTHETIC_MATH_EDGE"],
+    "teacher_actions": ["NO_ENTRY", "BUY", "SELL", "HOLD", "CLOSE"],
+    "required_keys": ["timestamp", "symbol", "strategy_id", "market_state", "teacher_action"],
+    "optional_keys": ["profit", "mfe", "mae", "duration", "cost", "confidence", "regime"]
+  },
+  "edge_families": [
+    "TREND", "MEAN_REVERSION", "BREAKOUT", "LIQUIDITY", "STRUCTURE", "MOMENTUM",
+    "VOLATILITY", "CROSS_SYMBOL", "TIME", "ORDERFLOW", "EXIT", "RISK", "RECOVERY"
+  ],
+  "math_edge_sources": [
+    "FIRST_PASSAGE", "OPTIMAL_STOPPING", "KELLY", "HJB", "SINGULAR_CONTROL",
+    "DRAWDOWN_CONSTRAINT", "RUIN_PROBABILITY", "REGIME_SWITCHING", "EVT", "ROBUST_CONTROL"
+  ],
+  "architecture": {
+    "strategy_encoders": "one encoder per source strategy/family",
+    "edge_embedding": "shared latent representation of profitable market states",
+    "regime_router": "selects or weights compatible edge experts by current market regime",
+    "master_policy": "produces ENTRY/NO_ENTRY, BUY/SELL and EXIT decisions",
+    "risk_supervisor": "deterministic hard limits outside the AI policy"
+  },
+  "anti_cancellation_rule": "Do not train one undifferentiated average policy across opposing strategies. Preserve strategy_id, edge_family and regime labels and use routing/mixture-of-experts.",
+  "training_stages": [
+    "INGEST_EACH_STRATEGY",
+    "BUILD_STRATEGY_CLONE",
+    "EXTRACT_EDGE_EMBEDDINGS",
+    "CLUSTER_BY_EDGE_FAMILY",
+    "INJECT_MATH_EDGE_FEATURES_AND_CONSTRAINTS",
+    "TRAIN_REGIME_ROUTER",
+    "TRAIN_MASTER_POLICY",
+    "WALK_FORWARD",
+    "CROSS_STRATEGY_OOS",
+    "REALITY_BT",
+    "SHADOW",
+    "DEMO"
+  ],
+  "promotion_gates": {
+    "strategy_clone_required": true,
+    "no_entry_required": true,
+    "sell_minority_class_required": true,
+    "cross_strategy_oos_required": true,
+    "cost_stress_required": true,
+    "regime_stability_required": true,
+    "live_without_demo": false
+  },
+  "model_slots": {
+    "ENTRY_AI": {"replaceable": true},
+    "DIRECTION_AI": {"replaceable": true},
+    "EXIT_AI": {"replaceable": true},
+    "STRATEGY_ENCODER": {"replaceable": true},
+    "REGIME_ROUTER": {"replaceable": true},
+    "MASTER_POLICY": {"replaceable": true},
+    "RISK_SUPERVISOR": {"replaceable": false}
+  }
+}

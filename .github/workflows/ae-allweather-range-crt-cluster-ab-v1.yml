@@ -18,6 +18,7 @@ env:
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ae-allweather-ab-${{ github.run_id }}
   PYTHONPATH: ${{ github.workspace }}
+  AE_CLUSTER_VERSION: 'RECOVERY_POOL_V3'
 
 jobs:
   ab-cell:
@@ -47,6 +48,7 @@ jobs:
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - name: Run A-B cell
         run: |
+          echo "Cluster version: ${AE_CLUSTER_VERSION}"
           python research/ae_allweather_nautilus_raw_ab_v1.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \

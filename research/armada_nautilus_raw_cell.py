@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse, json, math
-from collections import deque
+from collections import deque, Counter
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,9 +19,6 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
 
-# NautilusTrader 1.230.0 compatibility: ParquetDataCatalog no longer exposes
-# query_quote_ticks directly in this runtime. Keep the runner on native QuoteTick
-# catalog data by mapping the convenience call to catalog.query(...).
 if not hasattr(ParquetDataCatalog, 'query_quote_ticks'):
     def _query_quote_ticks(self, identifiers=None, start=None, end=None):
         return self.query(data_cls=QuoteTick, identifiers=identifiers, start=start, end=end)
@@ -40,17 +37,6 @@ class ArmadaConfig(StrategyConfig, frozen=True):
     protect_atr: float = 0.80
 
 class ArmadaCandidate(Strategy):
-    """Clean-room Armada behavior candidate. Not original source code.
-
-    R1: trend continuation
-    R2: breakout + runner
-    R3: mean reversion
-    R4: regime-routed hybrid
-
-    Signals come from Nautilus INTERNAL bars constructed directly from raw QuoteTicks.
-    Execution is native Nautilus market orders. A synchronized virtual ledger is retained
-    only for behavior-matching metrics (PF/DD/MAE/MFE/holding-time).
-    """
     def __init__(self, config: ArmadaConfig):
         super().__init__(config)
         self.closes=deque(maxlen=120); self.highs=deque(maxlen=120); self.lows=deque(maxlen=120)
@@ -60,6 +46,9 @@ class ArmadaCandidate(Strategy):
         self.tick_i=0; self.bar_i=0; self.last_bid=None; self.last_ask=None
         self.realized=0.0; self.peak=config.initial_balance; self.max_dd=0.0
         self.gw=0.0; self.gl=0.0; self.wins=0; self.losses=0; self.trades=[]
+        self.submitted_orders=0
+        self.order_events=Counter()
+        self.last_order_problem=None
 
     @staticmethod
     def _f(x): return float(x.as_double()) if hasattr(x,'as_double') else float(x)
@@ -67,6 +56,17 @@ class ArmadaCandidate(Strategy):
     def on_start(self):
         self.subscribe_quote_ticks(self.config.instrument_id)
         self.subscribe_bars(self.config.bar_type)
+
+    def on_order_submitted(self, event): self.order_events['submitted'] += 1
+    def on_order_accepted(self, event): self.order_events['accepted'] += 1
+    def on_order_filled(self, event): self.order_events['filled'] += 1
+    def on_order_denied(self, event):
+        self.order_events['denied'] += 1
+        self.last_order_problem = str(event)
+    def on_order_rejected(self, event):
+        self.order_events['rejected'] += 1
+        self.last_order_problem = str(event)
+    def on_order_canceled(self, event): self.order_events['canceled'] += 1
 
     def _atr(self):
         return float(np.mean(self.trs)) if self.trs else 0.0
@@ -110,9 +110,13 @@ class ArmadaCandidate(Strategy):
 
     def _submit(self, side:int):
         inst=self.cache.instrument(self.config.instrument_id)
-        o=self.order_factory.market(instrument_id=self.config.instrument_id,
+        qty=inst.make_qty(self.config.unit_qty)
+        o=self.order_factory.market(
+            instrument_id=self.config.instrument_id,
             order_side=OrderSide.BUY if side>0 else OrderSide.SELL,
-            quantity=inst.make_qty(self.config.unit_qty))
+            quantity=qty,
+        )
+        self.submitted_orders += 1
         self.submit_order(o)
 
     def _open(self,side:int,bid:float,ask:float):
@@ -174,9 +178,20 @@ class ArmadaCandidate(Strategy):
         for t in self.trades:
             eq+=t['pnl']; peak=max(peak,eq); mdd=max(mdd,(peak-eq)/max(peak,1e-9)*100)
         hs=[t['hold_bars'] for t in self.trades]; maes=[t['mae'] for t in self.trades]; mfes=[t['mfe'] for t in self.trades]
-        return {'family':self.config.family,'N':n,'WR_pct':wr,'PF':pf,'net_virtual':self.realized,'max_DD_pct':mdd,
+        return {
+            'family':self.config.family,'N':n,'WR_pct':wr,'PF':pf,'net_virtual':self.realized,'max_DD_pct':mdd,
             'avg_win':self.gw/max(self.wins,1),'avg_loss':self.gl/max(self.losses,1),'expectancy':self.realized/max(n,1),
-            'hold_bars_mean':float(np.mean(hs)) if hs else 0.0,'MAE_mean':float(np.mean(maes)) if maes else 0.0,'MFE_mean':float(np.mean(mfes)) if mfes else 0.0}
+            'hold_bars_mean':float(np.mean(hs)) if hs else 0.0,'MAE_mean':float(np.mean(maes)) if maes else 0.0,'MFE_mean':float(np.mean(mfes)) if mfes else 0.0,
+            'submitted_orders':self.submitted_orders,'order_events':dict(self.order_events),'last_order_problem':self.last_order_problem,
+        }
+
+def _status_counts(df):
+    if df is None or len(df)==0:
+        return {}
+    for col in ('status','order_status'):
+        if col in df.columns:
+            return {str(k):int(v) for k,v in df[col].astype(str).value_counts().to_dict().items()}
+    return {'columns': [str(c) for c in df.columns]}
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--tf',choices=list(TF_MIN),required=True); ap.add_argument('--family',choices=['R1','R2','R3','R4'],required=True); ap.add_argument('--raw-bidask-only',action='store_true')
@@ -188,16 +203,27 @@ def main():
     ticks=catalog.query_quote_ticks(identifiers=[instrument.id.value])
     if not ticks:raise SystemExit('no raw XAUUSD QuoteTicks')
     engine=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
-    # Critical execution fix: the simulated venue must match the venue embedded in
-    # the catalog instrument ID (for example XAUUSD.DUKA). Using a hard-coded SIM
-    # venue lets signal/virtual accounting run but prevents native order routing/fills.
     exec_venue=instrument.id.venue
     engine.add_venue(venue=exec_venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
     engine.add_instrument(instrument); engine.add_data(ticks)
     bt=BarType.from_str(f'{instrument.id.value}-{TF_MIN[a.tf]}-MINUTE-BID-INTERNAL')
     st=ArmadaCandidate(ArmadaConfig(instrument_id=instrument.id,bar_type=bt,family=a.family))
-    engine.add_strategy(st); engine.run(); pos=engine.trader.generate_positions_report(); fills=engine.trader.generate_order_fills_report()
-    obj={'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM','engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),'raw_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),'native_positions':int(len(pos)) if pos is not None else 0,'native_fills':int(len(fills)) if fills is not None else 0,'execution_venue':str(exec_venue),'disclaimer':'Clean-room behavioral hypothesis, not original Armada source.'}
-    out=Path('results/armada-nautilus')/a.experiment_id/'cells'; out.mkdir(parents=True,exist_ok=True); (out/f'{a.tf}_{a.family}.json').write_text(json.dumps(obj,indent=2),encoding='utf-8'); print(json.dumps(obj,indent=2)); engine.dispose()
+    engine.add_strategy(st); engine.run()
+    pos=engine.trader.generate_positions_report(); fills=engine.trader.generate_order_fills_report(); orders=engine.trader.generate_orders_report()
+    obj={
+        'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM_DIAG',
+        'engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),
+        'raw_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),
+        'native_orders':int(len(orders)) if orders is not None else 0,
+        'native_order_status_counts':_status_counts(orders),
+        'native_positions':int(len(pos)) if pos is not None else 0,
+        'native_fills':int(len(fills)) if fills is not None else 0,
+        'execution_venue':str(exec_venue),
+        'instrument_id':str(instrument.id),
+        'unit_qty':str(st.config.unit_qty),
+        'instrument_size_precision':getattr(instrument,'size_precision',None),
+        'disclaimer':'Clean-room behavioral hypothesis, not original Armada source.',
+    }
+    out=Path('results/armada-nautilus')/a.experiment_id/'cells'; out.mkdir(parents=True,exist_ok=True); (out/f'{a.tf}_{a.family}.json').write_text(json.dumps(obj,indent=2,default=str),encoding='utf-8'); print(json.dumps(obj,indent=2,default=str)); engine.dispose()
 
 if __name__=='__main__':main()

@@ -1,0 +1,31 @@
+name: AE Maximum Output Frontier v1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/ae_max_output_frontier_v1.py'
+      - '.github/workflows/ae-max-output-frontier-v1.yml'
+
+jobs:
+  frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime
+        run: python -m pip install numpy
+      - name: Run mechanical maximum-output frontier
+        run: |
+          python research/ae_max_output_frontier_v1.py \
+            --days 30 \
+            --out results/ae-max-output-frontier/v1/frontier.json
+      - name: Upload frontier evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ae-max-output-frontier-v1-${{ github.run_id }}
+          path: results/ae-max-output-frontier/v1/frontier.json
+          retention-days: 90

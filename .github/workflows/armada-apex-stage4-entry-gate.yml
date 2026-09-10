@@ -1,0 +1,74 @@
+name: Armada APEX Stage4 Entry Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/armada_apex_stage4_entry_gate.py'
+      - '.github/workflows/armada-apex-stage4-entry-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: armada-apex-stage4-${{ github.run_id }}
+
+jobs:
+  gate-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: G40, trend: '0.00', impulse: '0.00', range: '0.00', maximp: '999'}
+          - {id: G41, trend: '0.20', impulse: '0.00', range: '0.00', maximp: '999'}
+          - {id: G42, trend: '0.35', impulse: '0.00', range: '0.00', maximp: '999'}
+          - {id: G43, trend: '0.20', impulse: '0.05', range: '0.00', maximp: '999'}
+          - {id: G44, trend: '0.35', impulse: '0.05', range: '0.00', maximp: '999'}
+          - {id: G45, trend: '0.20', impulse: '0.10', range: '0.00', maximp: '999'}
+          - {id: G46, trend: '0.30', impulse: '0.05', range: '1.10', maximp: '999'}
+          - {id: G47, trend: '0.40', impulse: '0.05', range: '1.10', maximp: '999'}
+          - {id: G48, trend: '0.25', impulse: '0.10', range: '1.20', maximp: '0.60'}
+          - {id: G49, trend: '0.35', impulse: '0.10', range: '1.20', maximp: '0.50'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Stage4 entry-gate native cell
+        run: |
+          PYTHONPATH=research python research/armada_apex_stage4_entry_gate.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --variant "${{ matrix.id }}" \
+            --tf M15 --family R2 \
+            --min-trend-strength "${{ matrix.trend }}" \
+            --min-breakout-atr "${{ matrix.impulse }}" \
+            --min-range-expansion "${{ matrix.range }}" \
+            --max-breakout-atr "${{ matrix.maximp }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-apex-stage4-${{ matrix.id }}-${{ github.run_id }}
+          path: results/armada-apex/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90

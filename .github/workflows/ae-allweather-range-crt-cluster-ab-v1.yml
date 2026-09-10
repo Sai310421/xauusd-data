@@ -7,6 +7,7 @@ on:
     paths:
       - 'research/ae_allweather_range_crt_cluster_v1.py'
       - 'research/ae_allweather_nautilus_raw_ab_v1.py'
+      - 'research/ae_allweather_nautilus_raw_ab_v4.py'
       - '.github/workflows/ae-allweather-range-crt-cluster-ab-v1.yml'
 
 permissions:
@@ -18,7 +19,7 @@ env:
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ae-allweather-ab-${{ github.run_id }}
   PYTHONPATH: ${{ github.workspace }}
-  AE_CLUSTER_VERSION: 'RECOVERY_POOL_V3'
+  AE_CLUSTER_VERSION: 'DEBT_AMORTIZATION_V4'
 
 jobs:
   ab-cell:
@@ -49,7 +50,7 @@ jobs:
       - name: Run A-B cell
         run: |
           echo "Cluster version: ${AE_CLUSTER_VERSION}"
-          python research/ae_allweather_nautilus_raw_ab_v1.py \
+          python research/ae_allweather_nautilus_raw_ab_v4.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --mode "${{ matrix.mode }}" \

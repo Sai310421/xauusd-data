@@ -1,0 +1,107 @@
+name: GoldeBrave v4 Nautilus Raw BidAsk Parity
+
+on:
+  push:
+    branches: [main, feature/amos-dual-arena-v1]
+    paths:
+      - 'research/goldebrave_nautilus_raw_bt.py'
+      - '.github/workflows/goldebrave-nautilus-raw-parity.yml'
+      - 'docs/GOLDEBRAVE_PARITY.md'
+  pull_request:
+    paths:
+      - 'research/goldebrave_nautilus_raw_bt.py'
+      - '.github/workflows/goldebrave-nautilus-raw-parity.yml'
+      - 'docs/GOLDEBRAVE_PARITY.md'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: goldebrave-v4-${{ github.run_id }}
+
+permissions:
+  contents: read
+
+jobs:
+  raw-parity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply Nautilus 1.230 and MT5 source-parity patches
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('research/goldebrave_nautilus_raw_bt.py')
+          s = p.read_text(encoding='utf-8')
+
+          replacements = {
+              'catalog.query_quote_ticks(identifiers=[instrument.id.value])': 'catalog.query(data_cls=QuoteTick, identifiers=[instrument.id.value])',
+              'f"{iid}-60-MINUTE-BID-INTERNAL"': 'f"{iid}-1-HOUR-BID-INTERNAL"',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'expected compatibility target not found: {old}')
+              s = s.replace(old, new)
+
+          # Exact GoldeBrave_v4.mq5 DayRange parity:
+          # BarsSinceDayStart() = (g_hour*3600)/PeriodSeconds(M15), minimum 1.
+          # The previous recreation incorrectly used UTC calendar-day bars.
+          old = '''    def _day_range(self, ns: int):
+        day = self._calendar_day(ns)
+        xs = [b for b in self.bars["M15"] if self._calendar_day(b.ts_ns) == day]
+        if not xs:
+            return None
+        return max(x.h for x in xs), min(x.l for x in xs)
+'''
+          new = '''    def _day_range(self, ns: int):
+        # MT5 source parity: BarsSinceDayStart() uses shifted g_hour, not UTC calendar date.
+        # BarrierTF default=M15, so n = max(g_hour * 4, 1), then iHighest/iLowest over shift 0..n-1.
+        h = self.shifted_hour(ns)
+        n = max(int((h * 3600) / (15 * 60)), 1)
+        xs = list(self.bars["M15"])[-n:]
+        if not xs:
+            return None
+        return max(x.h for x in xs), min(x.l for x in xs)
+'''
+          if old not in s:
+              raise SystemExit('expected _day_range implementation not found')
+          s = s.replace(old, new)
+
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Syntax gate
+        run: python -m py_compile research/goldebrave_nautilus_raw_bt.py
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run GoldeBrave v4 causal Raw BidAsk BT
+        run: |
+          python research/goldebrave_nautilus_raw_bt.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --raw-bidask-only \
+            --initial-balance 100000
+      - name: Show KPI
+        if: always()
+        run: cat "results/goldebrave/$EXPERIMENT_ID/summary.json" || true
+      - name: Upload parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: goldebrave-v4-raw-parity-${{ github.run_id }}
+          path: results/goldebrave/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

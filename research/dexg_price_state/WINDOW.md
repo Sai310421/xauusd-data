@@ -2,7 +2,9 @@
 
 Status: OPEN
 Opened: 2026-09-11T05:54+09:00
-Opened_by: Grok (independent write after ChatGPT write-path failure)
+Updated: 2026-09-11T06:08+09:00
+Opened_by: Grok
 
 This directory is the single official window for DexG Price-State work.
-Do not open a parallel research path for the same observation stream.
+
+G75 is completely detached. Do not treat G75, Hydra66-for-G75, TSUGI, or Negative Memory as part of this window.

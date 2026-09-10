@@ -1,0 +1,73 @@
+name: Armada APEX Stage2 Refine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/armada-apex-stage2-refine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: armada-apex-stage2-${{ github.run_id }}
+
+jobs:
+  refine-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: R21, trail: '1.00', protect: '0.50', hold: '600', stop: '2.20'}
+          - {id: R22, trail: '1.00', protect: '0.50', hold: '600', stop: '2.00'}
+          - {id: R23, trail: '1.00', protect: '0.50', hold: '480', stop: '2.20'}
+          - {id: R24, trail: '1.00', protect: '0.50', hold: '480', stop: '2.00'}
+          - {id: R25, trail: '1.10', protect: '0.55', hold: '600', stop: '2.20'}
+          - {id: R26, trail: '1.10', protect: '0.55', hold: '480', stop: '2.00'}
+          - {id: R27, trail: '1.20', protect: '0.60', hold: '600', stop: '2.20'}
+          - {id: R28, trail: '1.20', protect: '0.60', hold: '480', stop: '2.00'}
+          - {id: R29, trail: '1.25', protect: '0.65', hold: '600', stop: '2.20'}
+          - {id: R30, trail: '1.25', protect: '0.65', hold: '480', stop: '2.20'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Stage2 refined native cell
+        run: |
+          PYTHONPATH=research python research/armada_apex_nautilus_cell.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --variant "${{ matrix.id }}" \
+            --tf M15 --family R2 \
+            --trail-atr "${{ matrix.trail }}" \
+            --protect-atr "${{ matrix.protect }}" \
+            --max-hold-minutes "${{ matrix.hold }}" \
+            --adverse-stop-atr "${{ matrix.stop }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-apex-stage2-${{ matrix.id }}-${{ github.run_id }}
+          path: results/armada-apex/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90

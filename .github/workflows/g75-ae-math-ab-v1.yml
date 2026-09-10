@@ -1,0 +1,92 @@
+name: G75 AE Math Supervisor Raw BidAsk A/B v1
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'g75-ae-math-v1-manual'
+      tf:
+        description: 'Signal timeframe'
+        required: true
+        default: 'M1'
+  push:
+    branches: ['feat/g75-ae-math-ab-v1']
+    paths:
+      - 'research/ae_math_supervisor_v1_ref.py'
+      - 'research/g75_ae_math_rawtick_v1.py'
+      - '.github/workflows/g75-ae-math-ab-v1.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('g75-ae-math-{0}', github.run_id) }}
+  TF: ${{ github.event_name == 'workflow_dispatch' && inputs.tf || 'M1' }}
+
+jobs:
+  ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [BASE, KELLY, RECOVERY, DRO, MPC, KELLY_RECOVERY, KRM, FULL]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - name: Restore Raw BidAsk catalog
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Ensure and validate Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Save catalog cache after bootstrap
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Run lane
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHILD="${EXPERIMENT_ID}__${TF}_${{ matrix.lane }}"
+          python -m research.g75_ae_math_rawtick_v1 \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$CHILD" \
+            --tf "$TF" \
+            --lane "${{ matrix.lane }}" \
+            --raw-bidask-only
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID"
+          cp -r "results/ae-bt/$CHILD/cells" "results/ae-bt/$EXPERIMENT_ID/${{ matrix.lane }}"
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/catalog_manifest.json"
+      - name: Upload lane evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-ae-math-${{ env.EXPERIMENT_ID }}-${{ matrix.lane }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

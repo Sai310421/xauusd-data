@@ -1,0 +1,82 @@
+name: AMOS Reversal V1-V4 RawTick Matrix BT
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: Symbol
+        required: true
+        default: XAUUSD
+      dataset:
+        description: Raw tick dataset selector
+        required: true
+        default: repository
+      seed:
+        description: Deterministic seed
+        required: true
+        default: '42'
+      raw_tick_path:
+        description: Optional repository raw tick path
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amos-reversal-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [V1, V2, V3, V4]
+        timeframe: [M1, M5, M15, H1]
+        mode: [BASE, AGGRESSIVE, STANDARD, CONSERVATIVE]
+        exclude:
+          - version: V1
+            mode: AGGRESSIVE
+          - version: V1
+            mode: STANDARD
+          - version: V1
+            mode: CONSERVATIVE
+          - version: V2
+            mode: BASE
+          - version: V3
+            mode: BASE
+          - version: V4
+            mode: BASE
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AMOS_RAW_TICK_PATH: ${{ inputs.raw_tick_path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pandas numpy pyarrow
+      - name: Run cell
+        run: |
+          python research/amos_reversal_v1_v4_rawtick_bt.py \
+            --version '${{ matrix.version }}' \
+            --timeframe '${{ matrix.timeframe }}' \
+            --mode '${{ matrix.mode }}' \
+            --symbol '${{ inputs.symbol }}' \
+            --dataset '${{ inputs.dataset }}' \
+            --seed '${{ inputs.seed }}' \
+            --rr 2.0 \
+            --out 'results/amos-reversal/${{ matrix.version }}_${{ matrix.timeframe }}_${{ matrix.mode }}'
+      - name: Upload cell result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-reversal-${{ matrix.version }}-${{ matrix.timeframe }}-${{ matrix.mode }}
+          path: results/amos-reversal/${{ matrix.version }}_${{ matrix.timeframe }}_${{ matrix.mode }}/
+          if-no-files-found: error
+          retention-days: 90

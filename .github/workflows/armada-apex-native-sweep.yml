@@ -1,0 +1,74 @@
+name: Armada APEX Native DD Sweep
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/armada_apex_nautilus_cell.py'
+      - '.github/workflows/armada-apex-native-sweep.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: armada-apex-${{ github.run_id }}
+
+jobs:
+  apex-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: A0, trail: '1.50', protect: '0.80', hold: '720', stop: '0.0'}
+          - {id: E1, trail: '1.25', protect: '0.65', hold: '720', stop: '0.0'}
+          - {id: E2, trail: '1.00', protect: '0.50', hold: '720', stop: '0.0'}
+          - {id: T1, trail: '1.50', protect: '0.80', hold: '480', stop: '0.0'}
+          - {id: T2, trail: '1.50', protect: '0.80', hold: '360', stop: '0.0'}
+          - {id: S25, trail: '1.50', protect: '0.80', hold: '720', stop: '2.5'}
+          - {id: S20, trail: '1.50', protect: '0.80', hold: '720', stop: '2.0'}
+          - {id: S15, trail: '1.50', protect: '0.80', hold: '720', stop: '1.5'}
+          - {id: X1, trail: '1.25', protect: '0.65', hold: '480', stop: '2.0'}
+          - {id: X2, trail: '1.00', protect: '0.50', hold: '360', stop: '1.5'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run APEX native cell
+        run: |
+          PYTHONPATH=research python research/armada_apex_nautilus_cell.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --variant "${{ matrix.id }}" \
+            --tf M15 --family R2 \
+            --trail-atr "${{ matrix.trail }}" \
+            --protect-atr "${{ matrix.protect }}" \
+            --max-hold-minutes "${{ matrix.hold }}" \
+            --adverse-stop-atr "${{ matrix.stop }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-apex-${{ matrix.id }}-${{ github.run_id }}
+          path: results/armada-apex/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90

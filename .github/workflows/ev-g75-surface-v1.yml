@@ -1,4 +1,4 @@
-name: EV-G75 Raw BidAsk Expectancy Surface v1
+name: EV-G75 Raw BidAsk Expectancy Surface v2
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       experiment_id:
         description: Unique experiment id
         required: true
-        default: ev-g75-surface-v1
+        default: ev-g75-surface-v2
   pull_request:
     branches: [main]
     paths:
@@ -26,12 +26,17 @@ env:
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('ev-g75-{0}', github.run_id) }}
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('ev-g75-v2-{0}', github.run_id) }}
 
 jobs:
   surface:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        trigger: ['0.04','0.06','0.08','0.10','0.12','0.14','0.16','0.20']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,19 +58,21 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run EV-G75 surface
+      - name: Run EV-G75 trigger shard
         run: |
           set -euo pipefail
+          CHILD="${EXPERIMENT_ID}__T${{ matrix.trigger }}"
           python -m research.ev_g75_surface_v1 \
             --catalog "$RAW_CATALOG" \
-            --experiment-id "$EXPERIMENT_ID" \
+            --experiment-id "$CHILD" \
             --symbol XAUUSD \
+            --trigger "${{ matrix.trigger }}" \
             --raw-bidask-only
-      - name: Upload evidence
+      - name: Upload shard evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ev-g75-${{ env.EXPERIMENT_ID }}
-          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          name: ev-g75-${{ env.EXPERIMENT_ID }}-T${{ matrix.trigger }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}__T${{ matrix.trigger }}/
           if-no-files-found: error
           retention-days: 90

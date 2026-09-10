@@ -1,0 +1,78 @@
+name: Armada APEX Stage3 State Controller
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/armada-apex-stage3-state.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: armada-apex-stage3-${{ github.run_id }}
+
+jobs:
+  state-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: S31, trail: '1.20', protect: '0.60', hard: '2.40', stale: '1.60', bars: '2', mfe: '0.30', regime: '1.70', floor: '0.00', dd: '3.50', ddstop: '1.45'}
+          - {id: S32, trail: '1.20', protect: '0.60', hard: '2.40', stale: '1.45', bars: '2', mfe: '0.35', regime: '1.60', floor: '0.00', dd: '3.50', ddstop: '1.35'}
+          - {id: S33, trail: '1.20', protect: '0.60', hard: '2.60', stale: '1.50', bars: '3', mfe: '0.40', regime: '1.65', floor: '-0.10', dd: '3.50', ddstop: '1.35'}
+          - {id: S34, trail: '1.25', protect: '0.65', hard: '2.60', stale: '1.55', bars: '2', mfe: '0.35', regime: '1.70', floor: '0.00', dd: '3.50', ddstop: '1.40'}
+          - {id: S35, trail: '1.25', protect: '0.65', hard: '2.80', stale: '1.60', bars: '3', mfe: '0.40', regime: '1.75', floor: '-0.10', dd: '4.00', ddstop: '1.45'}
+          - {id: S36, trail: '1.10', protect: '0.55', hard: '2.40', stale: '1.40', bars: '2', mfe: '0.30', regime: '1.55', floor: '0.00', dd: '3.00', ddstop: '1.25'}
+          - {id: S37, trail: '1.20', protect: '0.60', hard: '3.00', stale: '1.55', bars: '2', mfe: '0.30', regime: '1.60', floor: '-0.20', dd: '3.50', ddstop: '1.30'}
+          - {id: S38, trail: '1.25', protect: '0.65', hard: '3.00', stale: '1.65', bars: '3', mfe: '0.45', regime: '1.75', floor: '-0.20', dd: '4.00', ddstop: '1.35'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Stage3 state-dependent native cell
+        run: |
+          PYTHONPATH=research python research/armada_apex_stage3_state.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --variant "${{ matrix.id }}" \
+            --tf M15 --family R2 \
+            --trail-atr "${{ matrix.trail }}" \
+            --protect-atr "${{ matrix.protect }}" \
+            --max-hold-minutes 480 \
+            --hard-stop-atr "${{ matrix.hard }}" \
+            --stale-stop-atr "${{ matrix.stale }}" \
+            --stale-after-bars "${{ matrix.bars }}" \
+            --min-mfe-atr "${{ matrix.mfe }}" \
+            --regime-stop-atr "${{ matrix.regime }}" \
+            --regime-floor "${{ matrix.floor }}" \
+            --dd-soft-pct "${{ matrix.dd }}" \
+            --dd-stop-atr "${{ matrix.ddstop }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-apex-stage3-${{ matrix.id }}-${{ github.run_id }}
+          path: results/armada-apex/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90

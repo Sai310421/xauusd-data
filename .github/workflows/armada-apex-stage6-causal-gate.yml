@@ -1,0 +1,72 @@
+name: Armada APEX Stage6 Causal Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/armada_apex_stage6_causal_gate.py'
+      - '.github/workflows/armada-apex-stage6-causal-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: armada-apex-stage6-${{ github.run_id }}
+
+jobs:
+  causal-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: C0, trend: '0.00', slope: '-999', maxbo: '999'}
+          - {id: C1, trend: '0.10', slope: '-999', maxbo: '999'}
+          - {id: C2, trend: '0.15', slope: '-999', maxbo: '999'}
+          - {id: C3, trend: '0.20', slope: '-999', maxbo: '999'}
+          - {id: C4, trend: '0.50', slope: '-999', maxbo: '999'}
+          - {id: C5, trend: '0.00', slope: '0.10', maxbo: '999'}
+          - {id: C6, trend: '0.00', slope: '0.15', maxbo: '999'}
+          - {id: C7, trend: '0.00', slope: '0.20', maxbo: '999'}
+          - {id: C8, trend: '0.00', slope: '-999', maxbo: '1.00'}
+          - {id: C9, trend: '0.10', slope: '-999', maxbo: '1.00'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Stage6 causal gate native cell
+        run: |
+          PYTHONPATH=research python research/armada_apex_stage6_causal_gate.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --variant "${{ matrix.id }}" \
+            --min-trend-strength "${{ matrix.trend }}" \
+            --min-signed-slope "${{ matrix.slope }}" \
+            --max-breakout-atr "${{ matrix.maxbo }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: armada-apex-stage6-${{ matrix.id }}-${{ github.run_id }}
+          path: results/armada-apex/${{ env.EXPERIMENT_ID }}/cells/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 90

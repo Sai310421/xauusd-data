@@ -9,6 +9,7 @@ on:
       - 'research/ae_allweather_nautilus_raw_ab_v1.py'
       - 'research/ae_allweather_nautilus_raw_ab_v4.py'
       - 'research/ae_allweather_nautilus_raw_ab_v5.py'
+      - 'research/ae_allweather_nautilus_raw_ab_v6.py'
       - '.github/workflows/ae-allweather-range-crt-cluster-ab-v1.yml'
 
 permissions:
@@ -20,7 +21,7 @@ env:
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
   EXPERIMENT_ID: ae-allweather-ab-${{ github.run_id }}
   PYTHONPATH: ${{ github.workspace }}
-  AE_CLUSTER_VERSION: 'SYSTEM_STATE_OPTIMAL_V5'
+  AE_CLUSTER_VERSION: 'RECURSIVE_HIERARCHICAL_V6'
 
 jobs:
   ab-cell:
@@ -51,7 +52,7 @@ jobs:
       - name: Run A-B cell
         run: |
           echo "Cluster version: ${AE_CLUSTER_VERSION}"
-          python research/ae_allweather_nautilus_raw_ab_v5.py \
+          python research/ae_allweather_nautilus_raw_ab_v6.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
             --mode "${{ matrix.mode }}" \

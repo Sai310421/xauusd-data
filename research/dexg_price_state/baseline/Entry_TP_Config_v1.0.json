@@ -1,0 +1,34 @@
+{
+  "module": "Entry_TP_Module_v1.0",
+  "entry": {
+    "theta_move": 0.65,
+    "theta_direction": 0.6,
+    "theta_destination": 0.6,
+    "theta_velocity": "OPTIMIZE_BY_SYMBOL",
+    "theta_acceleration": "OPTIMIZE_BY_SYMBOL"
+  },
+  "speed_classes_seconds": {
+    "FAST": [0.0, 1.5],
+    "MEDIUM": [1.5, 5.0],
+    "SLOW": [5.0, null]
+  },
+  "pyramiding": {
+    "enabled": true,
+    "averaging_down": false,
+    "theta_add_reach_probability": 0.7,
+    "max_add_layers": "OPTIMIZE",
+    "size_mode": "confidence_scaled"
+  },
+  "take_profit": {
+    "partial_split": [0.5, 0.3, 0.2],
+    "reassess_after_each_destination": true
+  },
+  "dynamic_atr": {
+    "enabled": true,
+    "activation": ["profit_threshold", "first_destination_consumed"],
+    "strong_displacement_k": [2.0, 2.5],
+    "normal_continuation_k": [1.3, 1.8],
+    "post_target_deceleration_k": [0.7, 1.2]
+  },
+  "exit_priority": ["HARD_INVALIDATION", "DESTINATION_FLIP", "STRUCTURE_BREAK", "DYNAMIC_ATR"]
+}

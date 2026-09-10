@@ -1,6 +1,5 @@
 from __future__ import annotations
 import argparse, json, math
-from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 import numpy as np
@@ -82,7 +81,8 @@ def metrics(report, initial=1000.0, days=30):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--trigger',type=float,required=True); ap.add_argument('--add',type=float,required=True); ap.add_argument('--reversal',type=float,required=True); ap.add_argument('--trade-size',default='1'); ap.add_argument('--raw-bidask-only',action='store_true'); a=ap.parse_args()
     if not a.raw_bidask_only: raise SystemExit('RAW_BIDASK_ONLY_REQUIRED')
-    cp=Path(a.catalog); man=json.loads((cp/'catalog_manifest.json').read_text()); days=int(man['days']); cat=ParquetDataCatalog(str(cp)); inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'); ticks=cat.query_quote_ticks(identifiers=[inst.id.value])
+    cp=Path(a.catalog); man=json.loads((cp/'catalog_manifest.json').read_text()); days=int(man['days']); cat=ParquetDataCatalog(str(cp)); inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'); ticks=list(cat.query(data_cls=QuoteTick, identifiers=[inst.id.value]))
+    if not ticks: raise SystemExit('NO_RAW_TICKS')
     engine=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
     engine.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
     engine.add_instrument(inst); engine.add_data(ticks)

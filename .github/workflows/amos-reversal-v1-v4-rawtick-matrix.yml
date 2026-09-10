@@ -1,0 +1,107 @@
+name: AMOS Reversal V1-V4 RawTick Matrix BT
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: Symbol
+        required: true
+        default: XAUUSD
+      start:
+        description: UTC start date
+        required: true
+        default: '2026-05-31'
+      days:
+        description: Raw tick days
+        required: true
+        default: '90'
+      seed:
+        description: Deterministic seed
+        required: true
+        default: '42'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amos-reversal-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  raw-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas pyarrow
+      - name: Fetch Dukascopy BI5 raw bid/ask ticks once
+        run: |
+          python research/amos_duka_rawtick_export.py \
+            --symbol '${{ inputs.symbol }}' \
+            --start '${{ inputs.start }}' \
+            --days '${{ inputs.days }}' \
+            --out 'raw/${{ inputs.symbol }}_dukascopy_ticks.parquet'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-reversal-raw-ticks
+          path: |
+            raw/${{ inputs.symbol }}_dukascopy_ticks.parquet
+            raw/${{ inputs.symbol }}_dukascopy_ticks.manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  matrix:
+    needs: raw-data
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        version: [V1, V2, V3, V4]
+        timeframe: [M1, M5, M15, H1]
+        mode: [BASE, AGGRESSIVE, STANDARD, CONSERVATIVE]
+        exclude:
+          - {version: V1, mode: AGGRESSIVE}
+          - {version: V1, mode: STANDARD}
+          - {version: V1, mode: CONSERVATIVE}
+          - {version: V2, mode: BASE}
+          - {version: V3, mode: BASE}
+          - {version: V4, mode: BASE}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AMOS_RAW_TICK_PATH: raw/${{ inputs.symbol }}_dukascopy_ticks.parquet
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas numpy pyarrow
+      - uses: actions/download-artifact@v4
+        with:
+          name: amos-reversal-raw-ticks
+          path: raw
+      - name: Run V1-V4 / TF cell
+        run: |
+          python research/amos_reversal_v1_v4_rawtick_bt_v2.py \
+            --version '${{ matrix.version }}' \
+            --timeframe '${{ matrix.timeframe }}' \
+            --mode '${{ matrix.mode }}' \
+            --symbol '${{ inputs.symbol }}' \
+            --dataset dukascopy_raw \
+            --seed '${{ inputs.seed }}' \
+            --rr 2.0 \
+            --out 'results/amos-reversal/${{ matrix.version }}_${{ matrix.timeframe }}_${{ matrix.mode }}'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amos-reversal-${{ matrix.version }}-${{ matrix.timeframe }}-${{ matrix.mode }}
+          path: results/amos-reversal/${{ matrix.version }}_${{ matrix.timeframe }}_${{ matrix.mode }}/
+          if-no-files-found: error
+          retention-days: 90

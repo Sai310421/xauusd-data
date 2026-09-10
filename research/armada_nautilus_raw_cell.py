@@ -15,6 +15,7 @@ from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, QuoteTick
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, BookType
 from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.objects import Quantity
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
@@ -206,6 +207,33 @@ def _tick_diag(tick):
         'instrument_id':str(getattr(tick,'instrument_id','')),
     }
 
+def _ensure_l1_liquidity(ticks):
+    """Dukascopy cache currently carries price-valid QuoteTicks with 0 bid/ask size.
+    Nautilus L1 matching correctly treats zero size as 'no market'. For execution
+    validation only, preserve every raw bid/ask price and timestamp while replacing
+    zero/negative sizes with one executable unit. This is not fabricated price data.
+    """
+    one=Quantity.from_int(1)
+    out=[]; replaced=0
+    for t in ticks:
+        bs=t.bid_size; aqs=t.ask_size
+        bsv=float(bs.as_double()) if hasattr(bs,'as_double') else float(bs)
+        asv=float(aqs.as_double()) if hasattr(aqs,'as_double') else float(aqs)
+        if bsv<=0.0 or asv<=0.0:
+            out.append(QuoteTick(
+                instrument_id=t.instrument_id,
+                bid_price=t.bid_price,
+                ask_price=t.ask_price,
+                bid_size=one if bsv<=0.0 else bs,
+                ask_size=one if asv<=0.0 else aqs,
+                ts_event=t.ts_event,
+                ts_init=t.ts_init,
+            ))
+            replaced+=1
+        else:
+            out.append(t)
+    return out,replaced
+
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--tf',choices=list(TF_MIN),required=True); ap.add_argument('--family',choices=['R1','R2','R3','R4'],required=True); ap.add_argument('--raw-bidask-only',action='store_true')
     a=ap.parse_args()
@@ -213,9 +241,11 @@ def main():
     cp=Path(a.catalog); catalog=ParquetDataCatalog(str(cp))
     instrument=next((x for x in catalog.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
     if instrument is None:raise SystemExit('XAUUSD missing')
-    ticks=catalog.query_quote_ticks(identifiers=[instrument.id.value])
-    if not ticks:raise SystemExit('no raw XAUUSD QuoteTicks')
-    first_tick=_tick_diag(ticks[0]); last_tick=_tick_diag(ticks[-1])
+    raw_ticks=catalog.query_quote_ticks(identifiers=[instrument.id.value])
+    if not raw_ticks:raise SystemExit('no raw XAUUSD QuoteTicks')
+    first_raw_tick=_tick_diag(raw_ticks[0]); last_raw_tick=_tick_diag(raw_ticks[-1])
+    ticks,size_replacements=_ensure_l1_liquidity(raw_ticks)
+    first_exec_tick=_tick_diag(ticks[0]); last_exec_tick=_tick_diag(ticks[-1])
     engine=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
     exec_venue=instrument.id.venue
     engine.add_venue(
@@ -233,9 +263,9 @@ def main():
     engine.add_strategy(st); engine.run()
     pos=engine.trader.generate_positions_report(); fills=engine.trader.generate_order_fills_report(); orders=engine.trader.generate_orders_report()
     obj={
-        'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM_L1',
+        'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM_L1_SIZEFIX',
         'engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),
-        'raw_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),
+        'raw_ticks':len(raw_ticks),'execution_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),
         'native_orders':int(len(orders)) if orders is not None else 0,
         'native_order_status_counts':_status_counts(orders),
         'native_positions':int(len(pos)) if pos is not None else 0,
@@ -245,8 +275,12 @@ def main():
         'instrument_id':str(instrument.id),
         'unit_qty':str(st.config.unit_qty),
         'instrument_size_precision':getattr(instrument,'size_precision',None),
-        'first_raw_quote':first_tick,
-        'last_raw_quote':last_tick,
+        'raw_zero_size_quotes_replaced':size_replacements,
+        'execution_size_policy':'Preserve raw bid/ask prices and timestamps; replace nonpositive L1 sizes with Quantity(1) solely to permit native matching.',
+        'first_raw_quote':first_raw_tick,
+        'last_raw_quote':last_raw_tick,
+        'first_execution_quote':first_exec_tick,
+        'last_execution_quote':last_exec_tick,
         'native_fill_gate_pass':bool(fills is not None and len(fills)>0),
         'disclaimer':'Clean-room behavioral hypothesis, not original Armada source.',
     }

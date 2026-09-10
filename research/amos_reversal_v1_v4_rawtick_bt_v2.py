@@ -38,26 +38,53 @@ def rsi(s,n=14):
 def feat(b):
     z=b.copy(); z['atr']=atr(z); z['rsi']=rsi(z.close); z['body']=(z.close-z.open).abs(); z['disp']=z.body/(z.atr+1e-12); z['swing_hi']=z.high.shift(1).rolling(5).max(); z['swing_lo']=z.low.shift(1).rolling(5).min(); z['bull_fvg']=z.low>z.high.shift(2); z['bear_fvg']=z.high<z.low.shift(2); z['vol_med']=z.volume.rolling(20).median(); tp=(z.high+z.low+z.close)/3; z['vwap']=(tp*z.volume).cumsum()/(z.volume.cumsum()+1e-12); z['regime']=(100*(z.close-z.close.shift(14)).abs()/(z.atr*14+1e-12)).clip(0,100); return z
 def sigm(x): return 1/(1+math.exp(-max(-40,min(40,x))))
-def signal(z,i,v,mode):
+def logit(p):
+    p=min(.999999,max(.000001,p)); return math.log(p/(1-p))
+def signal(z,i,v,mode,diag=None):
     if i<30:return None
     r=z.iloc[i];p=z.iloc[i-1]
     if not np.isfinite(r.atr) or r.atr<=0:return None
     bs=r.low<r.swing_lo and r.close>r.swing_lo; ss=r.high>r.swing_hi and r.close<r.swing_hi; side=1 if bs else -1 if ss else 0
     if not side:return None
+    if diag is not None: diag['sweep']+=1
     cisd=(r.close>p.open and r.close>p.close) if side==1 else (r.close<p.open and r.close<p.close)
     mss=(r.close>z.high.shift(1).rolling(3).max().iloc[i]) if side==1 else (r.close<z.low.shift(1).rolling(3).min().iloc[i]); disp=r.disp>=0.8; fvg=bool(r.bull_fvg if side==1 else r.bear_fvg); opp=bool(z.bear_fvg.iloc[max(0,i-8):i].any()) if side==1 else bool(z.bull_fvg.iloc[max(0,i-8):i].any()); ifvg=opp and disp; bpr=fvg and opp
     st=1+1.0*cisd+1.2*mss+1.0*disp+0.7*fvg+0.5*ifvg+0.5*bpr
-    if v=='V1': return (side,st,0.,.5,'') if cisd and mss and disp and (fvg or ifvg or bpr) else None
+    if cisd and diag is not None: diag['cisd']+=1
+    if mss and diag is not None: diag['mss']+=1
+    if disp and diag is not None: diag['disp']+=1
+    if v=='V1':
+        ok=cisd and mss and disp and (fvg or ifvg or bpr)
+        if ok and diag is not None: diag['accepted']+=1
+        return (side,st,0.,.5,'') if ok else None
     th={'AGGRESSIVE':2.7,'STANDARD':3.5,'CONSERVATIVE':4.2}.get(mode,3.5)
-    if v=='V2': return (side,st,0.,sigm(st-3.5),'') if cisd and st>=th else None
+    if v=='V2':
+        ok=cisd and st>=th
+        if ok and diag is not None: diag['accepted']+=1
+        return (side,st,0.,sigm(st-3.5),'') if ok else None
     vel=min(1.5,abs(r.close-p.close)/(r.atr+1e-12)); adaptive=.55*st+.30*vel+.15
+    base_pr=sigm(-2.1+.72*st+.35*vel)
     if v=='V3':
-        pr=sigm(-2.1+.72*st+.35*vel); gate={'AGGRESSIVE':.50,'STANDARD':.54,'CONSERVATIVE':.58}[mode]; return (side,st,adaptive,pr,'SELF') if pr>=gate else None
-    mom=((r.rsi-50)/25)*side; reg=max(-1,min(1,(r.regime-20)/20)); loc=((r.close-r.vwap)/(r.atr+1e-12))*side; part=min(2,r.volume/(r.vol_med+1e-12))-1 if np.isfinite(r.vol_med) else 0; ctx=.30*mom+.25*reg+.25*loc+.20*part; pr=sigm(-2.35+.67*st+.30*adaptive+.45*ctx); gate={'AGGRESSIVE':.52,'STANDARD':.56,'CONSERVATIVE':.60}[mode]; return (side,st,ctx,pr,'ADAPTIVE') if pr>=gate else None
+        gate={'AGGRESSIVE':.50,'STANDARD':.54,'CONSERVATIVE':.58}[mode]; ok=base_pr>=gate
+        if ok and diag is not None: diag['accepted']+=1
+        return (side,st,adaptive,base_pr,'SELF') if ok else None
+    # V4: preserve V3 structural candidates. Context is a soft rank/boost, never a hard veto.
+    mom=max(-1.5,min(1.5,((r.rsi-50)/25)*side)) if np.isfinite(r.rsi) else 0.0
+    reg=max(-1,min(1,(r.regime-20)/20)) if np.isfinite(r.regime) else 0.0
+    loc=max(-2,min(2,((r.close-r.vwap)/(r.atr+1e-12))*side)) if np.isfinite(r.vwap) else 0.0
+    part=min(2,r.volume/(r.vol_med+1e-12))-1 if np.isfinite(r.vol_med) and r.vol_med>0 else 0.0
+    ctx=.30*mom+.25*reg+.25*loc+.20*part
+    v3_gate={'AGGRESSIVE':.50,'STANDARD':.54,'CONSERVATIVE':.58}[mode]
+    if base_pr < v3_gate: return None
+    # soft update: context can move confidence modestly but cannot delete a structurally valid V3 signal
+    pr=sigm(logit(base_pr)+0.35*ctx)
+    if diag is not None: diag['v3_candidate']+=1; diag['accepted']+=1
+    return (side,st,ctx,pr,'ADAPTIVE')
 def simulate(t,b,v,tf,mode,rr):
     z=feat(b); trades=[]; tv=t.time.astype('int64').to_numpy(); last_exit_ns=-1
+    diag={'sweep':0,'cisd':0,'mss':0,'disp':0,'v3_candidate':0,'accepted':0}
     for i in range(30,len(z)-1):
-        s=signal(z,i,v,mode)
+        s=signal(z,i,v,mode,diag)
         if s is None:continue
         side,st,ctx,pr,leader=s; sig_t=z.time.iloc[i]; sig_ns=sig_t.value
         if sig_ns<=last_exit_ns:continue
@@ -75,9 +102,9 @@ def simulate(t,b,v,tf,mode,rr):
         if exit_px is None:
             x=t.iloc[end-1]; exit_px=float(x.bid if side==1 else x.ask); exit_t=x.time; rval=side*(exit_px-entry)/risk
         trades.append(Trade(v,tf,mode,side,str(sig_t),str(exit_t),entry,stop,target,exit_px,float(rval),result,leader,float(st),float(ctx),float(pr))); last_exit_ns=exit_t.value
-    return trades
+    return trades,diag
 def metrics(trades):
     rs=np.array([x.r for x in trades],float); n=len(rs); wins=int((rs>0).sum()); losses=int((rs<=0).sum()); gp=float(rs[rs>0].sum()) if n else 0.; gl=float(-rs[rs<0].sum()) if n else 0.; pf=gp/gl if gl>0 else (999. if gp>0 else 0.); curve=np.concatenate(([0.],np.cumsum(rs))) if n else np.array([0.]); peak=np.maximum.accumulate(curve); md=float((peak-curve).max()); net=float(rs.sum()) if n else 0.; rf=net/md if md>0 else (999. if net>0 else 0.); return {'N':n,'wins':wins,'losses':losses,'WR_pct':100*wins/n if n else 0.,'avg_R':float(rs.mean()) if n else 0.,'PF':pf,'EV_R_per_trade':float(rs.mean()) if n else 0.,'net_R':net,'max_DD_R':md,'RF':rf}
 def main():
-    a=cli(); random.seed(a.seed); np.random.seed(a.seed); out=Path(a.out); out.mkdir(parents=True,exist_ok=True); src=resolve_source(a.symbol,a.dataset); t=load_ticks(src); b=bars(t,a.timeframe); tr=simulate(t,b,a.version,a.timeframe,a.mode,a.rr); m=metrics(tr); pd.DataFrame([asdict(x) for x in tr]).to_csv(out/'trades.csv',index=False); m.update({'version':a.version,'timeframe':a.timeframe,'mode':a.mode,'symbol':a.symbol,'dataset':a.dataset,'rr_target':a.rr,'period_start':str(t.time.iloc[0]),'period_end':str(t.time.iloc[-1]),'raw_tick_source':str(src),'verification_level':'RAW_DUKASCOPY_BIDASK'}); (out/'metrics.json').write_text(json.dumps(m,indent=2),encoding='utf-8'); (out/'manifest.json').write_text(json.dumps({'args':vars(a),'rows':len(t),'bars':len(b),'raw_tick_source':str(src),'ohlc_execution_substitution':False},indent=2),encoding='utf-8'); print(json.dumps(m,indent=2))
+    a=cli(); random.seed(a.seed); np.random.seed(a.seed); out=Path(a.out); out.mkdir(parents=True,exist_ok=True); src=resolve_source(a.symbol,a.dataset); t=load_ticks(src); b=bars(t,a.timeframe); tr,diag=simulate(t,b,a.version,a.timeframe,a.mode,a.rr); m=metrics(tr); pd.DataFrame([asdict(x) for x in tr]).to_csv(out/'trades.csv',index=False); m.update({'version':a.version,'timeframe':a.timeframe,'mode':a.mode,'symbol':a.symbol,'dataset':a.dataset,'rr_target':a.rr,'period_start':str(t.time.iloc[0]),'period_end':str(t.time.iloc[-1]),'raw_tick_source':str(src),'verification_level':'RAW_DUKASCOPY_BIDASK','signal_diagnostics':diag}); (out/'metrics.json').write_text(json.dumps(m,indent=2),encoding='utf-8'); (out/'manifest.json').write_text(json.dumps({'args':vars(a),'rows':len(t),'bars':len(b),'raw_tick_source':str(src),'ohlc_execution_substitution':False},indent=2),encoding='utf-8'); print(json.dumps(m,indent=2))
 if __name__=='__main__': main()

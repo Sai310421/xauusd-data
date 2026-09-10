@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
@@ -25,20 +24,14 @@ if not hasattr(ParquetDataCatalog, "query_quote_ticks"):
     ParquetDataCatalog.query_quote_ticks = _qqt
 
 
-@dataclass
 class V4Cfg(Cfg, frozen=True):
-    # Realized-profit ledger. Only this ledger may amortize historical debt.
     amortization_fraction: float = 0.35
     amortization_min_harvest: float = 0.30
-
-    # Debt-aware inventory control.
     debt_soft_pct: float = 0.10
     debt_hard_pct: float = 0.25
     debt_stop_pct: float = 0.40
     inventory_v4_soft_cap: int = 16
     inventory_v4_hard_cap: int = 24
-
-    # Recovery success must be economically real, not merely removed from a set.
     recovery_bundle_buffer: float = 0.05
     recovery_max_winners: int = 4
 
@@ -62,7 +55,6 @@ class ABStrategyV4(ABStrategy):
         return sum(max(0.0, -self._pnl_pos(p, bid, ask)) for p in self.pos.values())
 
     def _economic_debt(self, bid, ask):
-        # Ledger debt + current unrealized negative inventory.
         d = self.debt_ledger + self._current_floating_debt(bid, ask)
         self.debt_ledger_peak = max(self.debt_ledger_peak, d)
         return d
@@ -97,7 +89,6 @@ class ABStrategyV4(ABStrategy):
         return allocation
 
     def _close_ids(self, ids, bid, ask, reason):
-        # Capture true recovery membership before parent removes IDs from the set.
         recovery_ids = {pid for pid in ids if pid in self.recovery_pool}
         pnl, n = super()._close_ids(ids, bid, ask, reason)
 
@@ -106,24 +97,18 @@ class ABStrategyV4(ABStrategy):
             self._amortize_from_profit(pnl)
 
         if reason == "RECOVERY_BE":
-            # A recovery is successful only if the entire realized bundle is non-negative.
             if pnl >= self.config.recovery_bundle_buffer and recovery_ids:
                 self.recovery_success_cycles += 1
                 self.recovery_success_pnl += pnl
-                # Debt represented by the recovered losing positions is retired from ledger.
-                retired = min(self.debt_ledger, max(0.0, self.debt_ledger))
-                if retired > 0:
-                    # Do not pretend all ledger debt vanished; actual amortization is pnl-limited.
-                    pay = min(retired, pnl * self.config.amortization_fraction)
+                pay = min(self.debt_ledger, pnl * self.config.amortization_fraction)
+                if pay > 0:
                     self.debt_ledger -= pay
                     self.debt_amortized += pay
             else:
                 self.recovery_failed_cycles += 1
-                # Negative recovery realization becomes explicit debt.
                 if pnl < 0:
                     self.debt_ledger += -pnl
 
-        # Any forced loss is explicit debt, not silently called recovery.
         if reason in ("DEFENSE", "EOD") and pnl < 0:
             self.debt_ledger += -pnl
 
@@ -131,7 +116,6 @@ class ABStrategyV4(ABStrategy):
         return pnl, n
 
     def _best_recovery_bundle(self, bid, ask):
-        # Strict version: full realized bundle itself must close >= buffer.
         if not self.recovery_pool:
             return None
         rec, wins = [], []
@@ -206,8 +190,6 @@ class ABStrategyV4(ABStrategy):
             self._evaluate_cluster(bid, ask)
 
     def on_stop(self):
-        # Do NOT convert finite-test endpoint into a strategy loss event.
-        # Record open inventory at mark-to-market so EOD does not dominate recovery evaluation.
         if self.last_bid is not None:
             self.eod_open_positions = len(self.pos)
             self.eod_mark_to_market = sum(self._pnl_pos(p, self.last_bid, self.last_ask) for p in self.pos.values())
@@ -215,7 +197,6 @@ class ABStrategyV4(ABStrategy):
 
     def summary(self):
         out = super().summary()
-        # Parent summary is realized-only because v4 intentionally leaves endpoint inventory open.
         realized_net = out["net"]
         mtm_net = realized_net + self.eod_mark_to_market
         out.update({

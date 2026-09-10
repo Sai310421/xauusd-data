@@ -11,6 +11,12 @@ on:
         description: 'Signal timeframe'
         required: true
         default: 'M1'
+  pull_request:
+    branches: ['main']
+    paths:
+      - 'research/ae_math_supervisor_v1_ref.py'
+      - 'research/g75_ae_math_rawtick_v1.py'
+      - '.github/workflows/g75-ae-math-ab-v1.yml'
   push:
     branches: ['feat/g75-ae-math-ab-v1']
     paths:

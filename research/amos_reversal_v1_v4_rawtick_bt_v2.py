@@ -40,7 +40,6 @@ def build_signals(z,v,mode):
     for i in range(30,len(z)-1):
         r=z.iloc[i]; p=z.iloc[i-1]
         if not np.isfinite(r.atr) or r.atr<=0: continue
-        # expire stale transition states
         for side in (1,-1):
             s=states[side]
             if s and i-s['sweep_i']>20: states[side]=None
@@ -80,27 +79,40 @@ def build_signals(z,v,mode):
             states[side]=None
     return out,diag
 def simulate(t,b,v,tf,mode,rr):
-    z=feat(b); signals,diag=build_signals(z,v,mode); trades=[]; tv=t.time.astype('int64').to_numpy(); last_exit_ns=-1; diag.update({'blocked_overlap':0,'no_entry_tick':0,'invalid_risk':0,'no_horizon_ticks':0,'executed':0})
+    z=feat(b); signals,diag=build_signals(z,v,mode); trades=[]
+    # Explicit UTC epoch-nanosecond timeline. Avoid pandas datetime unit mismatch in searchsorted.
+    tv=pd.to_datetime(t['time'],utc=True).astype('int64').to_numpy(dtype=np.int64)
+    last_exit_ns=np.int64(-1)
+    diag.update({'blocked_overlap':0,'no_entry_tick':0,'invalid_risk':0,'no_horizon_ticks':0,'executed':0})
     for i,side,st,ctx,pr,leader,sweep_extreme in signals:
-        sig_t=z.time.iloc[i]; sig_ns=sig_t.value
+        sig_t=pd.Timestamp(z.time.iloc[i])
+        if sig_t.tzinfo is None: sig_t=sig_t.tz_localize('UTC')
+        else: sig_t=sig_t.tz_convert('UTC')
+        sig_ns=np.int64(sig_t.value)
         if sig_ns<=last_exit_ns: diag['blocked_overlap']+=1; continue
         j=int(np.searchsorted(tv,sig_ns,side='right'))
         if j>=len(t): diag['no_entry_tick']+=1; continue
         q=t.iloc[j]; entry=float(q.ask if side==1 else q.bid); av=float(z.atr.iloc[i]); stop=min(sweep_extreme,entry-.35*av) if side==1 else max(sweep_extreme,entry+.35*av); risk=abs(entry-stop)
         if risk<=0 or not np.isfinite(risk): diag['invalid_risk']+=1; continue
-        target=entry+side*rr*risk; horizon_ns=(sig_t+pd.Timedelta(minutes=TF_MIN[tf]*8)).value; end=int(np.searchsorted(tv,horizon_ns,side='right'))
+        target=entry+side*rr*risk
+        horizon_t=sig_t+pd.Timedelta(minutes=TF_MIN[tf]*8)
+        horizon_ns=np.int64(horizon_t.value)
+        end=int(np.searchsorted(tv,horizon_ns,side='right'))
         if end<=j+1: diag['no_horizon_ticks']+=1; continue
+        end=min(end,len(t))
         exit_px=None; exit_t=None; rval=None; result='TIME'
         for k in range(j+1,end):
             x=t.iloc[k]; px=float(x.bid if side==1 else x.ask)
-            if (side==1 and px<=stop) or (side==-1 and px>=stop): exit_px=px; exit_t=x.time; rval=side*(px-entry)/risk; result='LOSS'; break
-            if (side==1 and px>=target) or (side==-1 and px<=target): exit_px=px; exit_t=x.time; rval=side*(px-entry)/risk; result='WIN'; break
+            if (side==1 and px<=stop) or (side==-1 and px>=stop): exit_px=px; exit_t=pd.Timestamp(x.time); rval=side*(px-entry)/risk; result='LOSS'; break
+            if (side==1 and px>=target) or (side==-1 and px<=target): exit_px=px; exit_t=pd.Timestamp(x.time); rval=side*(px-entry)/risk; result='WIN'; break
         if exit_px is None:
-            x=t.iloc[end-1]; exit_px=float(x.bid if side==1 else x.ask); exit_t=x.time; rval=side*(exit_px-entry)/risk
-        trades.append(Trade(v,tf,mode,side,str(sig_t),str(exit_t),entry,stop,target,exit_px,float(rval),result,leader,float(st),float(ctx),float(pr))); last_exit_ns=exit_t.value; diag['executed']+=1
+            x=t.iloc[end-1]; exit_px=float(x.bid if side==1 else x.ask); exit_t=pd.Timestamp(x.time); rval=side*(exit_px-entry)/risk
+        if exit_t.tzinfo is None: exit_t=exit_t.tz_localize('UTC')
+        else: exit_t=exit_t.tz_convert('UTC')
+        trades.append(Trade(v,tf,mode,side,str(sig_t),str(exit_t),entry,stop,target,exit_px,float(rval),result,leader,float(st),float(ctx),float(pr))); last_exit_ns=np.int64(exit_t.value); diag['executed']+=1
     return trades,diag
 def metrics(trades):
     rs=np.array([x.r for x in trades],float); n=len(rs); wins=int((rs>0).sum()); losses=int((rs<=0).sum()); gp=float(rs[rs>0].sum()) if n else 0.; gl=float(-rs[rs<0].sum()) if n else 0.; pf=gp/gl if gl>0 else (999. if gp>0 else 0.); curve=np.concatenate(([0.],np.cumsum(rs))) if n else np.array([0.]); peak=np.maximum.accumulate(curve); md=float((peak-curve).max()); net=float(rs.sum()) if n else 0.; rf=net/md if md>0 else (999. if net>0 else 0.); return {'N':n,'wins':wins,'losses':losses,'WR_pct':100*wins/n if n else 0.,'avg_R':float(rs.mean()) if n else 0.,'PF':pf,'EV_R_per_trade':float(rs.mean()) if n else 0.,'net_R':net,'max_DD_R':md,'RF':rf}
 def main():
-    a=cli(); random.seed(a.seed); np.random.seed(a.seed); out=Path(a.out); out.mkdir(parents=True,exist_ok=True); src=resolve_source(a.symbol,a.dataset); t=load_ticks(src); b=bars(t,a.timeframe); tr,diag=simulate(t,b,a.version,a.timeframe,a.mode,a.rr); m=metrics(tr); pd.DataFrame([asdict(x) for x in tr]).to_csv(out/'trades.csv',index=False); m.update({'version':a.version,'timeframe':a.timeframe,'mode':a.mode,'symbol':a.symbol,'dataset':a.dataset,'rr_target':a.rr,'period_start':str(t.time.iloc[0]),'period_end':str(t.time.iloc[-1]),'raw_tick_source':str(src),'verification_level':'RAW_DUKASCOPY_BIDASK','signal_diagnostics':diag}); (out/'metrics.json').write_text(json.dumps(m,indent=2),encoding='utf-8'); (out/'manifest.json').write_text(json.dumps({'args':vars(a),'rows':len(t),'bars':len(b),'raw_tick_source':str(src),'ohlc_execution_substitution':False,'sequence':'SWEEP->CISD->MSS'},indent=2),encoding='utf-8'); print(json.dumps(m,indent=2))
+    a=cli(); random.seed(a.seed); np.random.seed(a.seed); out=Path(a.out); out.mkdir(parents=True,exist_ok=True); src=resolve_source(a.symbol,a.dataset); t=load_ticks(src); b=bars(t,a.timeframe); tr,diag=simulate(t,b,a.version,a.timeframe,a.mode,a.rr); m=metrics(tr); pd.DataFrame([asdict(x) for x in tr]).to_csv(out/'trades.csv',index=False); m.update({'version':a.version,'timeframe':a.timeframe,'mode':a.mode,'symbol':a.symbol,'dataset':a.dataset,'rr_target':a.rr,'period_start':str(t.time.iloc[0]),'period_end':str(t.time.iloc[-1]),'raw_tick_source':str(src),'verification_level':'RAW_DUKASCOPY_BIDASK','signal_diagnostics':diag}); (out/'metrics.json').write_text(json.dumps(m,indent=2),encoding='utf-8'); (out/'manifest.json').write_text(json.dumps({'args':vars(a),'rows':len(t),'bars':len(b),'raw_tick_source':str(src),'ohlc_execution_substitution':False,'sequence':'SWEEP->CISD->MSS','tick_clock':'UTC_EPOCH_NS_INT64'},indent=2),encoding='utf-8'); print(json.dumps(m,indent=2))
 if __name__=='__main__': main()

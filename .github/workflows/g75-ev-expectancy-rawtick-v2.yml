@@ -1,0 +1,54 @@
+name: G75 EV Expectancy RawTick v2
+
+on:
+  push:
+    paths:
+      - 'research/g75_ev_expectancy_rawtick_v2.py'
+      - '.github/workflows/g75-ev-expectancy-rawtick-v2.yml'
+  workflow_dispatch:
+
+jobs:
+  ev-cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+        variant: [PURE, EV_GATE, EV_SIZER]
+    runs-on: ubuntu-24.04
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: g75-ev-v2-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run G75 EV causal raw-tick v2
+        run: |
+          PYTHONPATH=research python research/g75_ev_expectancy_rawtick_v2.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf "${{ matrix.tf }}" \
+            --variant "${{ matrix.variant }}" \
+            --raw-bidask-only
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-ev-v2-${{ matrix.tf }}-${{ matrix.variant }}-${{ github.run_id }}
+          path: results/g75-ev/${{ env.EXPERIMENT_ID }}/${{ matrix.tf }}_${{ matrix.variant }}.json
+          if-no-files-found: error
+          retention-days: 90

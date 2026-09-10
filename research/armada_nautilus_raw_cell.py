@@ -13,7 +13,7 @@ from nautilus_trader.config import LoggingConfig, RiskEngineConfig
 from nautilus_trader.model import BarType, Money
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, QuoteTick
-from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
+from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, BookType
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
@@ -193,6 +193,19 @@ def _status_counts(df):
             return {str(k):int(v) for k,v in df[col].astype(str).value_counts().to_dict().items()}
     return {'columns': [str(c) for c in df.columns]}
 
+def _tick_diag(tick):
+    def val(name):
+        x=getattr(tick,name,None)
+        if x is None:return None
+        if hasattr(x,'as_double'):return float(x.as_double())
+        try:return float(x)
+        except Exception:return str(x)
+    return {
+        'bid_price':val('bid_price'),'ask_price':val('ask_price'),
+        'bid_size':val('bid_size'),'ask_size':val('ask_size'),
+        'instrument_id':str(getattr(tick,'instrument_id','')),
+    }
+
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--tf',choices=list(TF_MIN),required=True); ap.add_argument('--family',choices=['R1','R2','R3','R4'],required=True); ap.add_argument('--raw-bidask-only',action='store_true')
     a=ap.parse_args()
@@ -202,16 +215,25 @@ def main():
     if instrument is None:raise SystemExit('XAUUSD missing')
     ticks=catalog.query_quote_ticks(identifiers=[instrument.id.value])
     if not ticks:raise SystemExit('no raw XAUUSD QuoteTicks')
+    first_tick=_tick_diag(ticks[0]); last_tick=_tick_diag(ticks[-1])
     engine=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
     exec_venue=instrument.id.venue
-    engine.add_venue(venue=exec_venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
+    engine.add_venue(
+        venue=exec_venue,
+        oms_type=OmsType.NETTING,
+        account_type=AccountType.MARGIN,
+        book_type=BookType.L1_MBP,
+        base_currency=USD,
+        starting_balances=[Money(1000,USD)],
+        default_leverage=Decimal('2000'),
+    )
     engine.add_instrument(instrument); engine.add_data(ticks)
     bt=BarType.from_str(f'{instrument.id.value}-{TF_MIN[a.tf]}-MINUTE-BID-INTERNAL')
     st=ArmadaCandidate(ArmadaConfig(instrument_id=instrument.id,bar_type=bt,family=a.family))
     engine.add_strategy(st); engine.run()
     pos=engine.trader.generate_positions_report(); fills=engine.trader.generate_order_fills_report(); orders=engine.trader.generate_orders_report()
     obj={
-        'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM_DIAG',
+        'verification_level':'NAUTILUS_BT_RAW_BIDASK_ARMADA_CLEANROOM_L1',
         'engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),
         'raw_ticks':len(ticks),'ohlc_resample_used':False,'signal_bars':'Nautilus INTERNAL from raw QuoteTicks','tf':a.tf,**st.summary(),
         'native_orders':int(len(orders)) if orders is not None else 0,
@@ -219,9 +241,13 @@ def main():
         'native_positions':int(len(pos)) if pos is not None else 0,
         'native_fills':int(len(fills)) if fills is not None else 0,
         'execution_venue':str(exec_venue),
+        'book_type':'L1_MBP',
         'instrument_id':str(instrument.id),
         'unit_qty':str(st.config.unit_qty),
         'instrument_size_precision':getattr(instrument,'size_precision',None),
+        'first_raw_quote':first_tick,
+        'last_raw_quote':last_tick,
+        'native_fill_gate_pass':bool(fills is not None and len(fills)>0),
         'disclaimer':'Clean-room behavioral hypothesis, not original Armada source.',
     }
     out=Path('results/armada-nautilus')/a.experiment_id/'cells'; out.mkdir(parents=True,exist_ok=True); (out/f'{a.tf}_{a.family}.json').write_text(json.dumps(obj,indent=2,default=str),encoding='utf-8'); print(json.dumps(obj,indent=2,default=str)); engine.dispose()

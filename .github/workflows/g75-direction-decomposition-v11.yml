@@ -1,0 +1,59 @@
+name: G75 Direction Decomposition RawTick v11
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/g75_direction_decomposition_v11.py'
+      - '.github/workflows/g75-direction-decomposition-v11.yml'
+
+jobs:
+  direction-v11:
+    runs-on: ubuntu-24.04
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: g75-direction-v11-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run direction decomposition
+        run: |
+          PYTHONPATH=research python research/g75_direction_decomposition_v11.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf M1 \
+            --trigger-mults '1,1.5,2,2.5' \
+            --spread-window 256 \
+            --pb-frac 0.25 \
+            --reclaim-frac 0.10 \
+            --wait-mult 2.0 \
+            --tp-mult 2.0 \
+            --cost-mult 2.5 \
+            --horizon-mult 8.0 \
+            --uncertainty-frac 0.05 \
+            --alpha 10.0 \
+            --margin 0.0 \
+            --raw-bidask-only
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-direction-v11-${{ github.run_id }}
+          path: results/g75-direction-v11/${{ env.EXPERIMENT_ID }}/M1.json
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,64 @@
+name: G75 ThreeStage Dynamic ATR RawTick v13
+
+on:
+  push:
+    paths:
+      - 'research/g75_three_stage_atr_v13.py'
+      - '.github/workflows/g75-three-stage-atr-v13.yml'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: g75-three-stage-atr-v13-${{ github.run_id }}
+
+jobs:
+  v13:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run 3-stage dynamic ATR verification
+        run: |
+          PYTHONPATH=research python research/g75_three_stage_atr_v13.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf "${{ matrix.tf }}" \
+            --trigger-mults 1,1.5,2 \
+            --directions FOLLOW,FADE \
+            --trail-mults 1,1.5,2,2.5,3 \
+            --spread-window 256 \
+            --pb-frac .25 \
+            --reclaim-frac .10 \
+            --wait-mult 2 \
+            --w1 .30 --w2 .30 --w3 .40 \
+            --add2-mult .50 --add3-mult 1.00 --reclaim-add-mult .15 \
+            --tp-mult 2.0 --cost-mult 2.5 --hard-sl-mult 2.0 --horizon-mult 12 \
+            --arm-atr .75 --arm-trig .50 --min-lock .10 \
+            --raw-bidask-only
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-three-stage-atr-v13-${{ matrix.tf }}-${{ github.run_id }}
+          path: results/g75-three-stage-atr-v13/${{ env.EXPERIMENT_ID }}/*.json
+          retention-days: 90
+          if-no-files-found: error

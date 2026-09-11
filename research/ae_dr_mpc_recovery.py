@@ -9,8 +9,7 @@ existing reflected recovery controller.
 """
 
 from dataclasses import dataclass
-import math
-from typing import Sequence
+from typing import Iterable
 
 
 def _clip(x: float, lo: float, hi: float) -> float:
@@ -70,8 +69,9 @@ class DRMPConfig:
     recovery_cap: float = 1.0
 
 
-def _mean(xs: Sequence[float]) -> float:
-    return sum(float(x) for x in xs) / max(len(xs), 1)
+def _mean(xs: Iterable[float]) -> float:
+    vals = tuple(float(x) for x in xs)
+    return sum(vals) / max(len(vals), 1)
 
 
 def robust_state_score(state: RecoveryState, disturbance: Disturbance, cfg: DRMPConfig | None = None) -> float:
@@ -94,7 +94,7 @@ def disturbance_affine_control(state: RecoveryState, disturbance: Disturbance, c
     """Causal affine-style recovery action proxy.
 
     Positive shock / stress suppresses adds and increases reduction / hedge intensity.
-    Negative recovery forecast error means recovery is worse than expected and also
+    Positive recovery forecast error means realized recovery is worse than expected and
     raises intervention intensity.
     """
     cfg = cfg or DRMPConfig()

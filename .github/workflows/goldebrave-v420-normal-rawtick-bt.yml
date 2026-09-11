@@ -31,6 +31,16 @@ jobs:
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
       - name: Run normal BT
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('research/goldebrave_v420_normal_rawtick_bt.py')
+          s=p.read_text()
+          s=s.replace("    vol=1.; regime=0; av=4.; day_hi=-1e99; day_lo=1e99; prev_hour=-1; hour_key=-1; hour_hi=-1e99; hour_lo=1e99", "    vol=1.; regime=0; av=4.; day_hi=-1e99; day_lo=1e99; prev_hour=-1; hour_key=-1; hour_hi=-1e99; hour_lo=1e99; curr_bid=0.; curr_ask=0.")
+          s=s.replace("    def add_pending(s,px,layer,now_ns):\n        if count_side(s)>=MAX_PENDING_SIDE:return", "    def add_pending(s,px,layer,now_ns):\n        if s>0 and px<=curr_ask:return\n        if s<0 and px>=curr_bid:return\n        if count_side(s)>=MAX_PENDING_SIDE:return")
+          s=s.replace("        ns=int(tns[k]); b=float(bid[k]); aa=float(ask[k]); mid=(b+aa)*0.5;", "        ns=int(tns[k]); b=float(bid[k]); aa=float(ask[k]); curr_bid=b; curr_ask=aa; mid=(b+aa)*0.5;")
+          s=s.replace("'entry_layers':dict(pd.Series([t.layer for t in trades]).value_counts()) if trades else {}", "'entry_layers':{str(k):int(v) for k,v in pd.Series([t.layer for t in trades]).value_counts().items()} if trades else {}")
+          p.write_text(s)
+          PY
           OUT="results/goldebrave-normal/${{ github.run_id }}"
           python research/goldebrave_v420_normal_rawtick_bt.py --catalog "$RAW_CATALOG" --out "$OUT"
       - name: Upload evidence

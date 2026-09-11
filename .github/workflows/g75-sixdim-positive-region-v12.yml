@@ -1,0 +1,62 @@
+name: G75 SixDim Positive Region RawTick v12
+
+on:
+  push:
+    paths:
+      - 'research/g75_sixdim_positive_region_v12.py'
+      - '.github/workflows/g75-sixdim-positive-region-v12.yml'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: g75-sixdim-v12-${{ github.run_id }}
+
+jobs:
+  sixdim-v12:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run six-dimensional positive-region search
+        run: |
+          PYTHONPATH=research python research/g75_sixdim_positive_region_v12.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf "${{ matrix.tf }}" \
+            --trigger-mults 1,1.5,2,2.5 \
+            --pb-fracs .15,.25,.35 \
+            --reclaim-fracs .05,.10,.20 \
+            --wait-mults 1,2,4 \
+            --tp-mults 1.5,2,3 \
+            --horizon-mults 4,8,12 \
+            --risk-fracs .25,.5,1.0 \
+            --spread-window 256 \
+            --cost-mult 2.5 \
+            --raw-bidask-only
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-sixdim-v12-${{ matrix.tf }}-${{ github.run_id }}
+          path: results/g75-sixdim-v12/${{ env.EXPERIMENT_ID }}/*.json
+          retention-days: 90
+          if-no-files-found: error

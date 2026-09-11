@@ -1,9 +1,9 @@
-name: G75 Regime Router v1 RawTick
+name: G75 Regime Router v2 RawTick
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'research/g75_regime_router_v1.py'
+      - 'research/g75_regime_router_v2.py'
       - '.github/workflows/g75-regime-router-v1.yml'
 jobs:
   bt:
@@ -30,16 +30,15 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run router comparison
+      - name: Run router v2
         run: |
-          OUT="results/g75-regime-router-v1/${{ github.run_id }}"
-          python research/g75_regime_router_v1.py --catalog "$RAW_CATALOG" --out "$OUT"
+          OUT="results/g75-regime-router-v2/${{ github.run_id }}"
+          python research/g75_regime_router_v2.py --catalog "$RAW_CATALOG" --out "$OUT"
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-regime-router-v1-${{ github.run_id }}
-          path: results/g75-regime-router-v1/${{ github.run_id }}/
+          name: g75-regime-router-v2-${{ github.run_id }}
+          path: results/g75-regime-router-v2/${{ github.run_id }}/
           if-no-files-found: error
           retention-days: 90
-# v1: four-state causal router, raw Bid/Ask execution

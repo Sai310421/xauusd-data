@@ -1,0 +1,61 @@
+name: G75 Expected Entry Confirm RawTick v9
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/g75_expected_entry_confirm_v9.py'
+      - '.github/workflows/g75-expected-entry-confirm-v9.yml'
+permissions:
+  contents: read
+jobs:
+  confirm-v9:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: g75-expected-entry-v9-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run two-stage expected-entry audit
+        run: |
+          PYTHONPATH=research python research/g75_expected_entry_confirm_v9.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --tf "${{ matrix.tf }}" \
+            --pb-min 0.03 \
+            --reclaim 0.01 \
+            --wait-mult 2.0 \
+            --tp-floor 0.20 \
+            --sl-floor 0.10 \
+            --tp-spread-mult 2.5 \
+            --horizon-mult 8.0 \
+            --uncertainty-frac 0.05 \
+            --alpha 10.0 \
+            --margin 0.0 \
+            --raw-bidask-only
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g75-expected-entry-v9-${{ matrix.tf }}-${{ github.run_id }}
+          path: results/g75-expected-entry-v9/${{ env.EXPERIMENT_ID }}/${{ matrix.tf }}.json
+          retention-days: 90

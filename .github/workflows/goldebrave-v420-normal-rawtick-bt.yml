@@ -29,16 +29,21 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run normal BT
+      - name: Run normal BT with Tail Guard
         run: |
           python - <<'PY'
           from pathlib import Path
           p=Path('research/goldebrave_v420_normal_rawtick_bt.py')
           s=p.read_text()
-          s=s.replace("    vol=1.; regime=0; av=4.; day_hi=-1e99; day_lo=1e99; prev_hour=-1; hour_key=-1; hour_hi=-1e99; hour_lo=1e99", "    vol=1.; regime=0; av=4.; day_hi=-1e99; day_lo=1e99; prev_hour=-1; hour_key=-1; hour_hi=-1e99; hour_lo=1e99; curr_bid=0.; curr_ask=0.")
-          s=s.replace("    def add_pending(s,px,layer,now_ns):\n        if count_side(s)>=MAX_PENDING_SIDE:return", "    def add_pending(s,px,layer,now_ns):\n        if s>0 and px<=curr_ask:return\n        if s<0 and px>=curr_bid:return\n        if count_side(s)>=MAX_PENDING_SIDE:return")
-          s=s.replace("        ns=int(tns[k]); b=float(bid[k]); aa=float(ask[k]); mid=(b+aa)*0.5;", "        ns=int(tns[k]); b=float(bid[k]); aa=float(ask[k]); curr_bid=b; curr_ask=aa; mid=(b+aa)*0.5;")
-          s=s.replace("'entry_layers':dict(pd.Series([t.layer for t in trades]).value_counts()) if trades else {}", "'entry_layers':{str(k):int(v) for k,v in pd.Series([t.layer for t in trades]).value_counts().items()} if trades else {}")
+          s=s.replace("    vol=1.; regime=0; av=4.; day_hi=-1e99; day_lo=1e99; prev_hour=-1; hour_key=-1; hour_hi=-1e99; hour_lo=1e99", "    vol=1.; regime=0; av=4.; day_hi=-1e99; day_lo=1e99; prev_hour=-1; hour_key=-1; hour_hi=-1e99; hour_lo=1e99; curr_bid=0.; curr_ask=0.; prev_mid=None; gap_cooldown_until=0; rejected_slip=0; gap_events=0; multi_fill_blocked=0")
+          s=s.replace("    def add_pending(s,px,layer,now_ns):\n        if count_side(s)>=MAX_PENDING_SIDE:return", "    def add_pending(s,px,layer,now_ns):\n        if now_ns < gap_cooldown_until:return\n        if s>0 and px<=curr_ask:return\n        if s<0 and px>=curr_bid:return\n        if count_side(s)>=MAX_PENDING_SIDE:return")
+          s=s.replace("        ns=int(tns[k]); b=float(bid[k]); aa=float(ask[k]); mid=(b+aa)*0.5; spread=aa-b;", "        ns=int(tns[k]); b=float(bid[k]); aa=float(ask[k]); curr_bid=b; curr_ask=aa; mid=(b+aa)*0.5; spread=aa-b;\n        gap_thr=max(2.0,2.5*vol)\n        if prev_mid is not None and abs(mid-prev_mid)>gap_thr:\n            pend=[]; gap_cooldown_until=ns+120_000_000_000; gap_events+=1\n        prev_mid=mid;")
+          old="""        if hour in TRADE_HOURS and not brk and pend:\n            remain=[]\n            for q in pend:\n                if (q.side>0 and aa>=q.price) or (q.side<0 and b<=q.price):\n                    ep=aa if q.side>0 else b; pos.append(Pos(q.side,ep,q.sl,q.tp,q.layer,ns)); entries_day[day]=entries_day.get(day,0)+1\n                else: remain.append(q)\n            pend=remain"""
+          new="""        if hour in TRADE_HOURS and not brk and ns>=gap_cooldown_until and pend:\n            remain=[]; filled_this_tick=0\n            max_slip=max(0.5,min(2.0,1.0*vol))\n            for q in pend:\n                hit=(q.side>0 and aa>=q.price) or (q.side<0 and b<=q.price)\n                if hit:\n                    ep=aa if q.side>0 else b\n                    slip=q.side*(ep-q.price)\n                    if slip>max_slip:\n                        rejected_slip+=1\n                        continue\n                    if filled_this_tick>=1:\n                        multi_fill_blocked+=1\n                        continue\n                    pos.append(Pos(q.side,ep,q.sl,q.tp,q.layer,ns)); entries_day[day]=entries_day.get(day,0)+1; filled_this_tick+=1\n                else: remain.append(q)\n            pend=remain"""
+          if old not in s:
+              raise SystemExit('fill block patch target not found')
+          s=s.replace(old,new)
+          s=s.replace("'entry_layers':dict(pd.Series([t.layer for t in trades]).value_counts()) if trades else {}", "'entry_layers':{str(k):int(v) for k,v in pd.Series([t.layer for t in trades]).value_counts().items()} if trades else {},'tail_guard':{'gap_events':int(gap_events),'rejected_slippage':int(rejected_slip),'multi_fill_blocked':int(multi_fill_blocked),'max_fills_per_tick':1,'gap_cooldown_sec':120}")
           p.write_text(s)
           PY
           OUT="results/goldebrave-normal/${{ github.run_id }}"

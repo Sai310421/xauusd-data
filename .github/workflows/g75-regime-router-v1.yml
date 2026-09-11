@@ -1,9 +1,9 @@
-name: G75 GoldeBrave Hold Matrix RawTick
+name: G75 Regime Router v4 GB30 Range RawTick
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'research/g75_goldebrave_hold_matrix.py'
+      - 'research/g75_regime_router_v4_gb30_range.py'
       - '.github/workflows/g75-regime-router-v1.yml'
 jobs:
   bt:
@@ -30,15 +30,15 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run hold matrix
+      - name: Run v4 hybrid
         run: |
-          OUT="results/g75-goldebrave-hold/${{ github.run_id }}"
-          python research/g75_goldebrave_hold_matrix.py --catalog "$RAW_CATALOG" --events research/goldebrave_tailguard_supervisor_events.csv --out "$OUT"
+          OUT="results/g75-regime-router-v4/${{ github.run_id }}"
+          python research/g75_regime_router_v4_gb30_range.py --catalog "$RAW_CATALOG" --events research/goldebrave_tailguard_supervisor_events.csv --out "$OUT"
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-goldebrave-hold-${{ github.run_id }}
-          path: results/g75-goldebrave-hold/${{ github.run_id }}/
+          name: g75-regime-router-v4-${{ github.run_id }}
+          path: results/g75-regime-router-v4/${{ github.run_id }}/
           if-no-files-found: error
           retention-days: 90

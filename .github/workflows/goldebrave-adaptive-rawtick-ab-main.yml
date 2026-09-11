@@ -1,8 +1,8 @@
-name: GoldeBrave v4.20 Normal RawTick Main
+name: GoldeBrave vs Adaptive Closer RawTick A/B Main
 on:
   push:
     paths:
-      - 'research/goldebrave_v420_normal_rawtick_bt.py'
+      - 'research/goldebrave_adaptive_rawtick_ab.py'
       - '.github/workflows/goldebrave-adaptive-rawtick-ab-main.yml'
   workflow_dispatch:
 permissions:
@@ -32,15 +32,15 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run normal BT
+      - name: Run A/B
         run: |
-          OUT="results/goldebrave-normal/${{ github.run_id }}"
-          python research/goldebrave_v420_normal_rawtick_bt.py --catalog "$RAW_CATALOG" --out "$OUT"
+          OUT="results/goldebrave-adaptive/${{ github.run_id }}"
+          python research/goldebrave_adaptive_rawtick_ab.py --catalog "$RAW_CATALOG" --out "$OUT"
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: goldebrave-normal-${{ github.run_id }}
-          path: results/goldebrave-normal/${{ github.run_id }}/
+          name: goldebrave-adaptive-${{ github.run_id }}
+          path: results/goldebrave-adaptive/${{ github.run_id }}/
           if-no-files-found: error
           retention-days: 90

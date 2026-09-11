@@ -1,0 +1,41 @@
+{
+  "module": "Entry_TP_Module_v1.1-candidate",
+  "frozen_core": "Entry_TP_Module_v1.0",
+  "entry": {
+    "theta_move": 0.65,
+    "theta_direction": 0.6,
+    "theta_destination": 0.6,
+    "theta_velocity": "OPTIMIZE_BY_SYMBOL",
+    "theta_acceleration": "OPTIMIZE_BY_SYMBOL"
+  },
+  "speed_classes_seconds": {"FAST": [0.0, 1.5], "MEDIUM": [1.5, 5.0], "SLOW": [5.0, null]},
+  "layers": {
+    "CORE": {"enabled": true},
+    "DEX_G": {
+      "enabled": true,
+      "PrevBarPrep": true,
+      "ModeLock": true,
+      "MinakiriSamePrice": true,
+      "SkipOverChase": true,
+      "FlatThenReverse": true
+    },
+    "NERCIA": {
+      "enabled": false,
+      "apply_on_modes": ["M1", "SLEEP"],
+      "SessionNY_hard_and": false,
+      "SessionNY_score_bonus": true,
+      "StackToDestinationScore": true,
+      "DualFVG": true,
+      "SplitTarget": true,
+      "OutlookLog": true,
+      "fixed_sl_pips": null
+    }
+  },
+  "pyramiding": {
+    "enabled": true,
+    "averaging_down": false,
+    "same_price_band_only": true,
+    "theta_add_reach_probability": 0.7
+  },
+  "separation": {"g75": false, "hydra66": false}
+}

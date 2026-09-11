@@ -11,8 +11,11 @@ def load(c):
  cat=ParquetDataCatalog(c);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD');q=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value]);n=len(q)
  t=np.fromiter((int(z.ts_event) for z in q),np.int64,count=n);b=np.fromiter((f(z.bid_price) for z in q),float,count=n);a=np.fromiter((f(z.ask_price) for z in q),float,count=n);return t,b,a
 
+def to_ns(series):
+ # pandas 3 may preserve microsecond resolution; Timestamp.value is always nanoseconds.
+ return np.array([pd.Timestamp(x).value for x in pd.to_datetime(series,utc=True)],dtype=np.int64)
 def events(path):
- d=pd.read_csv(path);d['en']=pd.to_datetime(d.entry_time,utc=True).astype('int64');d['ex']=pd.to_datetime(d.exit_time,utc=True).astype('int64');return d.sort_values('en')
+ d=pd.read_csv(path);d['en']=to_ns(d.entry_time);d['ex']=to_ns(d.exit_time);return d.sort_values('en')
 
 def make_bias(t,d,mode):
  out=np.zeros(len(t),np.int8);en=d.en.to_numpy(np.int64);ex=d.ex.to_numpy(np.int64);side=d.side.to_numpy(np.int8)

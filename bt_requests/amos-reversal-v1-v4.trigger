@@ -1,8 +1,8 @@
-triggered_at_jst=2026-09-11T04:55:00+09:00
+triggered_at_jst=2026-09-11T11:39:00+09:00
 symbol=XAUUSD
 start=2026-05-31
 days=90
 rr=2.0
 purpose=V1-V4 x M1/M5/M15/H1 adoption decision
-retry=5
-fix=explicit_timestamp_value_ns
+retry=6
+fix=v3_sibling_import

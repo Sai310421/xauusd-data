@@ -95,7 +95,7 @@ jobs:
         env:
           AMOS_RAW_TICK_PATH: raw/${{ env.AMOS_SYMBOL }}_dukascopy_ticks.parquet
         run: |
-          python research/amos_reversal_v1_v4_rawtick_bt_v3.py \
+          python research/amos_reversal_v1_v4_rawtick_bt_v4.py \
             --version '${{ matrix.version }}' \
             --timeframe '${{ matrix.timeframe }}' \
             --mode '${{ matrix.mode }}' \

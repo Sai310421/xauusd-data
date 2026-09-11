@@ -6,7 +6,6 @@ import numpy as np, pandas as pd
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
-# GoldeBrave v4.20 defaults, ordinary full-strategy Raw Bid/Ask BT.
 TRADE_HOURS={11,15,16,17,18}; UNIT=0.10; FS=3.0; MIND_ADD=1.0
 SL_ATR=1.2; TP_ATR=2.4; SL_MIN=4.0; TP_MIN=9.0; SL_MAX=12.0; TP_MAX=30.0
 MIN_ENTRIES_DAY=3; BOOST_HOUR=9; BOOST_OFF=0.2; SPREAD_BREAK_UNITS=25
@@ -81,8 +80,7 @@ def main():
             elif s<0 and price<lob and ns<cap: ns+=1; add_pending(-1,price+FS*UNIT*vol,layer,now); lob=price
     for k in range(len(ticks)):
         now=pd.Timestamp(times[k]); b=float(bid[k]); aa=float(ask[k]); mid=(b+aa)/2; spread=aa-b; day=now.date(); hour=now.hour; minute=now.floor('min'); hk=now.floor('h')
-        new_hour=hk!=hour_key
-        if new_hour: hour_key=hk; hour_hi=mid; hour_lo=mid
+        if hk!=hour_key: hour_key=hk; hour_hi=mid; hour_lo=mid
         else: hour_hi=max(hour_hi,mid); hour_lo=min(hour_lo,mid)
         if day!=current_day: current_day=day; day_hi=mid; day_lo=mid; entries_day[day]=0; placed_day=set(); pend=[]
         day_hi=max(day_hi,mid); day_lo=min(day_lo,mid)
@@ -115,7 +113,6 @@ def main():
         pos=keep
         if minute!=last_min:
             last_min=minute
-            # Only completed previous M1 bar + running current-hour range. Skip xx:00 to avoid mixing prior-hour M1 with new H1.
             if now.minute!=0 and pos:
                 mi=m1_by_ns.get(int((minute-pd.Timedelta(minutes=1)).value))
                 if mi is not None:
@@ -124,17 +121,17 @@ def main():
                         for p in pos:
                             if p.side>0 and mh>p.entry+TR_TRIG*vol:p.sl=max(p.sl,mh-TR_OFF*vol)
                             if p.side<0 and ml<p.entry-TR_TRIG*vol:p.sl=min(p.sl,ml+TR_OFF*vol)
-            hj=np.searchsorted(h1.time.to_numpy(),np.datetime64(hk),side='left')-1
+            hj=int(h1['time'].searchsorted(hk,side='left'))-1
             if hj>=0:
                 avv=h1.atr14.iloc[hj]; al=h1.atr480.iloc[hj]; ax=h1.adx.iloc[hj]
                 if np.isfinite(avv):av=float(avv)
                 if np.isfinite(avv) and np.isfinite(al) and al>0:vol=float(np.clip(avv/al,VOL_MIN,VOL_MAX))
                 regime=1 if np.isfinite(ax) and ax>=ADX_TREND else (-1 if np.isfinite(ax) and ax<=ADX_RANGE else 0)
             if hour in TRADE_HOURS and not brk:
-                hcur=np.searchsorted(h1.time.to_numpy(),np.datetime64(hk),side='left')
+                hcur=int(h1['time'].searchsorted(hk,side='left'))
                 if now.minute==0 and hk!=last_h1: last_h1=hk; rebuild('A',hcur,zz60,7 if regime==1 else 5,now)
                 if now.minute%15==0 and now.floor('15min')!=last_m15:
-                    last_m15=now.floor('15min'); j15=np.searchsorted(m15.time.to_numpy(),np.datetime64(last_m15),side='left'); rebuild('B',j15,zz15,3,now)
+                    last_m15=now.floor('15min'); j15=int(m15['time'].searchsorted(last_m15,side='left')); rebuild('B',j15,zz15,3,now)
                     if hour>=BOOST_HOUR and entries_day.get(day,0)<MIN_ENTRIES_DAY:
                         bo=BOOST_OFF*vol*(RANGE_BOOST if regime==-1 else 1.0); add_pending(1,day_hi+bo,'C',now); add_pending(-1,day_lo-bo,'C',now)
     now=pd.Timestamp(times[-1]); b=float(bid[-1]); aa=float(ask[-1])

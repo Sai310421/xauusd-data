@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
-import research.amos_reversal_v1_v4_rawtick_bt_v2 as m
+
+# Make sibling runner importable when executed as `python research/...py` in GitHub Actions.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import amos_reversal_v1_v4_rawtick_bt_v2 as m
 
 
 def simulate_fixed(t,b,v,tf,mode,rr):
     z=m.feat(b)
     signals,diag=m.build_signals(z,v,mode)
     trades=[]
-    # Force every tick timestamp to Python Timestamp.value (UTC epoch ns).
     tv=np.fromiter((pd.Timestamp(x).value for x in t['time']),dtype=np.int64,count=len(t))
     last_exit_ns=np.int64(-1)
     diag.update({'blocked_overlap':0,'no_entry_tick':0,'invalid_risk':0,'no_horizon_ticks':0,'executed':0})

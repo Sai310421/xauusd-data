@@ -42,3 +42,4 @@ jobs:
           path: results/g75-regime-router-v1/${{ github.run_id }}/
           if-no-files-found: error
           retention-days: 90
+# v1: four-state causal router, raw Bid/Ask execution

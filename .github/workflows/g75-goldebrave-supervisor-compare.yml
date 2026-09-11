@@ -1,14 +1,14 @@
-name: G75 GoldeBrave Supervisor Compare
+name: G75 Regime Router v1 Compare
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'research/g75_goldebrave_supervisor_compare.py'
-      - 'research/goldebrave_tailguard_supervisor_events.csv'
+      - 'research/g75_regime_router_v1.py'
       - '.github/workflows/g75-goldebrave-supervisor-compare.yml'
 jobs:
   bt:
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     env:
       RAW_CATALOG: catalog/raw_bidask
       RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
@@ -30,13 +30,15 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run comparison
+      - name: Run router comparison
         run: |
-          OUT="results/g75-goldebrave-supervisor/${{ github.run_id }}"
-          python research/g75_goldebrave_supervisor_compare.py --catalog "$RAW_CATALOG" --supervisor research/goldebrave_tailguard_supervisor_events.csv --out "$OUT"
+          OUT="results/g75-regime-router-v1/${{ github.run_id }}"
+          python research/g75_regime_router_v1.py --catalog "$RAW_CATALOG" --out "$OUT"
       - name: Upload evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g75-goldebrave-supervisor-${{ github.run_id }}
-          path: results/g75-goldebrave-supervisor/${{ github.run_id }}/
+          name: g75-regime-router-v1-${{ github.run_id }}
+          path: results/g75-regime-router-v1/${{ github.run_id }}/
+          if-no-files-found: error
           retention-days: 90

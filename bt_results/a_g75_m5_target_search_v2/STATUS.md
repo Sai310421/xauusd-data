@@ -1,0 +1,1 @@
+Search configured: causal M5 A + G75, focused on MaxDD_float <= 5% and Month21_pct >= 50%.

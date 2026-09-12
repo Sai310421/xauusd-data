@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import multiedge_nautilus_raw_bt as base
 
+# Inversion-check wrapper: preserves execution logic and flips only signal direction.
 
 def _atr_fixed(self):
     return float(np.mean(list(self.tr)[-20:])) if self.tr else 0.0

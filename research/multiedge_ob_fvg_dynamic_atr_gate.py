@@ -15,6 +15,8 @@ Exit v1:
     1.50 <= MFE < 2.00 ATR -> 1.00 ATR
     MFE >= 2.00 ATR -> 0.75 ATR
 - Horizon: 60 M1 bars.
+
+Trigger note: Raw comparison workflow enabled.
 """
 
 import multiedge_ob_fvg_depth_gate as base
@@ -37,7 +39,6 @@ def _on_quote_tick_dynamic(self, tick):
     self.last_bid = bid
     self.last_ask = ask
 
-    # Entry logic: unchanged from the fixed-TP depth gate.
     if self.zone:
         side = self.zone['side']
         probe = ask if side > 0 else bid
@@ -51,7 +52,6 @@ def _on_quote_tick_dynamic(self, tick):
         if (side > 0 and bid < self.zone['lo'] - 0.35 * self.zone['atr']) or (side < 0 and ask > self.zone['hi'] + 0.35 * self.zone['atr']):
             self.zone = None
 
-    # Exit logic: initial SL + BE floor + dynamic ATR trail. No fixed TP.
     for d, a in list(self.active.items()):
         if a is None:
             continue
@@ -70,7 +70,6 @@ def _on_quote_tick_dynamic(self, tick):
         mfe_atr = mfe / atr
         a['peak_mfe_atr'] = max(a.get('peak_mfe_atr', 0.0), mfe_atr)
 
-        # Initial protective stop remains until the trail activates.
         initial_stop = a['entry'] - 0.75 * atr if side > 0 else a['entry'] + 0.75 * atr
         if not a.get('trail_active', False):
             if (side > 0 and mark <= initial_stop) or (side < 0 and mark >= initial_stop):
@@ -80,7 +79,6 @@ def _on_quote_tick_dynamic(self, tick):
                 a['trail_active'] = True
 
         if a.get('trail_active', False):
-            # Tighten as favorable excursion expands.
             if mfe_atr < 1.50:
                 k = 1.20
             elif mfe_atr < 2.00:

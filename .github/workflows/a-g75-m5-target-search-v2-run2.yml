@@ -1,0 +1,20 @@
+name: A G75 M5 Target Search v2 Run2
+on:
+  push:
+    paths:
+      - '.github/workflows/a-g75-m5-target-search-v2-run2.yml'
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy
+      - run: python scripts/a_g75_m5_target_search_v2.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a-g75-m5-target-search-v2-run2
+          path: bt_results/a_g75_m5_target_search_v2/

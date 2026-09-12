@@ -1,0 +1,49 @@
+name: MultiEDGE Next4 Dynamic ATR Raw Gate
+on:
+  push:
+    paths:
+      - 'research/multiedge_next4_dynamic_atr_gate.py'
+      - '.github/workflows/multiedge-next4-dynamic-atr.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  edge:
+    strategy:
+      fail-fast: false
+      matrix:
+        edge: [T2_ADAPTIVE_MTF, T5_COMP_EXP, R3_LIQUIDITY_RUN, V5_HARMONIC_PRZ_SWEEP_CHOCH]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: multiedge-next4-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run next EDGE Raw gate
+        run: |
+          python research/multiedge_next4_dynamic_atr_gate.py \
+            --catalog "$RAW_CATALOG" \
+            --selected "${{ matrix.edge }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiedge-${{ matrix.edge }}-${{ github.run_id }}
+          path: results/multiedge/${{ env.EXPERIMENT_ID }}/${{ matrix.edge }}.json
+          retention-days: 90

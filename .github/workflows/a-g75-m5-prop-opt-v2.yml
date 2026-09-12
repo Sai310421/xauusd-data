@@ -1,0 +1,22 @@
+name: A G75 M5 Prop Opt v2
+on:
+  push:
+    paths:
+      - 'scripts/a_g75_m5_prop_opt_v2.py'
+      - '.github/workflows/a-g75-m5-prop-opt-v2.yml'
+      - 'csv/XAUUSD/XAUUSD_M5_2026Q1Q2.csv'
+  workflow_dispatch:
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy
+      - run: python scripts/a_g75_m5_prop_opt_v2.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a-g75-m5-prop-opt-v2
+          path: bt_results/a_g75_m5_prop_opt_v2/

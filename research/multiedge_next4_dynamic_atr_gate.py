@@ -75,7 +75,9 @@ class S(Strategy):
     bear=xa_bear>0 and ab_bear>0 and (Bl-Xl)/xa_bear>=0.114 and (Bl-Xl)/xa_bear<=0.55 and (Dh-Bl)/ab_bear>=1.27 and (Dh-Bl)/ab_bear<=1.68 and (Dh-Xl)/xa_bear>=0.786 and (Dh-Xl)/xa_bear<=0.95
     if bull:self.harm={'side':1,'i':self.m1_i,'ref':float(h[-5:-1].max())};return 0
     if bear:self.harm={'side':-1,'i':self.m1_i,'ref':float(l[-5:-1].min())};return 0
+    return 0
    st=self.harm
+   if st is None:return 0
    if self.m1_i-st['i']>6:self.harm=None;return 0
    side=st['side'];choch=c[-1]>st['ref'] if side>0 else c[-1]<st['ref']
    if choch:self.harm=None;self.fire+=1;return side

@@ -1,4 +1,5 @@
 from __future__ import annotations
+# trigger: GoldeBrave C x BigPlayerDetector raw comparison
 import argparse,json,math
 from collections import deque
 from decimal import Decimal
@@ -32,15 +33,11 @@ class GBTenzoko(GB):
    tr.append(max(h[i]-l[i],abs(h[i]-c[i-1]),abs(l[i]-c[i-1])))
   return float(np.mean(tr))
  def _detector(self):
-  # BigPlayerDetector v4 Optimized defaults, evaluated on completed M1 bars.
-  # LookbackBars=200, VolumeSigmaThreshold=2.0, RangeMultiplier=1.5, SwingLookback=20.
   if len(self.m1c)<222:return
-  o,h,l,c,v = self.m1o[-1],self.m1h[-1],self.m1l[-1],self.m1c[-1],self.m1v[-1]
-  hist=np.asarray(list(self.m1v)[-201:-1],float)
-  mean=float(hist.mean());std=float(hist.std(ddof=0))
+  o,h,l,c,v=self.m1o[-1],self.m1h[-1],self.m1l[-1],self.m1c[-1],self.m1v[-1]
+  hist=np.asarray(list(self.m1v)[-201:-1],float);mean=float(hist.mean());std=float(hist.std(ddof=0))
   if mean<=0 or std<=0:return
-  z=(v-mean)/std
-  atr=self._atr_m1(14)
+  z=(v-mean)/std;atr=self._atr_m1(14)
   if atr is None or atr<=0:return
   rng=h-l
   if rng<=0:return
@@ -49,8 +46,7 @@ class GBTenzoko(GB):
   if z>=2.0 and rng/atr>=1.5 and body_ratio>=0.60:
    imb_buy=c>o;imb_sell=c<o
   ph=max(list(self.m1h)[-21:-1]);pl=min(list(self.m1l)[-21:-1])
-  sweep_buy=(z>=2.0 and l<pl and c>pl)
-  sweep_sell=(z>=2.0 and h>ph and c<ph)
+  sweep_buy=(z>=2.0 and l<pl and c>pl);sweep_sell=(z>=2.0 and h>ph and c<ph)
   combo_buy=sweep_buy and imb_buy;combo_sell=sweep_sell and imb_sell
   self.sig_buy_age+=1;self.sig_sell_age+=1
   buy=sweep_buy if self.filter_mode=='sweep' else combo_buy if self.filter_mode=='combo' else False
@@ -60,7 +56,6 @@ class GBTenzoko(GB):
   self.last_signal={'z':z,'imb_buy':imb_buy,'imb_sell':imb_sell,'sweep_buy':sweep_buy,'sweep_sell':sweep_sell,'combo_buy':combo_buy,'combo_sell':combo_sell}
  def _c_permission(self,side):
   if self.filter_mode=='base':return True
-  # Direction rejection filter: signal remains valid for 5 completed M1 bars.
   return self.sig_buy_age<=5 if side>0 else self.sig_sell_age<=5
  def boost(self):
   if self.cur_hour<9 or self.entries_day>=3:return

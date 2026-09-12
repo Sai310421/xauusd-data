@@ -1,0 +1,54 @@
+name: AMOS Fib v0.30 RawTick Fast Matrix
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'research/amos_fib_v030_rawtick_cell.py'
+      - '.github/workflows/amos-fib-v030-rawtick-fast.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [CORE, ATR, PYR, STDV]
+    runs-on: ubuntu-24.04
+    env:
+      NAUTILUS_VERSION: 1.230.0
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: amos-fib-v030-fast-${{ github.run_id }}-${{ matrix.mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw XAUUSD catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run single-cell source-parity validation
+        run: |
+          PYTHONPATH=research python research/amos_fib_v030_rawtick_cell.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --mode "${{ matrix.mode }}" \
+            --stdv-target 2.65 \
+            --stdv-frac 0.24 \
+            --stdv-stop 0.55 \
+            --raw-bidask-only
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-fib-v030-fast-${{ matrix.mode }}-${{ github.run_id }}
+          path: results/amos-fib-v030-rawtick-fast/${{ env.EXPERIMENT_ID }}/*.json
+          retention-days: 90

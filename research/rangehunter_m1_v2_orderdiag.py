@@ -24,13 +24,16 @@ def main():
     cp=Path(a.catalog);cat=ParquetDataCatalog(str(cp));inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD');ticks=cat.query_quote_ticks(identifiers=[inst.id.value])
     eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)));eng.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
     bt=BarType.from_str(f'{inst.id.value}-1-MINUTE-BID-INTERNAL');st=Strat(Config(instrument_id=inst.id,bar_type=bt));eng.add_strategy(st);eng.run()
-    out=Path('results/ae-bt')/a.experiment_id;out.mkdir(parents=True,exist_ok=True)
-    reports={}
+    out=Path('results/ae-bt')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);reports={};order_detail=[]
     for name,fn in [('orders',eng.trader.generate_orders_report),('fills',eng.trader.generate_order_fills_report),('positions',eng.trader.generate_positions_report)]:
         try:
-            df=fn();reports[name]={'rows':0 if df is None else len(df),'columns':[] if df is None else [str(x) for x in df.columns]};
-            if df is not None:df.to_csv(out/f'{name}.csv',index=False)
+            df=fn();reports[name]={'rows':0 if df is None else len(df),'columns':[] if df is None else [str(x) for x in df.columns]}
+            if df is not None:
+                df.to_csv(out/f'{name}.csv',index=False)
+                if name=='orders' and not df.empty:
+                    cols=[c for c in ['side','quantity','filled_qty','avg_px','status','ts_init','ts_last'] if c in df.columns]
+                    order_detail=df[cols].astype(str).to_dict(orient='records')
         except Exception as e:reports[name]={'error':repr(e)}
-    summary={'baskets_submitted':st.baskets,'reports':reports,'instrument':str(inst),'instrument_id':inst.id.value}
+    summary={'baskets_submitted':st.baskets,'order_detail':order_detail,'reports':reports,'instrument':str(inst),'instrument_id':inst.id.value}
     (out/'summary.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary,indent=2));eng.dispose()
 if __name__=='__main__':main()

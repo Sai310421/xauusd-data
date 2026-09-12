@@ -47,3 +47,5 @@ jobs:
           name: multiedge-${{ matrix.selected }}-${{ github.run_id }}
           path: results/multiedge/${{ env.EXPERIMENT_ID }}/${{ matrix.selected }}.json
           retention-days: 90
+
+# Triggered after workflow registration so the new workflow runs on push.

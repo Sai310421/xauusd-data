@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'research/ea_pair_raw_gate.py'
+      - 'research/goldebrave_m5_m15_combo_raw_gate.py'
       - '.github/workflows/ea-pair-raw-gate.yml'
   workflow_dispatch:
 jobs:
@@ -13,6 +14,7 @@ jobs:
       RAW_CATALOG: catalog/raw_bidask
       RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
       EXPERIMENT_ID: ea-pair-${{ github.run_id }}
+      GB_COMBO_ID: gb-m5-m15-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,8 +30,12 @@ jobs:
           fail-on-cache-miss: true
       - name: Run raw pair gate
         run: python research/ea_pair_raw_gate.py --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID"
+      - name: Run GoldeBrave M5 M15 simultaneous gate
+        run: python research/goldebrave_m5_m15_combo_raw_gate.py --catalog "$RAW_CATALOG" --experiment-id "$GB_COMBO_ID"
       - uses: actions/upload-artifact@v4
         with:
           name: ea-pair-${{ github.run_id }}
-          path: results/ea-pair/${{ env.EXPERIMENT_ID }}/summary.json
+          path: |
+            results/ea-pair/${{ env.EXPERIMENT_ID }}/summary.json
+            results/goldebrave-combo/${{ env.GB_COMBO_ID }}/summary.json
           retention-days: 90

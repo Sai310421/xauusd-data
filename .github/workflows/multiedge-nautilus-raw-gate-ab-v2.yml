@@ -1,0 +1,117 @@
+name: MultiEDGE Nautilus Raw Gate A-B v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/multiedge_nautilus_raw_bt.py'
+      - 'research/multiedge_nautilus_raw_bt_fixed.py'
+      - '.github/workflows/multiedge-nautilus-raw-gate-ab-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: multiedge-gate-ab-v2-${{ github.run_id }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard XAUUSD Raw Catalog
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+
+  gate-a-single:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        edge: [T1_EMA21, T2_MTF_ALIGN, T3_BREAKOUT_CONT, T4_ACCEL, R1_RANGE_BIAS, R2_COMP_EXP, R3_MICRO_BREAK, V1_SWEEP, V2_MEAN_EXTREME, V3_REJECTION]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run single EDGE Raw BT
+        run: |
+          python research/multiedge_nautilus_raw_bt_fixed.py \
+            --catalog "$RAW_CATALOG" \
+            --selected "${{ matrix.edge }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - name: Upload EDGE result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiedge-v2-single-${{ matrix.edge }}-${{ github.run_id }}
+          path: results/multiedge/${{ env.EXPERIMENT_ID }}/${{ matrix.edge }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  gate-b-combo:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        combo: [TREND_CORE, RANGE_CORE, REVERSAL_CORE]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run combo Raw BT
+        run: |
+          python research/multiedge_nautilus_raw_bt_fixed.py \
+            --catalog "$RAW_CATALOG" \
+            --selected "${{ matrix.combo }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - name: Upload combo result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiedge-v2-combo-${{ matrix.combo }}-${{ github.run_id }}
+          path: results/multiedge/${{ env.EXPERIMENT_ID }}/${{ matrix.combo }}.json
+          if-no-files-found: error
+          retention-days: 90

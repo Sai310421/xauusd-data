@@ -1,0 +1,48 @@
+name: GoldeBrave G75 Profit Lock V4 Matrix Raw
+
+on:
+  push:
+    paths:
+      - 'research/goldebrave_c_g75_profit_lock_v4_matrix_raw.py'
+      - '.github/workflows/goldebrave-g75-profit-lock-v4-matrix-raw.yml'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: gb-g75-profit-lock-v4-matrix-${{ github.run_id }}
+
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        partial: [0.35, 0.50, 0.65]
+        trail: [0.15, 0.20, 0.25]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run v4 optimization matrix
+        run: |
+          python research/goldebrave_c_g75_profit_lock_v4_matrix_raw.py \
+            --catalog "$RAW_CATALOG" \
+            --partial-frac "${{ matrix.partial }}" \
+            --trail-r "${{ matrix.trail }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gb-g75-v4-matrix-${{ github.run_id }}-p${{ matrix.partial }}-t${{ matrix.trail }}
+          path: results/goldebrave-g75-profit-lock-v4-matrix/${{ env.EXPERIMENT_ID }}/*.json
+          retention-days: 90

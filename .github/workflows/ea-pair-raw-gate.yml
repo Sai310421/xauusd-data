@@ -1,0 +1,35 @@
+name: EA Pair Raw Gate
+on:
+  push:
+    paths:
+      - 'research/ea_pair_raw_gate.py'
+      - '.github/workflows/ea-pair-raw-gate.yml'
+  workflow_dispatch:
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: ea-pair-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run raw pair gate
+        run: python research/ea_pair_raw_gate.py --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ea-pair-${{ github.run_id }}
+          path: results/ea-pair/${{ env.EXPERIMENT_ID }}/summary.json
+          retention-days: 90

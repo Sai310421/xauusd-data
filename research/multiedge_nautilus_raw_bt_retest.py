@@ -48,7 +48,6 @@ def _arm_or_fire(self, edge_id, lookback):
     ref_lo = float(l[-(lookback+1):-1].min())
     state = self.retest.get(edge_id)
 
-    # Arm on confirmed close beyond the reference high/low.
     if state is None:
         if c[-1] > ref_hi:
             self.retest[edge_id] = {'side': 1, 'level': ref_hi, 'armed_i': self.m1_i}
@@ -70,11 +69,8 @@ def _arm_or_fire(self, edge_id, lookback):
     touched = (l[-1] <= level + zone) if side > 0 else (h[-1] >= level - zone)
     held = (c[-1] >= level - hold) if side > 0 else (c[-1] <= level + hold)
     ema_ok = (c[-1] > e21 and e21 > e21p) if side > 0 else (c[-1] < e21 and e21 < e21p)
-
-    # Re-acceleration: close moves back in breakout direction vs previous close.
     reac = (c[-1] > c[-2]) if side > 0 else (c[-1] < c[-2])
 
-    # Failed hold invalidates setup.
     invalid = (c[-1] < level - 0.35 * atr) if side > 0 else (c[-1] > level + 0.35 * atr)
     if invalid:
         self.retest[edge_id] = None
@@ -94,7 +90,6 @@ def _signal_retest(self):
     if selected == 'R3_MICRO_BREAK':
         return _arm_or_fire(self, selected, 7)
     if selected == 'TREND_CORE':
-        # Retest-led Trend Core: T3 retest is trigger, MTF + EMA direction are filters.
         side = _arm_or_fire(self, 'T3_BREAKOUT_CONT', 20)
         if not side:
             return 0
@@ -105,7 +100,6 @@ def _signal_retest(self):
             return side
         return 0
     if selected == 'RANGE_CORE':
-        # Retest-led Range Core: R3 retest trigger + compression/expansion agrees.
         side = _arm_or_fire(self, 'R3_MICRO_BREAK', 7)
         if not side:
             return 0
@@ -124,3 +118,5 @@ base.MultiEdgeRawStrategy._signal = _signal_retest
 
 if __name__ == '__main__':
     base.main()
+
+# workflow trigger marker: retest-v1

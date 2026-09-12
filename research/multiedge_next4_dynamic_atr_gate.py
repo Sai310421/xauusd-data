@@ -1,3 +1,4 @@
+# trigger: next4 raw gate
 from __future__ import annotations
 import argparse,json,math
 from collections import deque,Counter
@@ -66,16 +67,14 @@ class S(Strategy):
    sell=contained and e21<e50 and e21<=ep and .10<=pos<=.55 and c[-1]<liq_lo and c[-1]>lo-0.25*atr
    if buy or sell:self.fire+=1;return 1 if buy else -1
   elif sel=='V5_HARMONIC_PRZ_SWEEP_CHOCH':
-   # deterministic swing-proxy XABCD: alternating local extrema over last ~40 bars, D near 1.27-1.68 AB extension and 0.786-0.886 XA retrace; then sweep+CHOCH
    if self.harm is None:
     Xh=float(h[-41:-31].max());Xl=float(l[-41:-31].min());Ah=float(h[-31:-21].max());Al=float(l[-31:-21].min());Bh=float(h[-21:-11].max());Bl=float(l[-21:-11].min());Dh=h[-1];Dl=l[-1]
-    # bullish pattern proxy: X high -> A low -> B retrace high -> D extension low
     xa_bull=Xh-Al;ab_bull=Bh-Al
     bull=xa_bull>0 and ab_bull>0 and (Xh-Bh)/xa_bull>=0.114 and (Xh-Bh)/xa_bull<=0.55 and (Bh-Dl)/ab_bull>=1.27 and (Bh-Dl)/ab_bull<=1.68 and (Xh-Dl)/xa_bull>=0.786 and (Xh-Dl)/xa_bull<=0.95
     xa_bear=Ah-Xl;ab_bear=Ah-Bl
     bear=xa_bear>0 and ab_bear>0 and (Bl-Xl)/xa_bear>=0.114 and (Bl-Xl)/xa_bear<=0.55 and (Dh-Bl)/ab_bear>=1.27 and (Dh-Bl)/ab_bear<=1.68 and (Dh-Xl)/xa_bear>=0.786 and (Dh-Xl)/xa_bear<=0.95
-    if bull:self.harm={'side':1,'i':self.m1_i,'sweep':Dl,'ref':float(h[-5:-1].max())};return 0
-    if bear:self.harm={'side':-1,'i':self.m1_i,'sweep':Dh,'ref':float(l[-5:-1].min())};return 0
+    if bull:self.harm={'side':1,'i':self.m1_i,'ref':float(h[-5:-1].max())};return 0
+    if bear:self.harm={'side':-1,'i':self.m1_i,'ref':float(l[-5:-1].min())};return 0
    st=self.harm
    if self.m1_i-st['i']>6:self.harm=None;return 0
    side=st['side'];choch=c[-1]>st['ref'] if side>0 else c[-1]<st['ref']

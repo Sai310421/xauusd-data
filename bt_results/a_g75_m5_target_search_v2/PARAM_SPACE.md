@@ -1,0 +1,1 @@
+regime=[off,on], pending=[6,12,24], lot=[0.0010..0.0015], trigger=[0.08,0.10,0.12,0.15,0.20], step=[0.020,0.025,0.030,0.040,0.050], max_adds=[4,6,8,10]. Target: MaxDD_float<=5%, Month21_pct>=50%.

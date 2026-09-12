@@ -1,0 +1,55 @@
+name: RangeHunter M1 V5 Staged 50-30-20 Nautilus Raw BidAsk BT
+on:
+  push:
+    paths:
+      - 'research/rangehunter_m1_trendfollow_v5_staged_503020_nautilus_raw_bt.py'
+      - '.github/workflows/rangehunter-m1-v5-nautilus-raw-bt.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: rangehunter-m1-v5-${{ github.run_id }}
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Run RangeHunter M1 V5
+        run: python -m research.rangehunter_m1_trendfollow_v5_staged_503020_nautilus_raw_bt --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only
+      - name: Save evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/rangehunter_m1_trendfollow_v5_staged_503020_nautilus_raw_bt.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt" || true
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rangehunter-m1-v5-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: warn
+          retention-days: 90

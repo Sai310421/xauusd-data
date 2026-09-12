@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'research/rangehunter_m5_nautilus_raw_bt.py'
+      - 'research/rangehunter_m5_nautilus_raw_bt_compat.py'
+      - '.github/workflows/rangehunter-m5-nautilus-raw-bt.yml'
   workflow_dispatch:
 
 permissions:
@@ -53,14 +55,14 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
       - name: Run RangeHunter M5 on Raw BidAsk QuoteTicks
         run: |
-          python -m research.rangehunter_m5_nautilus_raw_bt --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only
+          python -m research.rangehunter_m5_nautilus_raw_bt_compat --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only
       - name: Save run evidence
         if: always()
         shell: bash
         run: |
           mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
           printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
-          sha256sum research/rangehunter_m5_nautilus_raw_bt.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt" || true
+          sha256sum research/rangehunter_m5_nautilus_raw_bt.py research/rangehunter_m5_nautilus_raw_bt_compat.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt" || true
           cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
       - name: Upload immutable BT evidence
         if: always()

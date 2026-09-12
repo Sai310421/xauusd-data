@@ -44,3 +44,4 @@ def main():
  sym=inst.id.value;st=SFixed(Cfg(instrument_id=inst.id,m1=BarType.from_str(f'{sym}-1-MINUTE-BID-INTERNAL'),m5=BarType.from_str(f'{sym}-5-MINUTE-BID-INTERNAL'),m15=BarType.from_str(f'{sym}-15-MINUTE-BID-INTERNAL'),h1=BarType.from_str(f'{sym}-1-HOUR-BID-INTERNAL'),selected=a.selected));eng.add_strategy(st);eng.run();eng.end()
  res={'verification_level':'NAUTILUS_RAW_NEXT4_DYNAMIC_ATR_FIXED_H1','raw_ticks':len(raw),'ohlc_resample_used':False,'exit_model':'DYNAMIC_ATR_NO_FIXED_TP',**st.summary()};p=Path('results/multiedge')/a.experiment_id/f'{a.selected}.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(res,indent=2));print(json.dumps(res,indent=2))
 if __name__=='__main__':main()
+# trigger after V5 harmonic guard fix

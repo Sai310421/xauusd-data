@@ -1,0 +1,29 @@
+name: A G75 M5 Causal BT v1
+
+on:
+  push:
+    paths:
+      - 'scripts/a_g75_m5_bt_v1.py'
+      - '.github/workflows/a-g75-m5-causal-bt-v1.yml'
+      - 'csv/XAUUSD/XAUUSD_M5_2026Q1Q2.csv'
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install pandas numpy
+      - name: Run causal M5 backtest
+        run: python scripts/a_g75_m5_bt_v1.py
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: a-g75-m5-causal-bt-v1
+          path: bt_results/a_g75_m5_v1/
+          if-no-files-found: error

@@ -1,0 +1,1 @@
+Target search for DD<=5% and 21-business-day return >=50%.

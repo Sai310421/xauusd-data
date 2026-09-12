@@ -2,23 +2,6 @@ name: AMOS Reversal V1-V4 RawTick Matrix BT
 
 on:
   workflow_dispatch:
-    inputs:
-      symbol:
-        description: Symbol
-        required: true
-        default: XAUUSD
-      start:
-        description: UTC start date
-        required: true
-        default: '2026-05-31'
-      days:
-        description: Raw tick days
-        required: true
-        default: '90'
-      seed:
-        description: Deterministic seed
-        required: true
-        default: '42'
   push:
     branches: [main]
     paths:
@@ -26,40 +9,32 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: amos-reversal-${{ github.run_id }}
-  cancel-in-progress: false
+  actions: read
 
 env:
-  AMOS_SYMBOL: ${{ inputs.symbol || 'XAUUSD' }}
-  AMOS_START: ${{ inputs.start || '2026-05-31' }}
-  AMOS_DAYS: ${{ inputs.days || '90' }}
-  AMOS_SEED: ${{ inputs.seed || '42' }}
+  AMOS_SYMBOL: XAUUSD
+  AMOS_SEED: '42'
 
 jobs:
   raw-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install pandas pyarrow
-      - name: Fetch Dukascopy BI5 raw bid/ask ticks once
+      - name: Reuse validated 90-day Dukascopy raw tick artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python research/amos_duka_rawtick_export.py \
-            --symbol "$AMOS_SYMBOL" \
-            --start "$AMOS_START" \
-            --days "$AMOS_DAYS" \
-            --out "raw/${AMOS_SYMBOL}_dukascopy_ticks.parquet"
+          mkdir -p raw /tmp/amos_raw
+          gh api repos/${{ github.repository }}/actions/artifacts/10273812066/zip > /tmp/amos_raw/raw.zip
+          unzip -o /tmp/amos_raw/raw.zip -d raw
+          test -s raw/XAUUSD_dukascopy_ticks.parquet
       - uses: actions/upload-artifact@v4
         with:
           name: amos-reversal-raw-ticks
           path: |
-            raw/${{ env.AMOS_SYMBOL }}_dukascopy_ticks.parquet
-            raw/${{ env.AMOS_SYMBOL }}_dukascopy_ticks.manifest.json
+            raw/XAUUSD_dukascopy_ticks.parquet
+            raw/XAUUSD_dukascopy_ticks.manifest.json
           if-no-files-found: error
           retention-days: 7
 
@@ -93,13 +68,13 @@ jobs:
           path: raw
       - name: Run V1-V4 / TF cell
         env:
-          AMOS_RAW_TICK_PATH: raw/${{ env.AMOS_SYMBOL }}_dukascopy_ticks.parquet
+          AMOS_RAW_TICK_PATH: raw/XAUUSD_dukascopy_ticks.parquet
         run: |
           python research/amos_reversal_v1_v4_rawtick_bt_v5_poi_retrace.py \
             --version '${{ matrix.version }}' \
             --timeframe '${{ matrix.timeframe }}' \
             --mode '${{ matrix.mode }}' \
-            --symbol "$AMOS_SYMBOL" \
+            --symbol XAUUSD \
             --dataset dukascopy_raw \
             --seed "$AMOS_SEED" \
             --rr 2.0 \

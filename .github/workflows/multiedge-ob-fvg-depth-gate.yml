@@ -1,0 +1,43 @@
+name: MultiEDGE OB-FVG Five Depth Raw Gate
+
+on:
+  push:
+    paths:
+      - 'research/multiedge_ob_fvg_depth_gate.py'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: multiedge-ob-fvg-depth-${{ github.run_id }}
+
+jobs:
+  ob-fvg-depth:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run OB-FVG five-depth Raw gate
+        run: |
+          python research/multiedge_ob_fvg_depth_gate.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID"
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiedge-ob-fvg-depth-${{ github.run_id }}
+          path: results/multiedge/${{ env.EXPERIMENT_ID }}/OB_FVG_DEPTH.json
+          retention-days: 90

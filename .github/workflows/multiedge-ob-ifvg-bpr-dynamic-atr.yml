@@ -1,0 +1,49 @@
+name: MultiEDGE OB-IFVG BPR Dynamic ATR Raw Gate
+
+on:
+  push:
+    paths:
+      - 'research/multiedge_ob_ifvg_bpr_dynamic_atr_gate.py'
+      - '.github/workflows/multiedge-ob-ifvg-bpr-dynamic-atr.yml'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: multiedge-ob-ifvg-bpr-${{ github.run_id }}
+
+jobs:
+  poi-edge:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        selected: [OB_IFVG, OB_BPR]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run POI EDGE Raw gate
+        run: |
+          python research/multiedge_ob_ifvg_bpr_dynamic_atr_gate.py \
+            --catalog "$RAW_CATALOG" \
+            --selected "${{ matrix.selected }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiedge-${{ matrix.selected }}-${{ github.run_id }}
+          path: results/multiedge/${{ env.EXPERIMENT_ID }}/${{ matrix.selected }}.json
+          retention-days: 90

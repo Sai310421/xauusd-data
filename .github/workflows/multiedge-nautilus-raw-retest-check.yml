@@ -1,0 +1,52 @@
+name: MultiEDGE Nautilus Raw Retest Check
+
+on:
+  push:
+    paths:
+      - 'research/multiedge_nautilus_raw_bt_retest.py'
+  workflow_dispatch:
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: multiedge-retest-${{ github.run_id }}
+
+jobs:
+  retest-check:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        selected:
+          - T3_BREAKOUT_CONT
+          - R3_MICRO_BREAK
+          - TREND_CORE
+          - RANGE_CORE
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - name: Restore Raw BidAsk catalog cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run retest Raw BT
+        run: |
+          python research/multiedge_nautilus_raw_bt_retest.py \
+            --catalog "$RAW_CATALOG" \
+            --selected "${{ matrix.selected }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiedge-retest-${{ matrix.selected }}-${{ github.run_id }}
+          path: results/multiedge/${{ env.EXPERIMENT_ID }}/${{ matrix.selected }}.json
+          retention-days: 90

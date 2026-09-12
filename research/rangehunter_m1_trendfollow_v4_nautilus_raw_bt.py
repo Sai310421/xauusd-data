@@ -15,6 +15,11 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from research.rangehunter_m1_trendfollow_v2_nautilus_raw_bt import Strat as BaseStrat,Config,extract,metrics
 from research.rangehunter_m1_trendfollow_v2_1_nautilus_raw_bt import ensure_executable_l1,split_503020_integer
 
+if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
+    def _query_quote_ticks(self,identifiers=None,start=None,end=None):
+        return self.query(data_cls=QuoteTick,identifiers=identifiers,start=start,end=end)
+    ParquetDataCatalog.query_quote_ticks=_query_quote_ticks
+
 P4=dict(ema=21,atr=14,m5_ema=21,m5_slope_atr=0.035,m5_structure_lookback=3,
         sweep_lookback=5,sweep_atr=0.06,bos_lookback=3,min_body_atr=0.08,
         tick_window_sec=8,tick_min_move_atr=0.025,tick_min_direction_ratio=0.58,
@@ -43,7 +48,7 @@ class Strat(BaseStrat):
         bars=list(self.m5)[:-1]
         if len(bars)<25:return None
         c=[z['c'] for z in bars];ema=self._ema_list(c,P4['m5_ema']);prev=self._ema_list(c[:-1],P4['m5_ema']);atr=self._atr_list(bars,P4['atr'])
-        if None in (ema,prev,atr) or atr<=0:return None
+        if ema is None or prev is None or atr is None or atr<=0:return None
         slope=(ema-prev)/atr;lb=P4['m5_structure_lookback'];last=bars[-1];prior=bars[-1-lb:-1]
         up_structure=last['h']>max(z['h'] for z in prior) or (last['h']>prior[-1]['h'] and last['l']>=prior[-1]['l'])
         dn_structure=last['l']<min(z['l'] for z in prior) or (last['l']<prior[-1]['l'] and last['h']<=prior[-1]['h'])
@@ -56,7 +61,7 @@ class Strat(BaseStrat):
         self.setup_count+=1;bias=self._bias();self.m5_bias=bias
         if bias is None or len(self.m1)<10:return
         side,m5atr=bias;self.bias_pass+=1
-        a=self.atr(P4['atr']);
+        a=self.atr(P4['atr'])
         if a is None or a<=0:return
         hist=list(self.m1);prev=hist[-2];look=hist[-1-P4['sweep_lookback']:-1];bos_hist=hist[-1-P4['bos_lookback']:-1]
         if side=='BUY':
@@ -65,7 +70,6 @@ class Strat(BaseStrat):
         else:
             swept=x['h']>max(z['h'] for z in look)+P4['sweep_atr']*a and x['c']<max(z['h'] for z in look)
             bos=x['c']<min(z['l'] for z in bos_hist) and x['c']<x['o'] and abs(x['c']-x['o'])>=P4['min_body_atr']*a
-        # Permit either same-bar sweep/reclaim+BOS or a sweep on the immediately previous bar followed by BOS.
         if not swept:
             old=hist[-2-P4['sweep_lookback']:-2]
             swept=(prev['l']<min(z['l'] for z in old)-P4['sweep_atr']*a and prev['c']>min(z['l'] for z in old)) if side=='BUY' else (prev['h']>max(z['h'] for z in old)+P4['sweep_atr']*a and prev['c']<max(z['h'] for z in old))
@@ -78,8 +82,7 @@ class Strat(BaseStrat):
         mids=[z[1] for z in self.tickbuf];diff=np.diff(mids);move=mids[-1]-mids[0];nz=diff[diff!=0]
         if len(nz)==0:return False
         ratio=float((nz>0).mean()) if side=='BUY' else float((nz<0).mean())
-        ok=(move>=P4['tick_min_move_atr']*atr if side=='BUY' else move<=-P4['tick_min_move_atr']*atr) and ratio>=P4['tick_min_direction_ratio']
-        return ok
+        return (move>=P4['tick_min_move_atr']*atr if side=='BUY' else move<=-P4['tick_min_move_atr']*atr) and ratio>=P4['tick_min_direction_ratio']
     def on_quote_tick(self,t:QuoteTick):
         bid=self.f(t.bid_price);ask=self.f(t.ask_price);ts=int(t.ts_event);dt=pd.Timestamp(ts,unit='ns',tz='UTC')
         flat=not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id)

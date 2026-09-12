@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'research/multiedge_ob_fvg_depth_gate.py'
+      - '.github/workflows/multiedge-ob-fvg-depth-gate.yml'
   workflow_dispatch:
 
 env:

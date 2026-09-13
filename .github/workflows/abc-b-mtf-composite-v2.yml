@@ -1,0 +1,26 @@
+name: ABC B-MTF Composite v2
+on:
+  push:
+    paths:
+      - 'scripts/abc_b_mtf_composite_v2.py'
+      - '.github/workflows/abc-b-mtf-composite-v2.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Duka MTF books
+        uses: actions/checkout@v4
+        with:
+          repository: Sai310421/xauusd-duka-feed
+          path: duka
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy pyarrow
+      - run: python scripts/abc_b_mtf_composite_v2.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: abc-b-mtf-composite-v2
+          path: bt_results/abc_b_mtf_composite_v2/

@@ -12,11 +12,9 @@ TFS = ['M1','M5','M15','H1']
 TF_IDX = {tf:i for i,tf in enumerate(TFS)}
 HORIZON_BARS = {'BASE':20,'AGGRESSIVE':12,'STANDARD':20,'CONSERVATIVE':32}
 
-
 def _utc(x):
     t=pd.Timestamp(x)
     return t.tz_localize('UTC') if t.tzinfo is None else t.tz_convert('UTC')
-
 
 def _fvg_zone(z,i,side):
     if i < 2: return None
@@ -29,7 +27,6 @@ def _fvg_zone(z,i,side):
         return (min(lo,hi),max(lo,hi),'FVG')
     return None
 
-
 def _prior_fvg_zones(z,i,side,lookback=12):
     out=[]
     for k in range(max(2,i-lookback),i):
@@ -40,20 +37,16 @@ def _prior_fvg_zones(z,i,side,lookback=12):
             lo=float(z.high.iloc[k-2]); hi=float(q.low); out.append((k,min(lo,hi),max(lo,hi),'BULL_FVG'))
     return out
 
-
 def _poi_zone(z,i,side):
-    """Return actual FVG / inverted-FVG / BPR overlap bounds; no synthetic ATR pocket."""
     current=_fvg_zone(z,i,side)
     prior=_prior_fvg_zones(z,i,side)
     r=z.iloc[i]
     inverted=[]
     for k,lo,hi,kind in prior:
-        # IFVG exists only after price closes through the opposite FVG in reversal direction.
         inv=(float(r.close)>hi) if side==1 else (float(r.close)<lo)
         if inv: inverted.append((k,lo,hi,'IFVG'))
     if current and inverted:
-        _,clo,chi,_=current
-        # BPR = real overlap between current directional FVG and an eligible inverted opposite imbalance.
+        clo,chi,_=current
         overlaps=[]
         for _,ilo,ihi,_ in inverted:
             lo=max(clo,ilo); hi=min(chi,ihi)
@@ -67,9 +60,7 @@ def _poi_zone(z,i,side):
         return (lo,hi,'IFVG')
     return None
 
-
 def build_tf_events(z, tf):
-    """Independent per-TF FSM. Events use only completed bars and preserve causal ordering."""
     events=[]; states={1:None,-1:None}
     for i in range(30,len(z)-1):
         r=z.iloc[i]; p=z.iloc[i-1]
@@ -98,7 +89,6 @@ def build_tf_events(z, tf):
                 mss=(r.close>s['mss_ref']) if side==1 else (r.close<s['mss_ref'])
                 if mss: s['mss_i']=i
                 else: continue
-            # Displacement may occur after MSS, not necessarily on the same bar.
             if i<s['mss_i'] or i-s['mss_i']>4:
                 if i-s['mss_i']>4: states[side]=None
                 continue
@@ -112,23 +102,15 @@ def build_tf_events(z, tf):
             states[side]=None
     return events
 
-
 def latest_event(events, ts, tf):
-    cutoff=_utc(ts)
-    chosen=None
-    fresh=pd.Timedelta(minutes=m.TF_MIN[tf]*8)
+    cutoff=_utc(ts); chosen=None; fresh=pd.Timedelta(minutes=m.TF_MIN[tf]*8)
     for e in events:
-        if e['time']<=cutoff and cutoff-e['time']<=fresh:
-            chosen=e
-        elif e['time']>cutoff:
-            break
+        if e['time']<=cutoff and cutoff-e['time']<=fresh: chosen=e
+        elif e['time']>cutoff: break
     return chosen
 
-
 def mtf_fusion(all_events, touch_t, exec_tf, side):
-    """True completed-bar cross-TF evidence at touch time; no future bars."""
-    support=0.0; conflict=0.0; details=[]; leader_tf=exec_tf; leader_score=-1e9
-    ei=TF_IDX[exec_tf]
+    support=0.0; conflict=0.0; details=[]; leader_tf=exec_tf; leader_score=-1e9; ei=TF_IDX[exec_tf]
     for tf in TFS:
         e=latest_event(all_events[tf],touch_t,tf)
         if e is None: continue
@@ -144,27 +126,19 @@ def mtf_fusion(all_events, touch_t, exec_tf, side):
             if strength>leader_score: leader_score=strength; leader_tf=tf
             details.append((tf,role,'SUPPORT',strength))
         else:
-            # Higher-TF conflict is intentionally more expensive than lower-TF disagreement.
             penalty=strength*(1.45 if ti>ei else 1.10)
-            conflict+=penalty
-            details.append((tf,role,'CONFLICT',penalty))
+            conflict+=penalty; details.append((tf,role,'CONFLICT',penalty))
     net=support-conflict
     higher_conflict=any(d[1]=='HIGHER_CONFIRM' and d[2]=='CONFLICT' for d in details)
     return net,support,conflict,higher_conflict,leader_tf,details
 
-
 def first_touch_tick(t, start_ns, end_ns, side, lo, hi):
     tv=pd.to_datetime(t['time'],utc=True).astype('int64').to_numpy(dtype=np.int64)
-    a=int(np.searchsorted(tv,np.int64(start_ns),side='right'))
-    b=int(np.searchsorted(tv,np.int64(end_ns),side='right'))
-    b=min(b,len(t))
+    a=int(np.searchsorted(tv,np.int64(start_ns),side='right')); b=int(np.searchsorted(tv,np.int64(end_ns),side='right')); b=min(b,len(t))
     for k in range(a,b):
-        q=t.iloc[k]
-        px=float(q.ask if side==1 else q.bid)
-        if lo<=px<=hi:
-            return k
+        q=t.iloc[k]; px=float(q.ask if side==1 else q.bid)
+        if lo<=px<=hi: return k
     return None
-
 
 def context_score(z, bar_i, side):
     q=z.iloc[bar_i]; ctx=0.0
@@ -174,61 +148,42 @@ def context_score(z, bar_i, side):
     if np.isfinite(q.vol_med) and q.vol_med>0: ctx += .20*(min(2,q.volume/(q.vol_med+1e-12))-1)
     return float(ctx)
 
-
 def simulate_true_mtf(t, target_b, v, tf, mode, rr):
-    bars_by={x:m.bars(t,x) for x in TFS}
-    feats={x:m.feat(bars_by[x]) for x in TFS}
-    all_events={x:build_tf_events(feats[x],x) for x in TFS}
-    target_events=all_events[tf]
-    z=feats[tf]
-    tv=pd.to_datetime(t['time'],utc=True).astype('int64').to_numpy(dtype=np.int64)
+    bars_by={x:m.bars(t,x) for x in TFS}; feats={x:m.feat(bars_by[x]) for x in TFS}; all_events={x:build_tf_events(feats[x],x) for x in TFS}
+    target_events=all_events[tf]; z=feats[tf]; tv=pd.to_datetime(t['time'],utc=True).astype('int64').to_numpy(dtype=np.int64)
     trades=[]; last_exit_ns=np.int64(-1)
     diag={'events':len(target_events),'poi_touch':0,'mtf_support':0,'mtf_conflict':0,'context_pass':0,'accepted':0,'blocked_overlap':0,'executed':0}
-    mtf_gate={'AGGRESSIVE':0.70,'STANDARD':1.10,'CONSERVATIVE':1.55}.get(mode,1.10)
-    ctx_gate={'AGGRESSIVE':-0.15,'STANDARD':0.00,'CONSERVATIVE':0.15}.get(mode,0.0)
+    mtf_gate={'AGGRESSIVE':0.70,'STANDARD':1.10,'CONSERVATIVE':1.55}.get(mode,1.10); ctx_gate={'AGGRESSIVE':-0.15,'STANDARD':0.00,'CONSERVATIVE':0.15}.get(mode,0.0)
     for e in target_events:
         disp_close=e['time']; end_touch=disp_close+pd.Timedelta(minutes=m.TF_MIN[tf]*6)
         k=first_touch_tick(t,disp_close.value,end_touch.value,e['side'],e['zone_lo'],e['zone_hi'])
         if k is None: continue
-        diag['poi_touch']+=1
-        q=t.iloc[k]; touch_t=_utc(q.time); touch_ns=np.int64(touch_t.value)
-        if touch_ns<=last_exit_ns:
-            diag['blocked_overlap']+=1; continue
+        diag['poi_touch']+=1; q=t.iloc[k]; touch_t=_utc(q.time); touch_ns=np.int64(touch_t.value)
+        if touch_ns<=last_exit_ns: diag['blocked_overlap']+=1; continue
         net,sup,conf,hconf,leader,details=mtf_fusion(all_events,touch_t,tf,e['side'])
         if sup>0: diag['mtf_support']+=1
         if conf>0: diag['mtf_conflict']+=1
         ok=True; ctx=0.0
-        if v=='V1':
-            ok=True
-        elif v=='V2':
-            min_st={'AGGRESSIVE':4.4,'STANDARD':4.8,'CONSERVATIVE':5.2}.get(mode,4.8)
-            ok=e['score']>=min_st
-        elif v=='V3':
-            ok=(net>=mtf_gate and not hconf)
+        if v=='V1': ok=True
+        elif v=='V2': ok=e['score']>={'AGGRESSIVE':4.4,'STANDARD':4.8,'CONSERVATIVE':5.2}.get(mode,4.8)
+        elif v=='V3': ok=(net>=mtf_gate and not hconf)
         else:
             ok=(net>=mtf_gate and not hconf)
-            # Context uses latest completed target-TF bar at or before touch, never the unfinished touch bar.
-            bi=int(np.searchsorted(pd.to_datetime(z.time,utc=True).astype('int64').to_numpy(),touch_ns,side='right')-1)
-            bi=max(0,min(bi,len(z)-1)); ctx=context_score(z,bi,e['side'])
+            bi=int(np.searchsorted(pd.to_datetime(z.time,utc=True).astype('int64').to_numpy(),touch_ns,side='right')-1); bi=max(0,min(bi,len(z)-1)); ctx=context_score(z,bi,e['side'])
             if ctx>=ctx_gate: diag['context_pass']+=1
             ok=ok and ctx>=ctx_gate
         if not ok: continue
         diag['accepted']+=1
-        side=e['side']; entry=float(q.ask if side==1 else q.bid); av=float(z.atr.iloc[e['bar_i']])
-        stop=min(e['extreme'],entry-.20*av) if side==1 else max(e['extreme'],entry+.20*av)
-        risk=abs(entry-stop)
+        side=e['side']; entry=float(q.ask if side==1 else q.bid); av=float(z.atr.iloc[e['bar_i']]); stop=min(e['extreme'],entry-.20*av) if side==1 else max(e['extreme'],entry+.20*av); risk=abs(entry-stop)
         if not np.isfinite(risk) or risk<=0: continue
-        target=entry+side*rr*risk
-        hb=HORIZON_BARS.get(mode,20); horizon=touch_t+pd.Timedelta(minutes=m.TF_MIN[tf]*hb)
+        target=entry+side*rr*risk; hb=HORIZON_BARS.get(mode,20); horizon=touch_t+pd.Timedelta(minutes=m.TF_MIN[tf]*hb)
         end=int(np.searchsorted(tv,np.int64(horizon.value),side='right')); end=min(end,len(t))
         if end<=k+1: continue
         exit_px=None; exit_t=None; rval=None; result='TIME'
         for j in range(k+1,end):
             x=t.iloc[j]; px=float(x.bid if side==1 else x.ask)
-            if (side==1 and px<=stop) or (side==-1 and px>=stop):
-                exit_px=px; exit_t=_utc(x.time); rval=side*(px-entry)/risk; result='LOSS'; break
-            if (side==1 and px>=target) or (side==-1 and px<=target):
-                exit_px=px; exit_t=_utc(x.time); rval=side*(px-entry)/risk; result='WIN'; break
+            if (side==1 and px<=stop) or (side==-1 and px>=stop): exit_px=px; exit_t=_utc(x.time); rval=side*(px-entry)/risk; result='LOSS'; break
+            if (side==1 and px>=target) or (side==-1 and px<=target): exit_px=px; exit_t=_utc(x.time); rval=side*(px-entry)/risk; result='WIN'; break
         if exit_px is None:
             x=t.iloc[end-1]; exit_px=float(x.bid if side==1 else x.ask); exit_t=_utc(x.time); rval=side*(exit_px-entry)/risk
         pr=1/(1+math.exp(-max(-40,min(40,0.55*e['score']+0.50*net+0.35*ctx-3.0))))
@@ -237,6 +192,4 @@ def simulate_true_mtf(t, target_b, v, tf, mode, rr):
     return trades,diag
 
 m.simulate=simulate_true_mtf
-
-if __name__=='__main__':
-    m.main()
+if __name__=='__main__': m.main()

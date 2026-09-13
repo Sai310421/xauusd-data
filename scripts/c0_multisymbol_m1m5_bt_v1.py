@@ -10,12 +10,24 @@ PIVOT_LR={'M1':2,'M5':2}; WAIT={'M1':12,'M5':12}; MAX_HOLD={'M1':180,'M5':120}
 INITIAL=1000.0; RISK_FRAC=0.0025
 
 def normalize(df):
-    df=df.copy(); df.columns=[str(c).lower() for c in df.columns]
+    df=df.copy()
+    # Some parquet files keep time in the index; materialize it first.
+    if not isinstance(df.index, pd.RangeIndex):
+        df=df.reset_index()
+    df.columns=[str(c).lower() for c in df.columns]
     if 'datetime' not in df.columns:
-        for c in ['time','timestamp','date']:
-            if c in df.columns: df=df.rename(columns={c:'datetime'}); break
-    df['datetime']=pd.to_datetime(df['datetime']).dt.tz_localize(None)
+        for c in ['time','timestamp','date','index']:
+            if c in df.columns:
+                df=df.rename(columns={c:'datetime'}); break
+    if 'datetime' not in df.columns:
+        raise ValueError(f'no datetime column; cols={list(df.columns)}')
+    dt=pd.to_datetime(df['datetime'], errors='coerce', utc=True)
+    df['datetime']=dt.dt.tz_convert(None)
     need=['datetime','open','high','low','close']
+    missing=[c for c in need if c not in df.columns]
+    if missing: raise ValueError(f'missing columns {missing}; cols={list(df.columns)}')
+    for c in ['open','high','low','close']:
+        df[c]=pd.to_numeric(df[c],errors='coerce')
     return df.loc[(df.datetime>=START)&(df.datetime<=END),need].dropna().sort_values('datetime').reset_index(drop=True)
 
 def atr14(df):
@@ -53,7 +65,6 @@ def candidates(df,tf):
 
 def simulate(df,entry_i,c,atr,equity,tf):
     entry=float(df.open.iloc[entry_i]); av=float(atr.iloc[entry_i]) if np.isfinite(atr.iloc[entry_i]) else abs(entry)*0.0005
-    # Instrument-neutral buffer: ATR normalized, no fixed XAU dollar buffer.
     buf=max(av*0.15,abs(entry)*1e-7)
     if c['dir']==1: sl=c['D']-buf; R=entry-sl
     else: sl=c['D']+buf; R=sl-entry
@@ -81,7 +92,9 @@ def simulate(df,entry_i,c,atr,equity,tf):
 
 def run_one(path):
     name=path.stem; bits=name.split('_'); symbol=bits[0]; tf=bits[1]
-    df=normalize(pd.read_parquet(path)); df['atr']=atr14(df); cs=candidates(df,tf)
+    df=normalize(pd.read_parquet(path))
+    if len(df)<50: raise ValueError(f'insufficient rows after date filter: {len(df)}')
+    df['atr']=atr14(df); cs=candidates(df,tf)
     trades=[]; blocked=-1; equity=INITIAL; peak=INITIAL; max_float_dd=0.0
     for c in cs:
         if c['conf_i']<=blocked: continue
@@ -94,19 +107,34 @@ def run_one(path):
         max_float_dd=max(max_float_dd,100*(peak-(equity+r['mae']))/peak)
         equity+=r['pnl']; peak=max(peak,equity); blocked=r['end_i']; trades.append(r)
     if not trades:
-        return dict(Symbol=symbol,TF=tf,rows=len(df),N=0,WR=0,PF=0,Net=0,Final=INITIAL,MaxDD_closed=0,MaxDD_float=0,Month21_pct=0)
+        return dict(Symbol=symbol,TF=tf,rows=len(df),N=0,WR=0.0,PF=0.0,Net=0.0,Final=INITIAL,MaxDD_closed=0.0,MaxDD_float=0.0,Month21_pct=0.0,AvgR=np.nan)
     t=pd.DataFrame(trades); gp=t.loc[t.pnl>0,'pnl'].sum(); gl=-t.loc[t.pnl<0,'pnl'].sum(); eq=INITIAL+t.pnl.cumsum(); pk=eq.cummax(); dd=((pk-eq)/pk*100).max()
     biz=len({x.date() for x in df.datetime if x.weekday()<5}); final=float(eq.iloc[-1]); mo=((final/INITIAL)**(21/max(1,biz))-1)*100 if final>0 else -100
-    return dict(Symbol=symbol,TF=tf,rows=len(df),N=len(t),WR=(t.pnl>0).mean()*100,PF=gp/gl if gl>0 else 9999,Net=final-INITIAL,Final=final,MaxDD_closed=dd,MaxDD_float=max_float_dd,Month21_pct=mo,AvgR=t.r_mult.mean())
+    return dict(Symbol=symbol,TF=tf,rows=len(df),N=len(t),WR=(t.pnl>0).mean()*100,PF=gp/gl if gl>0 else 9999.0,Net=final-INITIAL,Final=final,MaxDD_closed=float(dd),MaxDD_float=float(max_float_dd),Month21_pct=float(mo),AvgR=float(t.r_mult.mean()))
 
 files=sorted(Path('parquet').glob('*_M[15]_90d_20260526.parquet'))
 rows=[]
 for p in files:
-    try: rows.append(run_one(p))
-    except Exception as e: rows.append({'Symbol':p.stem.split('_')[0],'TF':p.stem.split('_')[1],'status':'ERROR','error':repr(e)})
-out=pd.DataFrame(rows); out['status']=out.get('status',pd.Series(index=out.index,dtype=object)).fillna('OK'); out.to_csv(OUT/'per_symbol_tf.csv',index=False)
-ok=out[out.status=='OK'].copy()
-by_symbol=ok.groupby('Symbol').agg(N=('N','sum'),Net=('Net','sum'),MeanPF=('PF','mean'),BestMonth21=('Month21_pct','max'),WorstDD=('MaxDD_float','max')).reset_index().sort_values(['MeanPF','N'],ascending=[False,False]); by_symbol.to_csv(OUT/'by_symbol.csv',index=False)
-summary={'verification':'C0_RECONSTRUCTED_PROXY_NATIVE_M1_M5','profile':'balanced','period':[str(START),str(END)],'risk_per_trade_pct':RISK_FRAC*100,'g75':False,'costs':'none','resample':False,'files':[p.name for p in files],'results':ok.to_dict('records')}
+    try:
+        r=run_one(p); r['status']='OK'; rows.append(r)
+    except Exception as e:
+        rows.append({'Symbol':p.stem.split('_')[0],'TF':p.stem.split('_')[1],'status':'ERROR','error':repr(e)})
+out=pd.DataFrame(rows)
+out.to_csv(OUT/'per_symbol_tf.csv',index=False)
+print('PER SYMBOL/TF')
+print(out.to_string(index=False))
+ok=out[out['status'].eq('OK')].copy() if 'status' in out.columns else pd.DataFrame()
+metric_cols=['N','Net','PF','Month21_pct','MaxDD_float']
+if not ok.empty and all(c in ok.columns for c in metric_cols):
+    by_symbol=ok.groupby('Symbol').agg(N=('N','sum'),Net=('Net','sum'),MeanPF=('PF','mean'),BestMonth21=('Month21_pct','max'),WorstDD=('MaxDD_float','max')).reset_index().sort_values(['MeanPF','N'],ascending=[False,False])
+else:
+    by_symbol=pd.DataFrame(columns=['Symbol','N','Net','MeanPF','BestMonth21','WorstDD'])
+by_symbol.to_csv(OUT/'by_symbol.csv',index=False)
+summary={'verification':'C0_RECONSTRUCTED_PROXY_NATIVE_M1_M5','profile':'balanced','period':[str(START),str(END)],'risk_per_trade_pct':RISK_FRAC*100,'g75':False,'costs':'none','resample':False,'files':[p.name for p in files],'ok_count':int(len(ok)),'error_count':int((out.status=='ERROR').sum()) if 'status' in out.columns else 0,'results':ok.to_dict('records'),'errors':out[out.status=='ERROR'].to_dict('records') if 'status' in out.columns else []}
 (OUT/'summary.json').write_text(json.dumps(summary,indent=2,default=str))
-print(out.to_string(index=False)); print('\nBY SYMBOL\n',by_symbol.to_string(index=False))
+print('\nBY SYMBOL')
+print(by_symbol.to_string(index=False))
+print('\nSUMMARY')
+print(json.dumps(summary,indent=2,default=str)[:20000])
+if ok.empty:
+    raise SystemExit('No successful datasets; inspect per_symbol_tf.csv / errors above')

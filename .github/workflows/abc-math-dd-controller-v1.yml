@@ -1,0 +1,26 @@
+name: ABC Math DD Controller v1
+on:
+  push:
+    paths:
+      - 'scripts/abc_math_dd_controller_v1.py'
+      - '.github/workflows/abc-math-dd-controller-v1.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Duka MTF books
+        uses: actions/checkout@v4
+        with:
+          repository: Sai310421/xauusd-duka-feed
+          path: duka
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy pyarrow
+      - run: python scripts/abc_math_dd_controller_v1.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: abc-math-dd-controller-v1
+          path: bt_results/abc_math_dd_controller_v1/

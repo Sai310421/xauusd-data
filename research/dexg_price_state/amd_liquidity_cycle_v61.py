@@ -1,8 +1,9 @@
 from __future__ import annotations
-import argparse, json
+import argparse, json, sys
 from pathlib import Path
 from statistics import median
-from research.dexg_price_state import amd_liquidity_cycle_v6 as v6
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import amd_liquidity_cycle_v6 as v6
 
 
 def first_passage_struct(ticks,start_idx,side,seconds,dist):

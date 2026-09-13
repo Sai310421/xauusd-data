@@ -1,7 +1,7 @@
-triggered_at_jst=2026-09-14T01:00:00+09:00
+triggered_at_jst=2026-09-14T01:13:00+09:00
 symbol=XAUUSD
 period=validated_90d_cached_raw_ticks
 rr=2.0
 purpose=true_cross_tf_propagation_m1_sanity
 runner=amos_reversal_v1_v4_rawtick_bt_v6_true_mtf.py
-fix=poi_current_zone_tuple_unpack
+fix=epoch_ns_timestamp_unification

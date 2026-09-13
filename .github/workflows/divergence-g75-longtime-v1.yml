@@ -1,0 +1,26 @@
+name: Divergence G75 Long-Time v1
+on:
+  push:
+    paths:
+      - 'scripts/divergence_g75_longtime_v1.py'
+      - '.github/workflows/divergence-g75-longtime-v1.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Duka MTF books
+        uses: actions/checkout@v4
+        with:
+          repository: Sai310421/xauusd-duka-feed
+          path: duka
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - run: python scripts/divergence_g75_longtime_v1.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: divergence-g75-longtime-v1
+          path: bt_results/divergence_g75_longtime_v1/

@@ -1,0 +1,26 @@
+name: B RSI Divergence Causal Audit v2
+on:
+  push:
+    paths:
+      - 'scripts/b_rsi_divergence_causal_audit_v2.py'
+      - '.github/workflows/b-rsi-divergence-causal-audit-v2.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout Duka MTF books
+        uses: actions/checkout@v4
+        with:
+          repository: Sai310421/xauusd-duka-feed
+          path: duka
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - run: python scripts/b_rsi_divergence_causal_audit_v2.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b-rsi-divergence-causal-audit-v2
+          path: bt_results/b_rsi_divergence_causal_audit_v2/

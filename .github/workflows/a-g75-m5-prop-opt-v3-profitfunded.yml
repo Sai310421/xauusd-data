@@ -1,0 +1,23 @@
+name: A G75 M5 Prop Opt v3 ProfitFunded
+
+on:
+  push:
+    paths:
+      - 'scripts/a_g75_m5_prop_opt_v3_profitfunded.py'
+      - '.github/workflows/a-g75-m5-prop-opt-v3-profitfunded.yml'
+  workflow_dispatch:
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas numpy
+      - run: python scripts/a_g75_m5_prop_opt_v3_profitfunded.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a-g75-m5-prop-opt-v3-profitfunded
+          path: bt_results/a_g75_m5_prop_opt_v3_profitfunded/

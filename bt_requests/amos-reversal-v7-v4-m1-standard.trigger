@@ -1,0 +1,6 @@
+triggered_at_jst=2026-09-14T04:05:00+09:00
+symbol=XAUUSD
+period=validated_90d_cached_raw_ticks
+rr=2.0
+purpose=fast_cached_first_touch_v4_m1_standard
+runner=amos_reversal_v1_v4_rawtick_bt_v7_fasttouch.py

@@ -1,0 +1,28 @@
+name: C0 MTF Standalone BT v1
+on:
+  push:
+    paths:
+      - 'scripts/c0_mtf_standalone_bt_v1.py'
+      - '.github/workflows/c0-mtf-standalone-bt-v1.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Sai310421/xauusd-duka-feed
+          path: duka
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - name: Run C0 standalone MTF causal proxy
+        run: python scripts/c0_mtf_standalone_bt_v1.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c0-mtf-standalone-bt-v1
+          path: bt_results/c0_mtf_standalone_v1/
+          retention-days: 90

@@ -1,0 +1,21 @@
+name: ABC Shared Boost BT v1
+on:
+  push:
+    paths:
+      - 'scripts/abc_shared_boost_bt_v1.py'
+      - '.github/workflows/abc-shared-boost-bt-v1.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy pyarrow
+      - run: python scripts/abc_shared_boost_bt_v1.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: abc-shared-boost-bt-v1
+          path: bt_results/abc_shared_boost_v1/

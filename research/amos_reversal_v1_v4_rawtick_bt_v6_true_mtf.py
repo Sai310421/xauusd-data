@@ -16,6 +16,9 @@ def _utc(x):
     t=pd.Timestamp(x)
     return t.tz_localize('UTC') if t.tzinfo is None else t.tz_convert('UTC')
 
+def _ns_array(series):
+    return np.fromiter((pd.Timestamp(x).value for x in series), dtype=np.int64, count=len(series))
+
 def _fvg_zone(z,i,side):
     if i < 2: return None
     r=z.iloc[i]
@@ -133,7 +136,7 @@ def mtf_fusion(all_events, touch_t, exec_tf, side):
     return net,support,conflict,higher_conflict,leader_tf,details
 
 def first_touch_tick(t, start_ns, end_ns, side, lo, hi):
-    tv=pd.to_datetime(t['time'],utc=True).astype('int64').to_numpy(dtype=np.int64)
+    tv=_ns_array(t['time'])
     a=int(np.searchsorted(tv,np.int64(start_ns),side='right')); b=int(np.searchsorted(tv,np.int64(end_ns),side='right')); b=min(b,len(t))
     for k in range(a,b):
         q=t.iloc[k]; px=float(q.ask if side==1 else q.bid)
@@ -150,7 +153,7 @@ def context_score(z, bar_i, side):
 
 def simulate_true_mtf(t, target_b, v, tf, mode, rr):
     bars_by={x:m.bars(t,x) for x in TFS}; feats={x:m.feat(bars_by[x]) for x in TFS}; all_events={x:build_tf_events(feats[x],x) for x in TFS}
-    target_events=all_events[tf]; z=feats[tf]; tv=pd.to_datetime(t['time'],utc=True).astype('int64').to_numpy(dtype=np.int64)
+    target_events=all_events[tf]; z=feats[tf]; tv=_ns_array(t['time']); ztv=_ns_array(z['time'])
     trades=[]; last_exit_ns=np.int64(-1)
     diag={'events':len(target_events),'poi_touch':0,'mtf_support':0,'mtf_conflict':0,'context_pass':0,'accepted':0,'blocked_overlap':0,'executed':0}
     mtf_gate={'AGGRESSIVE':0.70,'STANDARD':1.10,'CONSERVATIVE':1.55}.get(mode,1.10); ctx_gate={'AGGRESSIVE':-0.15,'STANDARD':0.00,'CONSERVATIVE':0.15}.get(mode,0.0)
@@ -169,7 +172,7 @@ def simulate_true_mtf(t, target_b, v, tf, mode, rr):
         elif v=='V3': ok=(net>=mtf_gate and not hconf)
         else:
             ok=(net>=mtf_gate and not hconf)
-            bi=int(np.searchsorted(pd.to_datetime(z.time,utc=True).astype('int64').to_numpy(),touch_ns,side='right')-1); bi=max(0,min(bi,len(z)-1)); ctx=context_score(z,bi,e['side'])
+            bi=int(np.searchsorted(ztv,touch_ns,side='right')-1); bi=max(0,min(bi,len(z)-1)); ctx=context_score(z,bi,e['side'])
             if ctx>=ctx_gate: diag['context_pass']+=1
             ok=ok and ctx>=ctx_gate
         if not ok: continue

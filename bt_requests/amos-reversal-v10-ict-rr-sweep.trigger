@@ -1,0 +1,9 @@
+symbol=XAUUSD
+timeframe=M1
+mode=STANDARD
+logic=S3_CURRENT_POI_RETRACE
+rr_targets=2,3,4,5,6,8
+execution=RAW_DUKASCOPY_BIDASK
+stop=sweep_extreme_min_0.50ATR
+horizon_minutes=120
+purpose=find_ict_rr_edge

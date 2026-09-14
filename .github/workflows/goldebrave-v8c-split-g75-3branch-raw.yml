@@ -1,0 +1,51 @@
+name: GoldeBrave V8C Split G75 3Branch Raw
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'research/goldebrave_v8c_split_g75_3branch_raw.py'
+      - '.github/workflows/goldebrave-v8c-split-g75-3branch-raw.yml'
+  workflow_dispatch:
+
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [V8_BASE, SPLIT_ONLY, SHARED_G75_10, SPLIT_G75_3X10_WEIGHTED, SPLIT_G75_3X10_FULL]
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: gb-v8c-split-g75-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - name: Restore Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run V8-C split/G75 comparison
+        run: |
+          PYTHONPATH=research python research/goldebrave_v8c_split_g75_3branch_raw.py \
+            --catalog "$RAW_CATALOG" \
+            --profile c \
+            --variant "${{ matrix.variant }}" \
+            --experiment-id "$EXPERIMENT_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gb-v8c-split-g75-${{ github.run_id }}-${{ matrix.variant }}
+          path: results/goldebrave-v8c-split-g75-3branch/${{ env.EXPERIMENT_ID }}/*.json
+          if-no-files-found: error
+          retention-days: 90

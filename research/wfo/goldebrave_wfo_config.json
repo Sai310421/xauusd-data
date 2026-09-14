@@ -1,0 +1,68 @@
+{
+  "schema": "goldebrave-wfo-v1",
+  "principles": {
+    "selection_basis": "OOS_ONLY",
+    "freeze_parameters_before_oos": true,
+    "no_retuning_same_oos": true,
+    "max_free_parameters_per_stage": 5,
+    "staged_when_parameters_ge": 6
+  },
+  "rolling_windows": {
+    "is_days": 60,
+    "oos_days": 30,
+    "step_days": 30,
+    "minimum_oos_windows": 6,
+    "preferred_oos_windows": 12
+  },
+  "stages": [
+    {"name": "entry", "parameters": ["direction", "parent_entry", "session", "regime"]},
+    {"name": "g75", "parameters": ["trigger", "add", "max_layers", "strong_gate", "boost"]},
+    {"name": "exit", "parameters": ["be", "partial", "trail", "take_profit"]},
+    {"name": "risk", "parameters": ["cvar_alpha", "cvar_horizon", "vol_floor", "reserve", "dd_boundary"]}
+  ],
+  "frozen_profiles": {
+    "HIGH": {
+      "parent_scale": 0.70,
+      "g75_trigger": 0.12,
+      "g75_add": 0.025,
+      "g75_max_layers": 10,
+      "strong_layer_start": 7,
+      "strong_abs_move": 0.10,
+      "strong_vol_mult": 0.15,
+      "strong_spread_cap": 1.00,
+      "strong_boost": 3.25,
+      "risk_profile": "off"
+    },
+    "SAFE": {
+      "parent_scale": 0.70,
+      "g75_trigger": 0.12,
+      "g75_add": 0.025,
+      "g75_max_layers": 10,
+      "strong_layer_start": 7,
+      "strong_abs_move": 0.10,
+      "strong_vol_mult": 0.15,
+      "strong_spread_cap": 1.00,
+      "strong_boost": 3.25,
+      "risk_profile": "cv3",
+      "cvar_alpha": 0.99,
+      "cvar_horizon": 16.0,
+      "cvar_vol_floor": 0.60,
+      "cvar_reserve": 1.15,
+      "dd_boundary_pct": 5.0
+    }
+  },
+  "oos_gate": {
+    "positive_window_ratio_min": 0.80,
+    "median_pf_min": 2.0,
+    "median_floating_dd_pct_max": 5.0,
+    "worst_floating_dd_pct_max": 8.0,
+    "median_n_retention_min": 0.70,
+    "wfe_pct_min": 50.0
+  },
+  "notes": [
+    "IS is optimization/training data and is not used to choose the winning live profile.",
+    "OOS results are the adoption evidence. Changing parameters after seeing an OOS requires a new experiment_id and fresh future OOS windows.",
+    "The project gate thresholds are configurable. WFE >=50% is used as a conservative project floor; the source material describes 50-60%+ as a healthy reference range.",
+    "Raw Bid/Ask native-order validation remains a later execution-realism gate; WFO does not replace fill/margin/slippage validation."
+  ]
+}

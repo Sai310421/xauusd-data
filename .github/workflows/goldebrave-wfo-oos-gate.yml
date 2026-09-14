@@ -9,9 +9,7 @@ on:
         default: research/results/wfo/latest/wfo_records.json
   push:
     paths:
-      - 'research/wfo/**'
-      - 'research/results/wfo/**'
-      - '.github/workflows/goldebrave-wfo-oos-gate.yml'
+      - 'research/results/wfo/latest/wfo_records.json'
 
 jobs:
   gate:

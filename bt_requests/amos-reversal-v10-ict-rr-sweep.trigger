@@ -7,3 +7,5 @@ execution=RAW_DUKASCOPY_BIDASK
 stop=sweep_extreme_min_0.50ATR
 horizon_minutes=120
 purpose=find_ict_rr_edge
+revision=poi_label_fix_v2
+triggered_at_jst=2026-09-14T23:12:00+09:00

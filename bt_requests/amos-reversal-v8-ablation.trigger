@@ -1,0 +1,9 @@
+triggered_at_jst=2026-09-14T12:54:00+09:00
+symbol=XAUUSD
+timeframe=M1
+mode=STANDARD
+period=validated_90d_cached_raw_ticks
+rr=2.0
+purpose=five_stage_edge_ablation
+stages=sequence,displacement,poi_retrace,true_mtf,context
+runner=amos_reversal_v8_ablation_m1_standard.py

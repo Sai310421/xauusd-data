@@ -1,0 +1,43 @@
+name: AMOS Reversal V9 Direction Polarity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bt_requests/amos-reversal-v9-direction-polarity.trigger'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas numpy pyarrow
+      - name: Reuse validated raw tick artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p raw /tmp/amos_raw
+          gh api repos/${{ github.repository }}/actions/artifacts/10273812066/zip > /tmp/amos_raw/raw.zip
+          unzip -o /tmp/amos_raw/raw.zip -d raw
+          test -s raw/XAUUSD_dukascopy_ticks.parquet
+      - name: Run V9 direction polarity test
+        env:
+          AMOS_RAW_TICK_PATH: raw/XAUUSD_dukascopy_ticks.parquet
+          AMOS_V9_OUT: results/amos-v9-polarity
+        run: python research/amos_reversal_v9_direction_polarity.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amos-v9-direction-polarity
+          path: results/amos-v9-polarity/
+          if-no-files-found: error
+          retention-days: 90

@@ -20,6 +20,14 @@ def median(xs):
     return float(statistics.median(xs)) if xs else 0.0
 
 
+def normalize_records(payload):
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict) and isinstance(payload.get('records'), list):
+        return payload['records']
+    raise SystemExit('records must be a JSON array or an object containing records[]')
+
+
 def evaluate(config: dict, records: list[dict]) -> dict:
     gate = config['oos_gate']
     min_windows = config['rolling_windows']['minimum_oos_windows']
@@ -27,24 +35,42 @@ def evaluate(config: dict, records: list[dict]) -> dict:
 
     for name, frozen in config['frozen_profiles'].items():
         ph = profile_hash(frozen)
-        rows = [r for r in records if r.get('profile') == name]
-        is_rows = [r for r in rows if str(r.get('split', '')).upper() == 'IS']
-        oos = [r for r in rows if str(r.get('split', '')).upper() == 'OOS']
+        rows = [r for r in records if str(r.get('profile', '')).upper() == name]
 
-        # Fail closed if a result claims a different parameter hash.
-        mismatches = [r for r in rows if r.get('params_hash') not in (None, ph)]
-        nets = [float(r.get('Net', 0.0)) for r in oos]
-        pfs = [float(r.get('PF', 0.0)) for r in oos]
-        dds = [float(r.get('max_floating_dd_pct', r.get('MaxDD_pct_virtual', 999.0))) for r in oos]
-        nret = [float(r.get('n_retention', 1.0)) for r in oos]
+        mismatches = [r for r in rows if r.get('parameter_hash', r.get('params_hash')) not in (None, ph)]
+        not_frozen = [r for r in rows if r.get('parameters_frozen_before_oos') is False]
+
+        # New Raw WFO runner schema: one row contains nested IS and OOS metrics.
+        nested = [r for r in rows if isinstance(r.get('oos'), dict)]
+        if nested:
+            nets = [float(r['oos'].get('Net', 0.0)) for r in nested]
+            pfs = [float(r['oos'].get('PF', 0.0)) for r in nested]
+            dds = [float(r['oos'].get('max_floating_dd_pct', r['oos'].get('MaxDD_pct_virtual', 999.0))) for r in nested]
+            nret = [float(r.get('n_retention', 0.0)) for r in nested]
+            wfes = [float(r['wfe_pct']) for r in nested if r.get('wfe_pct') is not None]
+            is_windows = len(nested)
+            oos_windows = len(nested)
+            is_net = sum(float(r['is'].get('Net', 0.0)) for r in nested if isinstance(r.get('is'), dict))
+            oos_net = sum(nets)
+            # Use aggregate WFE when possible, otherwise median per-window WFE.
+            wfe = (100.0 * oos_net / is_net) if is_net > 0 else (median(wfes) if wfes else None)
+        else:
+            # Legacy flat schema remains supported.
+            is_rows = [r for r in rows if str(r.get('split', '')).upper() == 'IS']
+            oos = [r for r in rows if str(r.get('split', '')).upper() == 'OOS']
+            nets = [float(r.get('Net', 0.0)) for r in oos]
+            pfs = [float(r.get('PF', 0.0)) for r in oos]
+            dds = [float(r.get('max_floating_dd_pct', r.get('MaxDD_pct_virtual', 999.0))) for r in oos]
+            nret = [float(r.get('n_retention', 1.0)) for r in oos]
+            is_net = sum(float(r.get('Net', 0.0)) for r in is_rows)
+            oos_net = sum(nets)
+            wfe = (100.0 * oos_net / is_net) if is_net > 0 else None
+            is_windows = len(is_rows)
+            oos_windows = len(oos)
+
         positive_ratio = (sum(x > 0 for x in nets) / len(nets)) if nets else 0.0
-
-        is_net = sum(float(r.get('Net', 0.0)) for r in is_rows)
-        oos_net = sum(nets)
-        wfe = (100.0 * oos_net / is_net) if is_net > 0 else None
-
         checks = {
-            'enough_oos_windows': len(oos) >= min_windows,
+            'enough_oos_windows': oos_windows >= min_windows,
             'positive_window_ratio': positive_ratio >= gate['positive_window_ratio_min'],
             'median_pf': median(pfs) >= gate['median_pf_min'],
             'median_floating_dd': median(dds) <= gate['median_floating_dd_pct_max'],
@@ -52,12 +78,13 @@ def evaluate(config: dict, records: list[dict]) -> dict:
             'median_n_retention': median(nret) >= gate['median_n_retention_min'],
             'wfe': (wfe is not None and wfe >= gate['wfe_pct_min']),
             'frozen_parameter_hash': len(mismatches) == 0,
+            'frozen_before_oos': len(not_frozen) == 0,
         }
 
         out['profiles'][name] = {
             'params_hash': ph,
-            'oos_windows': len(oos),
-            'is_windows': len(is_rows),
+            'oos_windows': oos_windows,
+            'is_windows': is_windows,
             'oos_positive_ratio': positive_ratio,
             'oos_net_sum': oos_net,
             'median_pf': median(pfs),
@@ -78,16 +105,13 @@ def evaluate(config: dict, records: list[dict]) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', default='research/wfo/goldebrave_wfo_config.json')
-    ap.add_argument('--records', required=True, help='JSON array of IS/OOS window result records')
+    ap.add_argument('--records', required=True, help='Raw WFO payload or legacy JSON array')
     ap.add_argument('--out', default='research/results/wfo/wfo_gate_summary.json')
     ap.add_argument('--fail-on-gate', action='store_true')
     args = ap.parse_args()
 
     config = load_json(args.config)
-    records = load_json(args.records)
-    if not isinstance(records, list):
-        raise SystemExit('records must be a JSON array')
-
+    records = normalize_records(load_json(args.records))
     summary = evaluate(config, records)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

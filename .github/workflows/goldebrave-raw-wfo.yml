@@ -1,0 +1,135 @@
+name: GoldeBrave Raw WFO HIGH SAFE AUTO
+
+on:
+  workflow_dispatch:
+    inputs:
+      cache_key:
+        description: Raw Bid/Ask catalog cache key (must cover enough history for requested WFO windows)
+        required: true
+        default: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      run_full:
+        description: Run expensive HIGH/SAFE/AUTO IS+OOS backtests after coverage check
+        type: boolean
+        required: true
+        default: false
+      max_windows:
+        description: 0=all available, otherwise cap rolling windows for smoke tests
+        required: true
+        default: '0'
+  push:
+    paths:
+      - 'research/wfo/goldebrave_raw_wfo_runner.py'
+      - 'research/wfo/goldebrave_wfo_config.json'
+      - 'research/wfo/goldebrave_wfo_gate.py'
+      - '.github/workflows/goldebrave-raw-wfo.yml'
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    outputs:
+      available_windows: ${{ steps.coverage.outputs.available_windows }}
+      enough_for_gate: ${{ steps.coverage.outputs.enough_for_gate }}
+    env:
+      RAW_CATALOG: catalog/raw_bidask
+      DEFAULT_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install nautilus_trader==1.230.0 pyarrow pandas numpy
+      - name: Resolve cache key
+        id: key
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.cache_key }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${DEFAULT_CACHE_KEY}" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ steps.key.outputs.value }}
+          fail-on-cache-miss: true
+      - name: Build WFO coverage manifest
+        working-directory: research
+        run: |
+          python wfo/goldebrave_raw_wfo_runner.py \
+            --catalog ../${RAW_CATALOG} \
+            --config wfo/goldebrave_wfo_config.json \
+            --out results/wfo/latest/wfo_manifest.json \
+            --manifest-only
+      - name: Export coverage decision
+        id: coverage
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          p=json.load(open('research/results/wfo/latest/wfo_manifest.json'))
+          n=int(p['available_windows']); m=int(p['minimum_oos_windows'])
+          print(f'available_windows={n}')
+          print(f'enough_for_gate={str(n>=m).lower()}')
+          print(f'coverage_days={p["coverage_days"]}')
+          print(f'required_min_days_for_gate={p["required_min_days_for_gate"]}')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goldebrave-wfo-coverage-${{ github.run_id }}
+          path: research/results/wfo/latest/wfo_manifest.json
+          if-no-files-found: error
+
+  raw_wfo:
+    needs: coverage
+    if: github.event_name == 'workflow_dispatch' && inputs.run_full == true
+    runs-on: ubuntu-latest
+    env:
+      RAW_CATALOG: catalog/raw_bidask
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fail closed on insufficient historical coverage
+        if: needs.coverage.outputs.enough_for_gate != 'true'
+        run: |
+          echo "Insufficient Raw catalog coverage for the configured minimum OOS windows."
+          echo "Available windows: ${{ needs.coverage.outputs.available_windows }}"
+          echo "Expand the Raw Bid/Ask cache before adoption WFO."
+          exit 2
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install nautilus_trader==1.230.0 pyarrow pandas numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ inputs.cache_key }}
+          fail-on-cache-miss: true
+      - name: Run rolling Raw WFO HIGH SAFE AUTO
+        working-directory: research
+        run: |
+          python wfo/goldebrave_raw_wfo_runner.py \
+            --catalog ../${RAW_CATALOG} \
+            --config wfo/goldebrave_wfo_config.json \
+            --out results/wfo/latest/wfo_records.json \
+            --modes HIGH,SAFE,AUTO \
+            --max-windows "${{ inputs.max_windows }}"
+      - name: OOS-only adoption gate
+        run: |
+          python research/wfo/goldebrave_wfo_gate.py \
+            --config research/wfo/goldebrave_wfo_config.json \
+            --records research/results/wfo/latest/wfo_records.json \
+            --out research/results/wfo/latest/wfo_gate_summary.json \
+            --fail-on-gate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goldebrave-raw-wfo-${{ github.run_id }}
+          path: |
+            research/results/wfo/latest/wfo_records.json
+            research/results/wfo/latest/wfo_gate_summary.json
+          if-no-files-found: warn

@@ -1,0 +1,50 @@
+name: GoldeBrave WFO OOS Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      records_path:
+        description: JSON array of WFO IS/OOS result records
+        required: true
+        default: research/results/wfo/latest/wfo_records.json
+  push:
+    paths:
+      - 'research/wfo/**'
+      - 'research/results/wfo/**'
+      - '.github/workflows/goldebrave-wfo-oos-gate.yml'
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resolve records path
+        id: records
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "path=${{ inputs.records_path }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=research/results/wfo/latest/wfo_records.json" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate WFO inputs
+        shell: bash
+        run: |
+          test -f research/wfo/goldebrave_wfo_config.json
+          test -f "${{ steps.records.outputs.path }}"
+      - name: OOS-only adoption gate
+        run: |
+          python research/wfo/goldebrave_wfo_gate.py \
+            --config research/wfo/goldebrave_wfo_config.json \
+            --records "${{ steps.records.outputs.path }}" \
+            --out research/results/wfo/wfo_gate_summary.json \
+            --fail-on-gate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goldebrave-wfo-gate-${{ github.run_id }}
+          path: research/results/wfo/wfo_gate_summary.json
+          if-no-files-found: warn

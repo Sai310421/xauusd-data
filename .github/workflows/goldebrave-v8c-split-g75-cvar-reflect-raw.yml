@@ -1,0 +1,46 @@
+name: GoldeBrave V8C Split G75 CVaR Reflect Raw
+
+on:
+  push:
+    paths:
+      - 'research/goldebrave_v8c_split_g75_cvar_reflect_raw.py'
+      - '.github/workflows/goldebrave-v8c-split-g75-cvar-reflect-raw.yml'
+  workflow_dispatch:
+
+jobs:
+  bt:
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [off, cv1, cv2, cv3]
+    runs-on: ubuntu-latest
+    env:
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: gb-v8c-cvar-reflect-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install nautilus_trader==1.230.0 pyarrow pandas numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Run CVaR reflected-control Raw BT
+        working-directory: research
+        run: |
+          python goldebrave_v8c_split_g75_cvar_reflect_raw.py \
+            --catalog ../${RAW_CATALOG} \
+            --profile ${{ matrix.profile }} \
+            --experiment-id ${EXPERIMENT_ID}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.EXPERIMENT_ID }}-${{ matrix.profile }}
+          path: research/results/goldebrave-v8c-split-g75-cvar-reflect/${{ env.EXPERIMENT_ID }}/*.json
+          if-no-files-found: error

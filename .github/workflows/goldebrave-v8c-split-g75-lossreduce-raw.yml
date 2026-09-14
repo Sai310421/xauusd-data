@@ -1,0 +1,40 @@
+name: GoldeBrave V8C Split G75 LossReduce Raw
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'research/goldebrave_v8c_split_g75_lossreduce_raw.py'
+      - '.github/workflows/goldebrave-v8c-split-g75-lossreduce-raw.yml'
+  workflow_dispatch:
+
+jobs:
+  bt:
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [off, r1, r2, r3]
+    runs-on: ubuntu-latest
+    env:
+      NAUTILUS_VERSION: '1.230.0'
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      EXPERIMENT_ID: gb-v8c-lossreduce-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: pip install nautilus_trader==${NAUTILUS_VERSION} pandas pyarrow
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Run loss-side reduce Raw BT
+        run: python research/goldebrave_v8c_split_g75_lossreduce_raw.py --catalog "$RAW_CATALOG" --profile "${{ matrix.profile }}" --experiment-id "$EXPERIMENT_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gb-v8c-lossreduce-${{ github.run_id }}-${{ matrix.profile }}
+          path: results/goldebrave-v8c-split-g75-lossreduce/${{ env.EXPERIMENT_ID }}/${{ matrix.profile }}.json
+          retention-days: 90

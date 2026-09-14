@@ -1,0 +1,43 @@
+name: AMOS Reversal V8 M1 Standard Ablation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bt_requests/amos-reversal-v8-ablation.trigger'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas numpy pyarrow
+      - name: Reuse validated 90-day Dukascopy raw tick artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p raw /tmp/amos_raw
+          gh api repos/${{ github.repository }}/actions/artifacts/10273812066/zip > /tmp/amos_raw/raw.zip
+          unzip -o /tmp/amos_raw/raw.zip -d raw
+          test -s raw/XAUUSD_dukascopy_ticks.parquet
+      - name: Run five-stage M1 Standard ablation
+        env:
+          AMOS_RAW_TICK_PATH: raw/XAUUSD_dukascopy_ticks.parquet
+          AMOS_ABLATION_OUT: results/amos-v8-ablation
+        run: python research/amos_reversal_v8_ablation_m1_standard.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amos-v8-ablation-M1-STANDARD
+          path: results/amos-v8-ablation/
+          if-no-files-found: error
+          retention-days: 90

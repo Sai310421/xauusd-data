@@ -1,4 +1,4 @@
-triggered_at_jst=2026-09-14T13:24:00+09:00
+triggered_at_jst=2026-09-14T14:26:00+09:00
 symbol=XAUUSD
 period=validated_90d_cached_raw_ticks
 timeframe=M1

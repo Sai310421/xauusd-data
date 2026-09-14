@@ -49,7 +49,18 @@
       "cvar_vol_floor": 0.60,
       "cvar_reserve": 1.15,
       "dd_boundary_pct": 5.0
+    },
+    "AUTO": {
+      "high_profile": "HIGH",
+      "safe_profile": "SAFE",
+      "enter_safe_dd": 3.50,
+      "exit_safe_dd": 2.25,
+      "switch_rule": "DD_HYSTERESIS"
     }
+  },
+  "auto": {
+    "enter_safe_dd": 3.50,
+    "exit_safe_dd": 2.25
   },
   "oos_gate": {
     "positive_window_ratio_min": 0.80,
@@ -62,6 +73,7 @@
   "notes": [
     "IS is optimization/training data and is not used to choose the winning live profile.",
     "OOS results are the adoption evidence. Changing parameters after seeing an OOS requires a new experiment_id and fresh future OOS windows.",
+    "AUTO is itself frozen before OOS; its HIGH/SAFE switch thresholds are not retuned after observing an OOS window.",
     "The project gate thresholds are configurable. WFE >=50% is used as a conservative project floor; the source material describes 50-60%+ as a healthy reference range.",
     "Raw Bid/Ask native-order validation remains a later execution-realism gate; WFO does not replace fill/margin/slippage validation."
   ]

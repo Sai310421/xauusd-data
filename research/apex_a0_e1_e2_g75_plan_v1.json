@@ -1,0 +1,39 @@
+{
+  "version": "v1",
+  "purpose": "Freeze profitable APEX A0/E1/E2 entry baselines, test N-preserving WR improvement first, then G75 same-direction adds; compare against direct G75 adds.",
+  "execution": {
+    "symbol": "XAUUSD",
+    "tf": "M15",
+    "family": "R2",
+    "raw_bidask_only": true,
+    "nautilus_version": "1.230.0",
+    "starting_balance_usd": 1000,
+    "leverage": 2000
+  },
+  "frozen_baselines": {
+    "A0": {"trail_atr": 1.50, "protect_atr": 0.80, "max_hold_minutes": 720, "adverse_stop_atr": 0.0, "reference_N": 88, "reference_WR_pct": 68.18, "reference_PF": 1.524, "reference_expectancy": 1.798},
+    "E1": {"trail_atr": 1.25, "protect_atr": 0.65, "max_hold_minutes": 720, "adverse_stop_atr": 0.0, "reference_N": 104, "reference_WR_pct": 62.50, "reference_PF": 1.597, "reference_expectancy": 1.665},
+    "E2": {"trail_atr": 1.00, "protect_atr": 0.50, "max_hold_minutes": 720, "adverse_stop_atr": 0.0, "reference_N": 122, "reference_WR_pct": 63.11, "reference_PF": 1.712, "reference_expectancy": 1.664}
+  },
+  "g75_frozen": {"trigger": 0.12, "add": 0.025, "reversal": 0.20, "max_layers": 10, "mode": "same_direction_profit_add_only"},
+  "arms": [
+    "A0_BASE", "E1_BASE", "E2_BASE",
+    "A0_WR_N95", "E1_WR_N95", "E2_WR_N95",
+    "A0_DIRECT_G75", "E1_DIRECT_G75", "E2_DIRECT_G75",
+    "A0_WR_N95_G75", "E1_WR_N95_G75", "E2_WR_N95_G75"
+  ],
+  "wr_improvement_rule": {
+    "hard_constraint": "Do not reject more than 5% of baseline opportunities.",
+    "N_retention_min": 0.95,
+    "allowed": ["causal entry timing shift within same opportunity", "better executable price within same opportunity", "causal reclaim/displacement confirmation without deleting the opportunity"],
+    "forbidden": ["lookahead", "post-entry MFE/MAE in decisions", "simple filter that raises WR by materially reducing N"]
+  },
+  "gates": {
+    "first": "N_new >= 0.95 * N_base",
+    "second": "WR_new > WR_base",
+    "third": "PF_new >= PF_base",
+    "final_rank": ["PF", "expectancy", "max_dd_pct", "net", "N"]
+  },
+  "audit": ["native_fills", "N", "N_retention", "WR_pct", "PF", "expectancy", "net", "max_dd_pct", "g75_add_count", "avg_layers", "max_layers", "MFE", "MAE"],
+  "note": "Reference metrics are the previously observed APEX sweep values and are comparison targets, not guarantees for a new run. Reproduce baselines before attributing any gain to WR timing or G75."
+}

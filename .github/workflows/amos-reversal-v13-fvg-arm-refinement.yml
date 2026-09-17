@@ -1,0 +1,32 @@
+name: AMOS Reversal V13 FVG ARM Refinement
+on:
+  push:
+    paths:
+      - 'bt_requests/amos-reversal-v13-fvg-arm-refinement.trigger'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy pandas pyarrow
+      - name: Download validated raw tick artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/artifacts/10273812066/zip > raw.zip
+          unzip -o raw.zip -d raw_artifact
+          find raw_artifact -type f -maxdepth 3 -print
+      - name: Run V13
+        env:
+          AMOS_DATA_DIR: ${{ github.workspace }}/raw_artifact
+          AMOS_V13_OUT: results/amos-v13-fvg-arm-refinement
+        run: python research/amos_reversal_v13_fvg_arm_refinement.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-v13-fvg-arm-refinement
+          path: results/amos-v13-fvg-arm-refinement

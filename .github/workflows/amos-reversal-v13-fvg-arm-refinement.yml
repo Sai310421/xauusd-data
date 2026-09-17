@@ -20,13 +20,17 @@ jobs:
         run: |
           gh api repos/${{ github.repository }}/actions/artifacts/10273812066/zip > raw.zip
           unzip -o raw.zip -d raw_artifact
-          find raw_artifact -type f -maxdepth 3 -print
+          mkdir -p raw
+          cp raw_artifact/XAUUSD_dukascopy_ticks.parquet raw/XAUUSD_dukascopy_ticks.parquet
+          cp raw_artifact/XAUUSD_dukascopy_ticks.manifest.json raw/XAUUSD_dukascopy_ticks.manifest.json
+          ls -lh raw/XAUUSD_dukascopy_ticks.parquet raw/XAUUSD_dukascopy_ticks.manifest.json
       - name: Run V13
         env:
-          AMOS_DATA_DIR: ${{ github.workspace }}/raw_artifact
           AMOS_V13_OUT: results/amos-v13-fvg-arm-refinement
         run: python research/amos_reversal_v13_fvg_arm_refinement.py
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: amos-v13-fvg-arm-refinement
           path: results/amos-v13-fvg-arm-refinement
+          if-no-files-found: warn

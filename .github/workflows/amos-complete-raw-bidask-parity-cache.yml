@@ -1,0 +1,104 @@
+name: AMOS Complete Raw BidAsk Parity Cache
+
+on:
+  push:
+    paths:
+      - '.github/workflows/amos-complete-raw-bidask-parity-cache.yml'
+      - 'bt_requests/amos_complete_raw_parity.request'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amos-complete-raw-bidask-parity-cache-v1
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/amos_complete_raw_parity
+  RAW_START: '2026-02-25'
+  RAW_DAYS: '91'
+  RAW_SYMBOLS: 'XAUUSD EURUSD'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: amos-complete-raw-bidask-xau-eur-20260225-91d-v1
+  EVIDENCE_DIR: results/amos-complete-raw-parity/${{ github.run_id }}
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+
+      - name: Restore parity Raw BidAsk cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Build 91-day parity catalog when missing
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "${RAW_START}" \
+            --days "${RAW_DAYS}" \
+            --catalog "${RAW_CATALOG}" \
+            --workers "${RAW_WORKERS}" \
+            --symbols ${RAW_SYMBOLS} \
+            --fresh
+
+      - name: Validate and capture evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE_DIR}"
+          test -f "${RAW_CATALOG}/catalog_manifest.json"
+          cp "${RAW_CATALOG}/catalog_manifest.json" "${EVIDENCE_DIR}/catalog_manifest.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RAW_CATALOG'])/'catalog_manifest.json'
+          m = json.loads(p.read_text())
+          assert m['status'] == 'COMPLETE', m
+          assert m['data_kind'] == 'RAW_BIDASK', m
+          assert m['ohlc_resample_used'] is False, m
+          assert set(m['symbols']) == {'XAUUSD','EURUSD'}, m
+          assert int(m['days']) == 91, m
+          for s in ('XAUUSD','EURUSD'):
+              assert m['stats'][s]['ticks'] > 0, m['stats'][s]
+          print(json.dumps(m, indent=2))
+          PY
+          find "${RAW_CATALOG}" -type f -printf '%P %s bytes\n' | sort > "${EVIDENCE_DIR}/catalog_inventory.txt"
+          du -sh "${RAW_CATALOG}" > "${EVIDENCE_DIR}/catalog_size.txt"
+          printf '%s\n'             "cache_key=${RAW_CACHE_KEY}"             "nautilus=${NAUTILUS_VERSION}"             "start=${RAW_START}"             "days=${RAW_DAYS}"             "symbols=${RAW_SYMBOLS}"             "ohlc_resample=false" > "${EVIDENCE_DIR}/run_identity.txt"
+
+      - name: Save parity Raw BidAsk cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-complete-raw-parity-${{ github.run_id }}
+          path: ${{ env.EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 90

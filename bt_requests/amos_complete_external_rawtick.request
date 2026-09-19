@@ -1,0 +1,7 @@
+AMOS Complete Candidate external raw tick catalog
+source=simom1/XAUUSD-history
+period=2026-02-25..2026-05-26
+instrument=XAUUSD
+format=BidAsk Tick Parquet
+nautilus=1.230.0
+ohlc_resample=false

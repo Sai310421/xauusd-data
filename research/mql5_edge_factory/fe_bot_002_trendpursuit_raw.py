@@ -76,3 +76,5 @@ def main():
  out={'verification':'FE_BOT_002_TRENDPURSUIT_RAW_BASE','raw_ticks':len(raw),'ohlc_resample_used':False,'initial_usd':1000,'leverage':2000,**metrics(st.pnl)}
  p=Path('results/fe-bot-002')/a.experiment_id/'base.json';p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(out,indent=2));print(json.dumps(out,indent=2))
 if __name__=='__main__':main()
+
+# trigger: FE_BOT_002 raw-tick benchmark

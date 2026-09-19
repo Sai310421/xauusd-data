@@ -78,11 +78,12 @@ jobs:
           import json, os
           from pathlib import Path
           from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
 
           cat = ParquetDataCatalog(os.environ['CATALOG'])
           inst = next((x for x in cat.instruments() if x.id.symbol.value == 'XAUUSD'), None)
           assert inst is not None, 'XAUUSD instrument missing'
-          ticks = cat.query_quote_ticks(identifiers=[inst.id.value])
+          ticks = cat.query(data_cls=QuoteTick, identifiers=[inst.id.value])
           assert len(ticks) > 0, 'no quote ticks'
 
           out = {

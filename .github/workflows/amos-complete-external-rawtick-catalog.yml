@@ -6,6 +6,7 @@ on:
       - 'research/import_external_xauusd_raw_parquet_to_nautilus.py'
       - '.github/workflows/amos-complete-external-rawtick-catalog.yml'
       - 'bt_requests/amos_complete_external_rawtick.request'
+      - 'research/fe_bot_002_trendpursuit_raw.py'
   workflow_dispatch:
 
 permissions:
@@ -106,6 +107,13 @@ jobs:
         with:
           path: ${{ env.CATALOG }}
           key: ${{ env.CACHE_KEY }}
+
+      - name: Run FE BOT 002 TrendPursuit BASE Raw Tick
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/fe_bot_002_trendpursuit_raw.py --catalog "${CATALOG}" --experiment-id "${GITHUB_RUN_ID}"
+          cp "results/fe-bot-002/${GITHUB_RUN_ID}/base.json" "${EVIDENCE}/fe_bot_002_base.json"
 
       - name: Upload evidence
         if: always()

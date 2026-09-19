@@ -1,4 +1,5 @@
 name: GoldeBrave Standalone BOT Raw BT
+# parity runner trigger v1
 
 on:
   workflow_dispatch:

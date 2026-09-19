@@ -20,4 +20,4 @@ jobs:
       - name: Compile
         run: python -m compileall -q research/mql5_edge_factory
       - name: Unit smoke
-        run: python -m pytest -q research/mql5_edge_factory/test_factory.py
+        run: python -m pytest -q research/mql5_edge_factory

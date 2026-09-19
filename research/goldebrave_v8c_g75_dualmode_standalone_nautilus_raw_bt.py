@@ -1,4 +1,5 @@
 from __future__ import annotations
+# GitHub Actions parity smoke trigger
 import argparse, json
 from decimal import Decimal
 from pathlib import Path

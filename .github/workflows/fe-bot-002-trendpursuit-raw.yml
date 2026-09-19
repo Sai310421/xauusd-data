@@ -1,0 +1,37 @@
+name: FE BOT 002 TrendPursuit Raw Tick
+on:
+  push:
+    branches: [amos-math-ict-v1-4-prenautilus]
+    paths:
+      - 'research/mql5_edge_factory/fe_bot_002_trendpursuit_raw.py'
+      - '.github/workflows/fe-bot-002-trendpursuit-raw.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CATALOG: catalog/amos_complete_external_raw
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+jobs:
+  raw-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'nautilus_trader==1.230.0' numpy pandas pyarrow
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - name: Verify catalog
+        run: test -d "$CATALOG" || { echo 'Raw catalog cache missing'; exit 3; }
+      - name: Run BASE Raw Tick
+        run: python research/mql5_edge_factory/fe_bot_002_trendpursuit_raw.py --catalog "$CATALOG" --experiment-id "${GITHUB_RUN_ID}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fe-bot-002-raw-${{ github.run_id }}
+          path: results/fe-bot-002/
+          if-no-files-found: error

@@ -63,16 +63,25 @@ def main() -> None:
     per_file = []
 
     for p in files:
-        df = pd.read_parquet(p, columns=["ts", "bid", "ask", "bid_vol", "ask_vol"])
+        df = pd.read_parquet(p)
+        # Upstream schemas vary: current files expose timestamp/bid/ask only,
+        # while older files may use ts and optional volume columns.
+        ts_col = "ts" if "ts" in df.columns else "timestamp" if "timestamp" in df.columns else None
+        if ts_col is None or "bid" not in df.columns or "ask" not in df.columns:
+            raise ValueError(f"unsupported parquet schema {p.name}: {list(df.columns)}")
+        if "bid_vol" not in df.columns:
+            df["bid_vol"] = 1.0
+        if "ask_vol" not in df.columns:
+            df["ask_vol"] = 1.0
         total_in += len(df)
-        ts = pd.to_datetime(df["ts"], utc=True)
+        ts = pd.to_datetime(df[ts_col], utc=True)
         mask = (ts >= start) & (ts <= end)
         q = df.loc[mask].copy()
         if q.empty:
             per_file.append({"file": p.name, "rows_in": len(df), "rows_kept": 0})
             continue
 
-        q["datetime"] = pd.to_datetime(q["ts"], utc=True)
+        q["datetime"] = pd.to_datetime(q[ts_col], utc=True)
         q = q.rename(
             columns={
                 "bid": "bid_price",

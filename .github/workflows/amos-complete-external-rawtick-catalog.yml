@@ -34,7 +34,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
 
       - name: Install dependencies
         run: |
@@ -78,11 +77,13 @@ jobs:
           import json, os
           from pathlib import Path
           from nautilus_trader.persistence.catalog import ParquetDataCatalog
+
           cat = ParquetDataCatalog(os.environ['CATALOG'])
           inst = next((x for x in cat.instruments() if x.id.symbol.value == 'XAUUSD'), None)
           assert inst is not None, 'XAUUSD instrument missing'
           ticks = cat.query_quote_ticks(identifiers=[inst.id.value])
           assert len(ticks) > 0, 'no quote ticks'
+
           out = {
               'status':'PASS',
               'instrument':inst.id.value,

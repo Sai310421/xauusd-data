@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RAW_CATALOG: catalog/raw_bidask
+      PYTHONPATH: ${{ github.workspace }}/research:${{ github.workspace }}
       DEFAULT_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
     steps:
       - uses: actions/checkout@v4

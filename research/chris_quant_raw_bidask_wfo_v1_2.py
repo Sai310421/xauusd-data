@@ -4,6 +4,7 @@ from pathlib import Path
 from statistics import mean, pstdev
 import nautilus_trader
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from research.nautilus_catalog_compat import query_quote_ticks_compat
 
 SCHEMA="AMOS.ChrisPathwayNautilusRawWFO.v1.2"
 TF_MIN={"M1":1,"M5":5,"M15":15}
@@ -146,7 +147,7 @@ def main():
     inst={x.id.symbol.value.replace("/",""):x for x in cat.instruments()}; raw_counts={}; tick_cache={}
     for s in args.symbols:
         if s not in inst: raise SystemExit(f"CATALOG_INSTRUMENT_MISSING:{s}")
-        ticks=cat.query_quote_ticks(identifiers=[inst[s].id.value])
+        ticks=query_quote_ticks_compat(cat,identifiers=[inst[s].id.value])
         if not ticks: raise SystemExit(f"RAW_QUOTETICK_MISSING:{s}")
         tick_cache[s]=ticks; raw_counts[s]=len(ticks)
     tf_reports={}; fold_rows=[]; spread_stats={}

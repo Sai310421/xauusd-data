@@ -1,6 +1,12 @@
 name: AE MT4Indi Adaptive 4Engine RawTick v1
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/ae-mt4indi-adaptive-4engine-bt-v1]
+    paths:
+      - 'research/ae_mt4indi_adaptive_4engine_v1.py'
+      - 'research/ae_mt4indi_export_xauusd_npz_v1.py'
+      - '.github/workflows/ae-mt4indi-adaptive-4engine-rawtick-v1.yml'
 permissions:
   contents: read
 env:
@@ -18,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install numpy
+      - run: pip install numpy "nautilus_trader==1.230.0"
       - uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask

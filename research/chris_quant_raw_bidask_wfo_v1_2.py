@@ -119,9 +119,21 @@ def _bucket_returns(ticks,minutes):
     return out,(mean(spreads.values()) if spreads else None),len(closes)
 
 def _aligned(series_by_symbol):
-    keys=set.intersection(*(set(v) for v in series_by_symbol.values()))
-    ks=sorted(keys); syms=list(series_by_symbol)
-    return syms,ks,[[series_by_symbol[s][k] for k in ks] for s in syms]
+    """Align active Raw QuoteTick buckets; no OHLC fallback.
+
+    A missing quote update inside the common active range is represented as a
+    zero return (carry-forward price semantics). Leading/trailing gaps are
+    excluded by the common active range.
+    """
+    syms=list(series_by_symbol)
+    if not syms or any(not series_by_symbol[s] for s in syms):
+        raise ValueError("nonempty symbol return series required")
+    start=max(min(series_by_symbol[s]) for s in syms)
+    end=min(max(series_by_symbol[s]) for s in syms)
+    if start>end: raise ValueError("no common active range")
+    keys=sorted(set().union(*(set(series_by_symbol[s]) for s in syms)))
+    ks=[k for k in keys if start<=k<=end]
+    return syms,ks,[[series_by_symbol[s].get(k,0.0) for k in ks] for s in syms]
 
 def _wfo(rows,*,train=240,test=80,step=80,seed=20260921,max_folds=12):
     n=len(rows[0]); folds=[]; start=max(0,n-(train+test+(max_folds-1)*step)); fold=0
@@ -169,7 +181,7 @@ def main():
                         "mean_ae_tightening_cap":mean(f["ae_tightening_cap"] for f in folds)}
     out=Path("results/ae-bt")/args.experiment_id; out.mkdir(parents=True,exist_ok=True)
     summary={"schema":SCHEMA,"verification_level":"NAUTILUS_RAW_RESEARCH_WFO",
-             "engine":"NautilusTrader ParquetDataCatalog/QuoteTick + chronological AMOS WFO research evaluator",
+             "engine":"NautilusTrader ParquetDataCatalog/QuoteTick + chronological AMOS WFO research evaluator","alignment":"COMMON_ACTIVE_RANGE_CARRY_FORWARD_ZERO_RETURN_ON_NO_QUOTE_UPDATE",
              "nautilus_version":getattr(nautilus_trader,"__version__","unknown"),"data_kind":"RAW_BIDASK QuoteTick","ohlc_resample_used":False,
              "execution_model":"NO_ORDER_EXECUTION_IN_THIS_RESEARCH_WFO","symbols":args.symbols,"timeframes":args.timeframes,
              "period":{"start":manifest.get("start"),"days":manifest.get("days"),"end_exclusive":manifest.get("end_exclusive")},

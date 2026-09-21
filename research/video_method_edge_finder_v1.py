@@ -15,6 +15,7 @@ Discovery is chronological 70%; OOS is final 30%. Raw QuoteTick only.
 """
 from __future__ import annotations
 import argparse,csv,json,math,random
+import numpy as np
 from pathlib import Path
 from statistics import mean,median,pstdev
 import nautilus_trader
@@ -59,20 +60,23 @@ def _trades(rets,threshold,direction,hold=3):
 
 def _bootstrap_metrics(trades,paths=2000,ntrades=400,seed=11,unit_dollars=1000.):
     if len(trades)<30: return None
-    rng=random.Random(seed); profits=[]; rfs=[]; wins=[]; losses=[]
-    # dollar scale is explicit normalization, not broker PnL.
-    base=[x*unit_dollars for x in trades]
-    for _ in range(paths):
-        path=[base[rng.randrange(len(base))] for _ in range(ntrades)]
-        profits.append(sum(path)); rfs.append(_rf(path))
-    for x in base:
-        (wins if x>0 else losses).append(x)
+    # Vectorized bootstrap preserves the video's 2,000 x 400 design.
+    base=np.asarray(trades,dtype=float)*float(unit_dollars)
+    rng=np.random.default_rng(seed)
+    idx=rng.integers(0,len(base),size=(paths,ntrades))
+    samples=base[idx]
+    profits=samples.sum(axis=1)
+    equity=np.cumsum(samples,axis=1)
+    peaks=np.maximum.accumulate(np.maximum(equity,0.0),axis=1)
+    dd=np.max(peaks-equity,axis=1)
+    rfs=np.where(dd>1e-12,profits/dd,np.where(profits>0,999.0,0.0))
+    wins=base[base>0]; losses=base[base<=0]
     return {
-      "MedProfit":median(profits),"P90Profit":_q(profits,.90),"MedRF":median(rfs),
-      "NoLossPct":100*sum(x<=0 for x in profits)/len(profits),
-      "WinRatePct":100*len(wins)/len(base),
-      "AvgWin":mean(wins) if wins else 0.,"AvgLoss":mean(losses) if losses else 0.,
-      "EV":mean(base),"Trades":len(base),
+      "MedProfit":float(np.median(profits)),"P90Profit":float(np.quantile(profits,.90)),"MedRF":float(np.median(rfs)),
+      "NoLossPct":float(100*np.mean(profits<=0)),
+      "WinRatePct":float(100*np.mean(base>0)),
+      "AvgWin":float(wins.mean()) if len(wins) else 0.,"AvgLoss":float(losses.mean()) if len(losses) else 0.,
+      "EV":float(base.mean()),"Trades":int(len(base)),
     }
 
 def _lane(symbol,direction,p,train_rets,oos_rets,paths,ntrades):
@@ -97,18 +101,16 @@ def _lane(symbol,direction,p,train_rets,oos_rets,paths,ntrades):
     return row
 
 def _risk_mc(trades_r, risk_pct, paths=2000,ntrades=400,seed=11):
-    rng=random.Random(seed); dds=[]; ruined=0
-    for _ in range(paths):
-        eq=1.; peak=1.; worst=0.
-        for _t in range(ntrades):
-            r=trades_r[rng.randrange(len(trades_r))]
-            # R proxy is clipped to avoid a raw-return scale pretending to be stop-defined R.
-            rr=max(-1.,min(3.,r/(pstdev(trades_r) or 1e-12)))
-            eq*=max(0.,1+risk_pct*rr); peak=max(peak,eq); worst=max(worst,(peak-eq)/peak)
-            if eq<=.5: ruined+=1; break
-        dds.append(worst)
-    return {"risk_pct":100*risk_pct,"median_maxdd_pct":100*median(dds),
-            "bad10_maxdd_pct":100*_q(dds,.90),"ruin50_pct":100*ruined/paths}
+    arr=np.asarray(trades_r,dtype=float); sd=float(arr.std()) or 1e-12
+    rr=np.clip(arr/sd,-1.0,3.0); rng=np.random.default_rng(seed)
+    samples=rr[rng.integers(0,len(rr),size=(paths,ntrades))]
+    factors=np.maximum(0.0,1.0+risk_pct*samples)
+    equity=np.cumprod(factors,axis=1)
+    peaks=np.maximum.accumulate(np.maximum(equity,1.0),axis=1)
+    dds=np.max((peaks-equity)/peaks,axis=1)
+    ruined=np.any(equity<=.5,axis=1)
+    return {"risk_pct":100*risk_pct,"median_maxdd_pct":float(100*np.median(dds)),
+            "bad10_maxdd_pct":float(100*np.quantile(dds,.90)),"ruin50_pct":float(100*np.mean(ruined))}
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--catalog",required=True); ap.add_argument("--symbols",nargs="+",required=True)

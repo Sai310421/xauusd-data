@@ -1,0 +1,54 @@
+name: Video EDGE Frozen OOS Confirmation v1.1
+on:
+  push:
+    branches: ['feature/video-statistical-edge-search-v1.0-20260921']
+    paths:
+      - research/video_procedure_edge_confirmation_v1_1.py
+      - .github/workflows/video-edge-frozen-oos-v1.1.yml
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        required: true
+        default: video-edge-oos-v11-manual
+permissions: {contents: read}
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  RAW_CATALOG: catalog/video_edge_oos
+  RAW_START: '2026-08-27'
+  RAW_DAYS: '21'
+  RAW_WORKERS: '12'
+  OOS_CACHE_KEY: raw-bidask-duka-6sym-2026-08-27-21d-v1
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('video-edge-oos-v11-{0}', github.run_id) }}
+jobs:
+  confirm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install "nautilus_trader==1.230.0" numpy
+      - id: oos-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/video_edge_oos
+          key: ${{ env.OOS_CACHE_KEY }}
+      - name: Build unseen Raw BidAsk period
+        run: |
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - if: steps.oos-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/video_edge_oos
+          key: ${{ env.OOS_CACHE_KEY }}
+      - name: Confirm frozen candidate
+        run: python -m research.video_procedure_edge_confirmation_v1_1 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-edge-oos-${{ env.EXPERIMENT_ID }}
+          path: results/video-edge-confirmation/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

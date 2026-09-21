@@ -1,0 +1,38 @@
+name: AE MT4Indi Adaptive 4Engine RawTick v1
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  bt:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [TREND, RANGE, REVERSAL, INDICATOR, AUTO]
+        tf: [1, 5, 15]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard canonical XAUUSD Raw BidAsk
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Export canonical XAUUSD quotes to NPZ
+        run: python research/ae_mt4indi_export_xauusd_npz_v1.py --catalog "$RAW_CATALOG" --out /tmp/xauusd_raw.npz
+      - name: Run cell
+        run: python research/ae_mt4indi_adaptive_4engine_v1.py --npz /tmp/xauusd_raw.npz --tf ${{ matrix.tf }} --mode ${{ matrix.mode }} --out results/ae-mt4indi/${{ matrix.mode }}_M${{ matrix.tf }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ae-mt4indi-${{ matrix.mode }}-M${{ matrix.tf }}-${{ github.run_id }}
+          path: results/ae-mt4indi/*.json
+          if-no-files-found: error

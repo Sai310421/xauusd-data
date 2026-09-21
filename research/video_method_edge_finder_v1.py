@@ -97,7 +97,8 @@ def _lane(symbol,direction,p,train_rets,oos_rets,paths,ntrades):
     row["Video_NoLoss_Filter"]=a["NoLossPct"]<=3.0
     row["Video_MedProfit300_Filter_NotComparable"]=a["MedProfit"]>=300
     row["DiscoveryCandidate"]=bool(a["MedRF"]>=1.5 and a["NoLossPct"]<=3.0 and a["EV"]>0)
-    row["OOSConfirmed"]=bool(b and b["MedRF"]>=1.0 and b["NoLossPct"]<=10.0 and b["EV"]>0)
+    # Fail closed: OOS may confirm only a lane selected without seeing OOS.
+    row["OOSConfirmed"]=bool(row["DiscoveryCandidate"] and b and b["MedRF"]>=1.0 and b["NoLossPct"]<=10.0 and b["EV"]>0)
     return row
 
 def _risk_mc(trades_r, risk_pct, paths=2000,ntrades=400,seed=11):

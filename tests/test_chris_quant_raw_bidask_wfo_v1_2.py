@@ -36,11 +36,11 @@ def test_walk_forward_is_chronological():
     assert all(f["test_start"]<f["test_end"] for f in folds)
     assert all(0<=f["ae_tightening_cap"]<=1 for f in folds)
 
-def test_alignment_uses_intersection_only():
-    syms,keys,rows=_aligned({"A":{1:.1,2:.2,3:.3},"B":{2:.4,3:.5,4:.6}})
+def test_alignment_uses_common_active_range_and_carry_forward_semantics():
+    syms,keys,rows=_aligned({"A":{1:.1,2:.2,4:.4},"B":{2:.5,3:.6,4:.7,5:.8}})
     assert syms==["A","B"]
-    assert keys==[2,3]
-    assert rows==[[.2,.3],[.4,.5]]
+    assert keys==[2,3,4]
+    assert rows==[[.2,0.0,.4],[.5,.6,.7]]
 
 def test_drawdown_and_cvar_are_nonnegative():
     assert _maxdd([.1,-.2,.05])>0

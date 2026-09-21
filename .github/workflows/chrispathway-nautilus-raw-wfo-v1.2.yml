@@ -1,0 +1,140 @@
+name: Chris Pathway AMOS Raw BidAsk WFO v1.2
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'chris-amos-wfo-v12-manual'
+      train_size:
+        description: 'Chronological train observations per TF'
+        required: true
+        default: '240'
+      test_size:
+        description: 'Frozen OOS observations per TF'
+        required: true
+        default: '80'
+      max_folds:
+        description: 'Maximum chronological folds per TF'
+        required: true
+        default: '12'
+  push:
+    branches:
+      - 'feature/chrispathway-nautilus-raw-wfo-v1.2-20260921'
+    paths:
+      - 'research/chris_quant_raw_bidask_wfo_v1_2.py'
+      - 'tests/test_chris_quant_raw_bidask_wfo_v1_2.py'
+      - '.github/workflows/chrispathway-nautilus-raw-wfo-v1.2.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('chris-wfo-v12-{0}', github.run_id) }}
+  TRAIN_SIZE: ${{ github.event_name == 'workflow_dispatch' && inputs.train_size || '240' }}
+  TEST_SIZE: ${{ github.event_name == 'workflow_dispatch' && inputs.test_size || '80' }}
+  MAX_FOLDS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_folds || '12' }}
+
+jobs:
+  raw-wfo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned NautilusTrader and test tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pytest
+          python - <<'PY'
+          import nautilus_trader
+          print('nautilus_trader', nautilus_trader.__version__)
+          PY
+
+      - name: Unit gate
+        run: pytest -q tests/test_chris_quant_raw_bidask_wfo_v1_2.py
+
+      - name: Prepare immutable evidence directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n'             "run_id=${GITHUB_RUN_ID}"             "git_sha=${GITHUB_SHA}"             "experiment_id=${EXPERIMENT_ID}"             "raw_cache_key=${RAW_CACHE_KEY}"             "runner=research.chris_quant_raw_bidask_wfo_v1_2"             > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/chris_quant_raw_bidask_wfo_v1_2.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+
+      - name: Restore immutable Raw BidAsk catalog cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Ensure Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
+
+      - name: Save catalog cache after bootstrap
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Run Chris five-stage chronological Raw BidAsk WFO
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.chris_quant_raw_bidask_wfo_v1_2             --catalog "$RAW_CATALOG"             --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF             --timeframes M1 M5 M15             --experiment-id "$EXPERIMENT_ID"             --train-size "$TRAIN_SIZE"             --test-size "$TEST_SIZE"             --max-folds "$MAX_FOLDS"             --raw-bidask-only
+
+      - name: Write run manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root=Path('results/ae-bt')/os.environ['EXPERIMENT_ID']
+          summary=json.loads((root/'summary.json').read_text())
+          cat=(root/'preflight'/'catalog_manifest.json').read_bytes()
+          runner=Path('research/chris_quant_raw_bidask_wfo_v1_2.py').read_bytes()
+          manifest={
+            'experiment_id':os.environ['EXPERIMENT_ID'],
+            'verification_level':summary['verification_level'],
+            'github_run_id':os.environ.get('GITHUB_RUN_ID'),
+            'git_sha':os.environ.get('GITHUB_SHA'),
+            'nautilus_version':summary['nautilus_version'],
+            'dataset_manifest_sha256':hashlib.sha256(cat).hexdigest(),
+            'strategy_sha256':hashlib.sha256(runner).hexdigest(),
+            'raw_bidask_only':True,
+            'ohlc_resample_used':False,
+            'production_weighting_allowed':False,
+            'execution_allowed':False,
+          }
+          (root/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          PY
+
+      - name: Upload immutable validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chris-amos-raw-wfo-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

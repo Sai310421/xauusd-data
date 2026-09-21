@@ -1,0 +1,43 @@
+name: Video Method Broad Numeric EDGE Finder v1.1
+on:
+  push:
+    branches: ['feature/video-edge-finder-real-raw-v1-20260921']
+    paths:
+      - 'research/video_method_edge_finder_broad_v1_1.py'
+      - 'tests/test_video_method_edge_finder_broad_v1_1.py'
+      - '.github/workflows/video-method-broad-edge-finder-v1.1.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install "nautilus_trader==1.230.0" pytest
+      - run: pytest -q tests/test_video_method_edge_finder_broad_v1_1.py
+      - uses: actions/cache/restore@v4
+        with: {path: catalog/raw_bidask, key: raw-bidask-duka-6sym-2026-07-27-30d-v2}
+      - run: |
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Broad numeric search
+        run: |
+          python -m research.video_method_edge_finder_broad_v1_1             --catalog "$RAW_CATALOG"             --symbols XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF             --experiment-id "video-edge-broad-v11-${GITHUB_RUN_ID}"             --paths 2000 --path-trades 400 --raw-bidask-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-edge-broad-v11-${{ github.run_id }}
+          path: results/edge-finder/video-edge-broad-v11-${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 90

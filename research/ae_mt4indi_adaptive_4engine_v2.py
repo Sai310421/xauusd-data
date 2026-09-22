@@ -7,7 +7,7 @@ import argparse, json, math
 from pathlib import Path
 import numpy as np
 
-# v2 replacement branch: negative v1 engines are intentionally replaced\nMODES=("TREND","RANGE","REVERSAL","INDICATOR","AUTO")
+# v2 replacement branch: negative v1 engines are intentionally replaced\nMODES=("TREND","RANGE","REVERSAL","INDICATOR","AUTO")  # rerun-v2-20260922
 
 def ema(x,n):
     a=2/(n+1); out=np.empty(len(x)); out[0]=x[0]

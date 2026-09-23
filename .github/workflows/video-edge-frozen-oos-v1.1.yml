@@ -33,11 +33,20 @@ jobs:
         with:
           path: catalog/video_edge_oos
           key: ${{ env.OOS_CACHE_KEY }}
-      - name: Build unseen Raw BidAsk period
+      - name: Build unseen XAUUSD Raw BidAsk period
+        shell: bash
         run: |
-          chmod +x research/ensure_raw_bidask_catalog.sh
-          research/ensure_raw_bidask_catalog.sh
-          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+          set -euo pipefail
+          if ! python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD; then
+            python research/build_raw_bidask_catalog_duka.py \
+              --start "$RAW_START" \
+              --days "$RAW_DAYS" \
+              --catalog "$RAW_CATALOG" \
+              --workers "$RAW_WORKERS" \
+              --symbols XAUUSD \
+              --fresh
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - if: steps.oos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:

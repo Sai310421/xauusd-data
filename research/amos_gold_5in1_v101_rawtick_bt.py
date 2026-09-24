@@ -29,14 +29,14 @@ def load(ds,w):
  if not rows: raise SystemExit("NO_RAW_TICKS")
  df=pd.DataFrame(rows,columns=["t","bid","ask"]).sort_values("t").drop_duplicates("t"); df.t=pd.to_datetime(df.t,utc=True); return df
 def bars(t,freq):
- x=t.copy(); x["mid"]=(x.bid+x.ask)/2; x["b"]=x.t.dt.floor(freq)
+ x=t.copy(); x["mid"]=(x["bid"]+x["ask"])/2; x["b"]=x["t"].dt.floor(freq)
  return x.groupby("b").agg(open=("mid","first"),high=("mid","max"),low=("mid","min"),close=("mid","last"),bid=("bid","last"),ask=("ask","last")).reset_index().rename(columns={"b":"t"})
 def atr(x,n=14):
- p=x.close.shift(1); tr=pd.concat([x.high-x.low,(x.high-p).abs(),(x.low-p).abs()],axis=1).max(axis=1); return tr.rolling(n).mean()
+ cl=x["close"]; hi=x["high"]; lo=x["low"]; p=cl.shift(1); tr=pd.concat([hi-lo,(hi-p).abs(),(lo-p).abs()],axis=1).max(axis=1); return tr.rolling(n).mean()
 def rsi(s,n=14):
  d=s.diff(); up=d.clip(lower=0).rolling(n).mean(); dn=(-d.clip(upper=0)).rolling(n).mean(); return 100-100/(1+up/dn.replace(0,np.nan))
 def prep(x):
- x=x.copy(); x["atr"]=atr(x); x["ema21"]=x.close.ewm(span=21,adjust=False).mean(); x["ema55"]=x.close.ewm(span=55,adjust=False).mean(); x["rsi"]=rsi(x); return x
+ x=x.copy(); cl=pd.to_numeric(x["close"],errors="coerce"); x["close"]=cl; x["open"]=pd.to_numeric(x["open"],errors="coerce"); x["high"]=pd.to_numeric(x["high"],errors="coerce"); x["low"]=pd.to_numeric(x["low"],errors="coerce"); x["atr"]=atr(x); x["ema21"]=cl.ewm(span=21,adjust=False).mean(); x["ema55"]=cl.ewm(span=55,adjust=False).mean(); x["rsi"]=rsi(cl); return x
 def signals(m5,m15,h1,d1):
  sig=[]
  # Flash: M15 128-bar breakout, 12h gap

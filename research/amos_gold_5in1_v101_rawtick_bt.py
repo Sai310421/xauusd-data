@@ -102,7 +102,9 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument("--start",default="2026-07-27");ap.add_argument("--days",type=int,default=21);ap.add_argument("--workers",type=int,default=48);ap.add_argument("--engine",default="ALL",choices=["ALL","AI","FLASH","GRAND","LIMIT","NINE"]);a=ap.parse_args()
  OUT.mkdir(parents=True,exist_ok=True); t=load(days(a.start,a.days),a.workers)
  m5=prep(bars(t,"5min"));m15=prep(bars(t,"15min"));h1=prep(bars(t,"1h"));d1=prep(bars(t,"1D"))
- sig=signals(m5,m15,h1,d1);\n  if a.engine!="ALL": sig=[z for z in sig if (z[1].startswith("NINE") if a.engine=="NINE" else z[1]==a.engine)]\n  tr,s=simulate(t,sig); tr.to_csv(OUT/"trades.csv",index=False)
+ sig=signals(m5,m15,h1,d1);
+  if a.engine!="ALL": sig=[z for z in sig if (z[1].startswith("NINE") if a.engine=="NINE" else z[1]==a.engine)]
+  tr,s=simulate(t,sig); tr.to_csv(OUT/"trades.csv",index=False)
  by={}
  if len(tr):
   for e,g in tr.groupby("engine"):

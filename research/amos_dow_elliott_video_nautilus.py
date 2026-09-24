@@ -141,6 +141,11 @@ def confirmed_c_breakout(bars: list[dict], high_index: int, level: float, eps: f
             and bars[-1]['c'] > level+eps)
 
 
+def d_retest_expired(armed_ts: int, now_ts: int, mode: str) -> bool:
+    """M15 swing confirmation can take much longer than a 15 minute M1 retest."""
+    return now_ts-armed_ts > (90 if mode=='flip' else 15)*60*1_000_000_000
+
+
 def range_wave1(bars: list[dict], pivots: list[tuple[int, int, float]], atr: float,
                 eps: float = .02, count: int = 12) -> dict:
     """Match the MQ5 closed-bar range probe; P1 remains unconfirmed."""
@@ -302,7 +307,8 @@ class VideoStrategy(Strategy):
         # Stage 1: frozen HTF Dow structure determines the permitted context.
         if hdir == 0:
             self.armed_c = None
-            self.armed_d = None
+            if self.config.d_entry!='flip' or not self.armed_d or d_retest_expired(self.armed_d['ts'],row['ts'],'flip'):
+                self.armed_d = None
             return
         self.stage_counts['dow_bars'] += 1
         # Stage 2: score both directional wave contexts before video logic runs.
@@ -311,7 +317,8 @@ class VideoStrategy(Strategy):
         if not allowed:
             self.stage_counts['elliott_blocked_bars'] += 1
             self.armed_c = None
-            self.armed_d = None
+            if self.config.d_entry!='flip' or not self.armed_d or d_retest_expired(self.armed_d['ts'],row['ts'],'flip'):
+                self.armed_d = None
             return
         self.stage_counts['elliott_pass_bars'] += 1
         for side in tuple(allowed):
@@ -320,7 +327,9 @@ class VideoStrategy(Strategy):
                 allowed.remove(side)
                 self.stage_counts['already_traded_wave_bars'] += 1
         if not allowed:
-            self.armed_c=None;self.armed_d=None
+            self.armed_c=None
+            if self.config.d_entry!='flip' or not self.armed_d or d_retest_expired(self.armed_d['ts'],row['ts'],'flip'):
+                self.armed_d=None
             return
         if hdir not in allowed:self.armed_c=None
         if -hdir not in allowed and not (self.config.d_entry=='flip' and self.armed_d
@@ -382,7 +391,7 @@ class VideoStrategy(Strategy):
             p=self.armed_d
             line=p['level']+p['slope']*(row['ts']-p['ts'])/1_000_000_000
             trend_ok=(hdir==p['side'] if self.config.d_entry=='flip' else hdir==-p['side'])
-            if row['ts']-p['ts']>15*60*1_000_000_000 or (row['c']-line)*p['side']<-.02:
+            if d_retest_expired(p['ts'],row['ts'],self.config.d_entry) or (row['c']-line)*p['side']<-.02:
                 self.armed_d=None
             elif trend_ok and row['l']<=line+.02<=row['h']+.04 and (row['c']-line)*p['side']>.02 and (row['h']>bs[-2]['h'] if p['side']==1 else row['l']<bs[-2]['l']):
                 stop=min(row['l'],p['extreme'])-.03 if p['side']==1 else max(row['h'],p['extreme'])+.03

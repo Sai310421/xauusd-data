@@ -1,7 +1,7 @@
 """Small geometry cases for the Dow -> Elliott admission stage."""
 import unittest
 
-from research.amos_dow_elliott_video_nautilus import wave_context, wave_phase, confirmed_c_breakout
+from research.amos_dow_elliott_video_nautilus import wave_context, wave_phase, confirmed_c_breakout, d_retest_expired
 
 
 class DecisionOrderTest(unittest.TestCase):
@@ -41,6 +41,12 @@ class DecisionOrderTest(unittest.TestCase):
         self.assertTrue(confirmed_c_breakout(bars,1,110))
         self.assertFalse(confirmed_c_breakout(bars,2,110))
         self.assertFalse(confirmed_c_breakout(bars,1,111))
+
+    def test_d_flip_waits_for_confirmed_m15_pivots(self):
+        t=16*60*1_000_000_000
+        self.assertTrue(d_retest_expired(0,t,'retest'))
+        self.assertFalse(d_retest_expired(0,t,'flip'))
+        self.assertTrue(d_retest_expired(0,91*60*1_000_000_000,'flip'))
 
     def test_directional_wave_can_admit_dow_reversal_d(self):
         pivots = [(i,k,p) for i,(k,p) in enumerate(

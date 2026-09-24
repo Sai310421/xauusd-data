@@ -95,7 +95,7 @@ jobs:
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/c-wave-pivot-stop" \
             --c-stop wave_pivot
-      - name: D requires later M15 Dow flip before retest
+      - name: D waits up to 90m for M15 Dow flip and retest
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \

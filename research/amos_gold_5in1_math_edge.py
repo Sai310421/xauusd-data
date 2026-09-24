@@ -40,7 +40,9 @@ def diag(tr, capital=1000.0, seed=75):
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--dir",default="results/amos_gold_5in1_v101"); ap.add_argument("--capital",type=float,default=1000); a=ap.parse_args()
-    d=Path(a.dir)\n    try: tr=pd.read_csv(d/"trades.csv") if (d/"trades.csv").exists() else pd.DataFrame()\n    except pd.errors.EmptyDataError: tr=pd.DataFrame()
+    d=Path(a.dir)
+    try: tr=pd.read_csv(d/"trades.csv") if (d/"trades.csv").exists() else pd.DataFrame()
+    except pd.errors.EmptyDataError: tr=pd.DataFrame()
     out=diag(tr,a.capital)
     if (d/"summary.json").exists():
         s=json.loads((d/"summary.json").read_text()); out["engine_scope"]=s.get("engine_scope","ALL"); out["rawtick_MaxDD_pct"]=s.get("MaxDD_pct")

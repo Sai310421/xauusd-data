@@ -23,9 +23,10 @@ from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import LoggingConfig, RiskEngineConfig
 from nautilus_trader.model import BarType, Money, Venue
 from nautilus_trader.model.currencies import USD
-from nautilus_trader.model.data import Bar
-from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
+from nautilus_trader.model.data import Bar, QuoteTick
+from nautilus_trader.model.enums import AccountType, BookType, OmsType, OrderSide
 from nautilus_trader.model.identifiers import InstrumentId
+from nautilus_trader.model.objects import Quantity
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
@@ -285,9 +286,19 @@ def main():
     if inst is None:raise SystemExit('XAUUSD_INSTRUMENT_MISSING')
     ticks=catalog.query_quote_ticks(identifiers=[inst.id.value])
     if not ticks:raise SystemExit('RAW_QUOTE_TICKS_MISSING')
+    one=Quantity.from_int(1)
+    repaired_sizes=0
+    for i,t in enumerate(ticks):
+        if float(t.bid_size.as_double())<=0 or float(t.ask_size.as_double())<=0:
+            ticks[i]=QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,
+                bid_size=one if float(t.bid_size.as_double())<=0 else t.bid_size,
+                ask_size=one if float(t.ask_size.as_double())<=0 else t.ask_size,
+                ts_event=t.ts_event,ts_init=t.ts_init)
+            repaired_sizes+=1
     cfg=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True))
     engine=BacktestEngine(config=cfg)
-    engine.add_venue(venue=Venue('SIM'),oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,
+    engine.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,
+                     book_type=BookType.L1_MBP,base_currency=USD,
                      starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
     engine.add_instrument(inst);engine.add_data(ticks)
     strat=VideoStrategy(Config(instrument_id=inst.id,
@@ -308,7 +319,8 @@ def main():
     by={name:metrics([t for t in trades if t['setup']==name],initial=1000,days=days) for name in 'ABCD'}
     summary=dict(status='COMPLETED',verification_level='NAUTILUS_RAW_BIDASK_SIGNAL_GATE',
       version=nautilus_trader.__version__,source='Dukascopy via Nautilus ParquetDataCatalog',
-      raw_ticks=len(ticks),period=dict(start=manifest['start'],days=days,end_exclusive=manifest['end_exclusive']),
+      raw_ticks=len(ticks),zero_size_quotes_repaired=repaired_sizes,
+      period=dict(start=manifest['start'],days=days,end_exclusive=manifest['end_exclusive']),
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
                   elliott_gate=args.elliott_gate,reward_risk=2.0),
       overall=m,by_setup=by,signals=dict(strat.signal_count),denials=dict(strat.denials),

@@ -12,11 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: amos-dow-elliott-video-${{ github.ref }}
+  group: amos-dow-elliott-video-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   xauusd-m1:
+    if: ${{ !contains(github.event.head_commit.message, '[oos-only]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -134,7 +135,7 @@ jobs:
       RAW_START: '2026-08-26'
       RAW_DAYS: '29'
       RAW_WORKERS: '12'
-      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-08-26-29d-v1
+      RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-08-26-29d-v1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -148,10 +149,12 @@ jobs:
         with:
           path: catalog/raw_bidask_oos_20260826
           key: ${{ env.RAW_CACHE_KEY }}
-      - name: Build and verify later Raw Bid Ask period
+      - name: Build and verify later XAUUSD Raw Bid Ask period
         run: |
           set -euo pipefail
-          bash research/ensure_raw_bidask_catalog.sh
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" \
+            --symbols XAUUSD --workers "$RAW_WORKERS"
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
           python - <<'PY'
           import json,os

@@ -30,7 +30,7 @@ def load(ds,w):
  df=pd.DataFrame(rows,columns=["t","bid","ask"]).sort_values("t").drop_duplicates("t"); df.t=pd.to_datetime(df.t,utc=True); return df
 def bars(t,freq):
  x=t.copy(); x["mid"]=(x.bid+x.ask)/2; x["b"]=x.t.dt.floor(freq)
- return x.groupby("b").agg(open=("mid","first"),high=("mid","max"),low=("mid","min"),close=("mid","last"),bid=("bid","last"),ask=("ask","last"),spread=("ask",lambda s:0)).reset_index().rename(columns={"b":"t"})
+ return x.groupby("b").agg(open=("mid","first"),high=("mid","max"),low=("mid","min"),close=("mid","last"),bid=("bid","last"),ask=("ask","last")).reset_index().rename(columns={"b":"t"})
 def atr(x,n=14):
  p=x.close.shift(1); tr=pd.concat([x.high-x.low,(x.high-p).abs(),(x.low-p).abs()],axis=1).max(axis=1); return tr.rolling(n).mean()
 def rsi(s,n=14):

@@ -501,6 +501,12 @@ def main():
         raise SystemExit('FIB_GATE_INVALID_TRADE_FAIL_CLOSED')
     if args.wave_mode != 'observe' and any(t['wave_phase'] not in (3,5) for t in trades):
         raise SystemExit('WAVE_PHASE_INVALID_TRADE_FAIL_CLOSED')
+    if len({(t['signal_side'],t['wave_pivot']) for t in trades}) != len(trades):
+        raise SystemExit('REUSED_WAVE_PIVOT_FAIL_CLOSED')
+    phase_metrics={str(phase):metrics([t for t in trades if t['wave_phase']==phase],initial=1000,days=days)
+                   for phase in (3,5)}
+    for item in phase_metrics.values():
+        item['EV_USD']=item['NetProfit']/item['N'] if item['N'] else None
     feature_metrics={key:{str(value):metrics([t for t in trades if t[key]==value],initial=1000,days=days)
                    for value in (False,True)} for key in
                    ('wave_valid','wave1_range_candidate','range_probe','upper_wick_cluster','lower_wick_cluster')}
@@ -511,7 +517,7 @@ def main():
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
                   wave_mode=args.wave_mode,decision_order='DOW_HTF > ELLIOTT_M1 > VIDEO_ABCD',
                   max_spread=args.max_spread,reward_risk=2.0),
-      overall=m,by_setup=by,by_wave_phase={str(phase):metrics([t for t in trades if t['wave_phase']==phase],initial=1000,days=days) for phase in (3,5)},by_feature=feature_metrics,
+      overall=m,by_setup=by,by_wave_phase=phase_metrics,by_feature=feature_metrics,
       stages=dict(strat.stage_counts),signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
       wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),
       range_wave1_candidates=strat.wave_candidate_count,engine_tick_events=strat.tick_count,

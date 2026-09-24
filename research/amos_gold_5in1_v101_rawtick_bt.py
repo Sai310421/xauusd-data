@@ -99,15 +99,15 @@ def simulate(t,sigs,capital=1000,lot=.01):
  s={"N":len(tr),"WR_pct":float((tr.pnl>0).mean()*100),"PF":float(wins/losses) if losses>0 else None,"EV_USD":float(tr.pnl.mean()),"Net_USD":float(tr.pnl.sum()),"Return_pct":float(tr.pnl.sum()/capital*100),"MaxDD_pct":float(maxdd*100)}
  return tr,s
 def main():
- ap=argparse.ArgumentParser();ap.add_argument("--start",default="2026-07-27");ap.add_argument("--days",type=int,default=21);ap.add_argument("--workers",type=int,default=48);a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument("--start",default="2026-07-27");ap.add_argument("--days",type=int,default=21);ap.add_argument("--workers",type=int,default=48);ap.add_argument("--engine",default="ALL",choices=["ALL","AI","FLASH","GRAND","LIMIT","NINE"]);a=ap.parse_args()
  OUT.mkdir(parents=True,exist_ok=True); t=load(days(a.start,a.days),a.workers)
  m5=prep(bars(t,"5min"));m15=prep(bars(t,"15min"));h1=prep(bars(t,"1h"));d1=prep(bars(t,"1D"))
- sig=signals(m5,m15,h1,d1); tr,s=simulate(t,sig); tr.to_csv(OUT/"trades.csv",index=False)
+ sig=signals(m5,m15,h1,d1);\n  if a.engine!="ALL": sig=[z for z in sig if (z[1].startswith("NINE") if a.engine=="NINE" else z[1]==a.engine)]\n  tr,s=simulate(t,sig); tr.to_csv(OUT/"trades.csv",index=False)
  by={}
  if len(tr):
   for e,g in tr.groupby("engine"):
    gp=g[g.pnl>0].pnl.sum();gl=-g[g.pnl<0].pnl.sum();by[e]={"N":len(g),"WR_pct":float((g.pnl>0).mean()*100),"PF":float(gp/gl) if gl>0 else None,"Net_USD":float(g.pnl.sum())}
- out={"verification":"RAW_BIDASK_DISCOVERY","source":"Dukascopy BI5","raw_ticks":len(t),"bar_inputs":"derived directly from raw bid/ask ticks; no external OHLC fallback","period":{"start":a.start,"business_days":a.days},**s,"engine_breakdown":by,"limitations":["clean-room reconstruction; vendor private logic not available","not MT5 native fill parity","AI engine is proxy logic"]}
+ out={"engine_scope":a.engine,"verification":"RAW_BIDASK_DISCOVERY","source":"Dukascopy BI5","raw_ticks":len(t),"bar_inputs":"derived directly from raw bid/ask ticks; no external OHLC fallback","period":{"start":a.start,"business_days":a.days},**s,"engine_breakdown":by,"limitations":["clean-room reconstruction; vendor private logic not available","not MT5 native fill parity","AI engine is proxy logic"]}
  (OUT/"summary.json").write_text(json.dumps(out,indent=2)); print(json.dumps(out,indent=2))
 if __name__=="__main__":main()
 

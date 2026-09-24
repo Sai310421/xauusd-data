@@ -41,7 +41,7 @@ class Config(StrategyConfig, frozen=True):
     m15: BarType
     size: Decimal = Decimal('1')
     wave_mode: str = 'structural'
-    max_spread: float = 0.40
+    max_spread: float = 0.0
 
 
 def swings(bars: list[dict], k: int = 2) -> list[tuple[int, int, float]]:
@@ -394,8 +394,8 @@ def main():
     ap.add_argument('--elliott-gate',action='store_true')
     ap.add_argument('--wave-mode',choices=('structural','fib2','observe'),default='structural',
                     help='Primary sequence uses structural Elliott confirmation; observe is a diagnostic ablation')
-    ap.add_argument('--max-spread',type=float,default=.40,
-                    help='MQ5 entry spread ceiling in quoted price units; 0 disables for sensitivity study')
+    ap.add_argument('--max-spread',type=float,default=0.0,
+                    help='Optional price-unit ceiling; 0 uses native observed Bid/Ask costs without a fixed filter')
     args=ap.parse_args()
     if args.elliott_gate:
         if args.wave_mode!='structural':ap.error('--elliott-gate cannot be combined with --wave-mode')

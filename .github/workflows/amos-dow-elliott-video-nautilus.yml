@@ -54,33 +54,33 @@ jobs:
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
-      - name: Primary Dow Elliott video sequence with MQ5 spread ceiling
+      - name: Primary Dow Elliott video sequence using native spread
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/baseline"
-      - name: Primary sequence with raw spread sensitivity
+      - name: Conservative spread ceiling sensitivity
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
-            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/spread-unlimited" \
-            --max-spread 0
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/spread-capped-040" \
+            --max-spread 0.40
       - name: Strict Elliott Fib score sensitivity
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-fib2" \
-            --max-spread 0 --wave-mode fib2
+            --wave-mode fib2
       - name: No Elliott gate diagnostic ablation
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-observe-only" \
-            --max-spread 0 --wave-mode observe
+            --wave-mode observe
       - name: Record immutable provenance
         if: always()
         run: |

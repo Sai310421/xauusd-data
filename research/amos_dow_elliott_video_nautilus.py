@@ -150,6 +150,8 @@ class VideoStrategy(Strategy):
         self.current_features = None
         self.spread_denials = 0
         self.entry_spreads = []
+        self.wick_target_pending = []
+        self.wick_target_outcomes = Counter()
 
     @staticmethod
     def f(x):
@@ -194,6 +196,24 @@ class VideoStrategy(Strategy):
     def on_stop(self):
         self.close_all_positions(self.config.instrument_id)
 
+    def observe_wick_targets(self, row, atr, upper_level, lower_level, upper_count, lower_count):
+        """Freeze candidate levels, then count hits on later closed bars only."""
+        for target in list(self.wick_target_pending):
+            target['remaining']-=1
+            hit=(row['h']>=target['level']-target['tol'] if target['kind']=='upper'
+                 else row['l']<=target['level']+target['tol'])
+            if hit or target['remaining']==0:
+                self.wick_target_outcomes[target['kind']+'_hit' if hit else target['kind']+'_miss']+=1
+                self.wick_target_pending.remove(target)
+        for kind,level,count in (('upper',upper_level,upper_count),('lower',lower_level,lower_count)):
+            tol=max(.002,.10*atr)
+            if count<3 or level is None or any(p['kind']==kind for p in self.wick_target_pending):
+                continue
+            if kind=='upper' and row['h']>=level-tol:continue
+            if kind=='lower' and row['l']<=level+tol:continue
+            self.wick_target_pending.append(dict(kind=kind,level=level,tol=tol,remaining=15))
+            self.wick_target_outcomes[kind+'_armed']+=1
+
     def on_bar(self, bar: Bar):
         row = dict(o=self.f(bar.open), h=self.f(bar.high), l=self.f(bar.low),
                    c=self.f(bar.close), ts=int(bar.ts_event))
@@ -205,7 +225,7 @@ class VideoStrategy(Strategy):
         self.b1.append(row)
         bs = list(self.b1)
         ht = [b for b in self.b15 if b['ts'] <= row['ts']]
-        if len(bs) < 179 or len(ht) < 179 or self.open_side or self.entry_pending or self.pending_entry:
+        if len(bs) < 179 or len(ht) < 179:
             return
         tr = [max(bs[i]['h']-bs[i]['l'], abs(bs[i]['h']-bs[i-1]['c']), abs(bs[i]['l']-bs[i-1]['c']))
               for i in range(1,len(bs))]
@@ -224,6 +244,9 @@ class VideoStrategy(Strategy):
         lower=wick_cluster(bs,False,ld['lows'][-1][1],atr) if ld['lows'] else 0
         if upper>=3:self.wick_counts['upper']+=1
         if lower>=3:self.wick_counts['lower']+=1
+        self.observe_wick_targets(row,atr,ld['highs'][-1][1] if ld['highs'] else None,
+                                  ld['lows'][-1][1] if ld['lows'] else None,upper,lower)
+        if self.open_side or self.entry_pending or self.pending_entry:return
         picks = []
         # A: historical bullish supply candle + bearish impulse + return/rejection.
         if hdir == -1 and row['c'] < bs[-2]['l']-.02:
@@ -407,11 +430,13 @@ def main():
                                  minimum=min(strat.entry_spreads) if strat.entry_spreads else None,
                                  maximum=max(strat.entry_spreads) if strat.entry_spreads else None),
       range_probes=strat.range_probe_count,wick_cluster_bars=dict(strat.wick_counts),
+      wick_target_15bar=dict(strat.wick_target_outcomes),
       bar_tail_counts=dict(m1=len(strat.b1),m15=len(strat.b15)),
       limitations=['MQ5 port comparison pending; signal feature definitions aligned but MT5 compiled parity not verified',
                    'Realized closed-equity MaxDD; synchronized floating MaxDD not implemented',
                    'Raw Bid/Ask native spread; explicit fee, latency and slippage models not implemented',
                    'Broker-specific stop/freeze levels unavailable; assumed zero',
+                   'Wick target 15-bar hit rates are descriptive; no distance-matched control or causal attraction claim',
                    'Fixed 1-unit quantity; MQ5 lot-step and risk sizing parity pending',
                    'No OOS claim; repeatability and setup mapping require separate validation'])
     pd.DataFrame(trades).to_csv(out/'trades.csv',index=False)

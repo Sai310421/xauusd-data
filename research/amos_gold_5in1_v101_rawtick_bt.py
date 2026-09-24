@@ -104,7 +104,9 @@ def simulate(t,sigs,capital=1000,lot=.01):
    entry=ask if side==1 else bid; openp.append({"eng":eng,"side":side,"entry":entry,"sl":entry-side*sd,"tp":entry+side*td})
    if eng=="FLASH":last_flash=st
   floating=sum(((bid if p["side"]==1 else ask)-p["entry"])*p["side"]*mult for p in openp); cur=eq+floating; peak=max(peak,cur); maxdd=max(maxdd,(peak-cur)/peak if peak else 0)
- if not trades:return pd.DataFrame(),{"N":0}
+ for p in openp:
+  px=bid if p["side"]==1 else ask; pnl=(px-p["entry"])*p["side"]*mult; eq+=pnl; trades.append((tm,p["eng"],p["side"],p["entry"],px,pnl))
+ if not trades:return pd.DataFrame(columns=["exit_time","engine","side","entry","exit","pnl"]),{"N":0,"WR_pct":0.0,"PF":None,"EV_USD":0.0,"Net_USD":0.0,"Return_pct":0.0,"MaxDD_pct":float(maxdd*100)}
  tr=pd.DataFrame(trades,columns=["exit_time","engine","side","entry","exit","pnl"]); wins=tr[tr.pnl>0].pnl.sum(); losses=-tr[tr.pnl<0].pnl.sum()
  s={"N":len(tr),"WR_pct":float((tr.pnl>0).mean()*100),"PF":float(wins/losses) if losses>0 else None,"EV_USD":float(tr.pnl.mean()),"Net_USD":float(tr.pnl.sum()),"Return_pct":float(tr.pnl.sum()/capital*100),"MaxDD_pct":float(maxdd*100)}
  return tr,s

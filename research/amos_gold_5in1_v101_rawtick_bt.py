@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse, concurrent.futures as cf, datetime as dt, json, lzma, struct, urllib.request
+import argparse, concurrent.futures as cf, datetime as dt, json, lzma, struct, time, urllib.request
 from pathlib import Path
 import numpy as np, pandas as pd
 REC=struct.Struct(">3i2f"); HOSTS=("https://datafeed.dukascopy.com/datafeed","https://www.dukascopy.com/datafeed")
@@ -12,22 +12,32 @@ def days(start,n):
  return out
 def fh(z):
  d,h=z; o=dt.datetime(d.year,d.month,d.day,h,tzinfo=dt.timezone.utc); rel=f"XAUUSD/{d.year}/{d.month-1:02d}/{d.day:02d}/{h:02d}h_ticks.bi5"
- for host in HOSTS:
-  try:
-   req=urllib.request.Request(f"{host}/{rel}",headers={"User-Agent":"amos-5in1/1.01"})
-   raw=urllib.request.urlopen(req,timeout=20).read(); dec=lzma.decompress(raw); a=[]
-   for i in range(0,len(dec)-REC.size+1,REC.size):
-    ms,ask,bid,av,bv=REC.unpack_from(dec,i); ask/=1000; bid/=1000
-    if ask>=bid>0:a.append((o+dt.timedelta(milliseconds=ms),bid,ask))
-   return a
-  except Exception: pass
- return []
-def load(ds,w):
- rows=[]
+ for attempt in range(4):
+  for host in HOSTS:
+   try:
+    req=urllib.request.Request(f"{host}/{rel}",headers={"User-Agent":"amos-5in1/1.02"})
+    raw=urllib.request.urlopen(req,timeout=30).read(); dec=lzma.decompress(raw); a=[]
+    for i in range(0,len(dec)-REC.size+1,REC.size):
+     ms,ask,bid,av,bv=REC.unpack_from(dec,i); ask/=1000; bid/=1000
+     if ask>=bid>0:a.append((o+dt.timedelta(milliseconds=ms),bid,ask))
+    if a:return (d,h,a)
+   except Exception: pass
+  time.sleep(0.5*(attempt+1))
+ return (d,h,[])
+def load(ds,w,cache=None):
+ if cache and Path(cache).exists():
+  df=pd.read_pickle(cache,compression="gzip"); df["t"]=pd.to_datetime(df["t"],utc=True); return df
+ rows=[]; ok=0; total=len(ds)*24
  with cf.ThreadPoolExecutor(max_workers=w) as ex:
-  for x in ex.map(fh,[(d,h) for d in ds for h in range(24)]): rows.extend(x)
+  for d,h,x in ex.map(fh,[(d,h) for d in ds for h in range(24)]):
+   if x: ok+=1; rows.extend(x)
  if not rows: raise SystemExit("NO_RAW_TICKS")
- df=pd.DataFrame(rows,columns=["t","bid","ask"]).sort_values("t").drop_duplicates("t"); df.t=pd.to_datetime(df.t,utc=True); return df
+ df=pd.DataFrame(rows,columns=["t","bid","ask"]).sort_values("t").drop_duplicates("t"); df["t"]=pd.to_datetime(df["t"],utc=True)
+ coverage=ok/total
+ if coverage<0.75: raise SystemExit(f"RAW_COVERAGE_FAIL:{ok}/{total}={coverage:.3f}")
+ if cache:
+  Path(cache).parent.mkdir(parents=True,exist_ok=True); df.to_pickle(cache,compression="gzip")
+ return df
 def bars(t,freq):
  x=t.copy(); x["mid"]=(x["bid"]+x["ask"])/2; x["b"]=x["t"].dt.floor(freq)
  return x.groupby("b").agg(open=("mid","first"),high=("mid","max"),low=("mid","min"),close=("mid","last"),bid=("bid","last"),ask=("ask","last")).reset_index().rename(columns={"b":"t"})

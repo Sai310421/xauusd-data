@@ -125,8 +125,9 @@ def wick_cluster(bars: list[dict], upper: bool, level: float, atr: float,
 class VideoStrategy(Strategy):
     def __init__(self, config: Config):
         super().__init__(config)
-        self.b1 = deque(maxlen=180)
-        self.b15 = deque(maxlen=180)
+        # MT5 CopyRates(..., 180) contains shift 0 (forming) plus 179 closed bars.
+        self.b1 = deque(maxlen=179)
+        self.b15 = deque(maxlen=179)
         self.armed_c = None
         self.armed_d = None
         self.pending_entry = None
@@ -203,10 +204,13 @@ class VideoStrategy(Strategy):
         self.b1.append(row)
         bs = list(self.b1)
         ht = [b for b in self.b15 if b['ts'] <= row['ts']]
-        if len(bs) < 180 or len(ht) < 180 or self.open_side or self.entry_pending or self.pending_entry:
+        if len(bs) < 179 or len(ht) < 179 or self.open_side or self.entry_pending or self.pending_entry:
             return
-        tr = [max(bs[i]['h']-bs[i]['l'], abs(bs[i]['h']-bs[i-1]['c']), abs(bs[i]['l']-bs[i-1]['c'])) for i in range(len(bs)-14,len(bs))]
-        atr = float(np.mean(tr))
+        tr = [max(bs[i]['h']-bs[i]['l'], abs(bs[i]['h']-bs[i-1]['c']), abs(bs[i]['l']-bs[i-1]['c']))
+              for i in range(1,len(bs))]
+        atr = float(np.mean(tr[:14]))
+        for value in tr[14:]:
+            atr += (value-atr)/14.0
         if atr <= 0:
             return
         s1, s15 = swings(bs), swings(ht)

@@ -1,7 +1,7 @@
 """Small geometry cases for the Dow -> Elliott admission stage."""
 import unittest
 
-from research.amos_dow_elliott_video_nautilus import wave_context
+from research.amos_dow_elliott_video_nautilus import wave_context, wave_phase
 
 
 class DecisionOrderTest(unittest.TestCase):
@@ -9,7 +9,14 @@ class DecisionOrderTest(unittest.TestCase):
         _, allowed = wave_context([], 0, 'observe')
         self.assertEqual(allowed, set())
 
-    def test_structural_wave_precedes_video_even_without_fib_score(self):
+    def test_confirmed_p2_enables_wave3_without_future_p3(self):
+        pivots=[(0,-1,100),(1,1,110),(2,-1,104)]
+        waves,allowed=wave_context(pivots,1,'structural')
+        self.assertEqual(allowed,{1})
+        self.assertEqual(waves[1][3:],(3,2))
+        self.assertEqual(wave_context(pivots,1,'fib2')[1],set())
+
+    def test_confirmed_p4_enables_wave5_without_future_p5(self):
         # The wave is structurally sound, but only F4 satisfies its tight band.
         pivots = [(i,k,p) for i,(k,p) in enumerate(
             [(-1,100),(1,110),(-1,103),(1,116),(-1,112)])]
@@ -19,6 +26,15 @@ class DecisionOrderTest(unittest.TestCase):
         self.assertEqual(strict, set())
         self.assertTrue(waves[1][0])
         self.assertEqual(waves[1][1], 1.0)
+        self.assertEqual(waves[1][3:],(5,4))
+
+    def test_p3_peak_and_broken_p4_do_not_open_new_wave(self):
+        base=[(0,-1,100),(1,1,110),(2,-1,104),(3,1,122)]
+        self.assertEqual(wave_phase(base,1)[3],0)
+        self.assertEqual(wave_phase(base+[(4,-1,108)],1)[3],0)
+
+    def test_no_wave2_below_origin(self):
+        self.assertEqual(wave_phase([(0,-1,100),(1,1,110),(2,-1,99)],1)[3],0)
 
     def test_directional_wave_can_admit_dow_reversal_d(self):
         pivots = [(i,k,p) for i,(k,p) in enumerate(

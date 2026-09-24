@@ -93,13 +93,43 @@ def elliott(ss: list[tuple[int, int, float]], side: int) -> tuple[bool, float, t
 
 
 def wave_context(pivots: list[tuple[int, int, float]], dow_dir: int, mode: str):
-    """Second-stage direction admission after a confirmed nonzero Dow context."""
+    """Admit only a live wave-3 or wave-5 candidate after its correction pivot."""
     if dow_dir not in (-1, 1):
         return {}, set()
-    waves = {side: elliott(pivots, side) for side in (dow_dir, -dow_dir)}
-    allowed = {side for side,(valid,score,_) in waves.items()
-               if mode == 'observe' or (valid and (mode == 'structural' or score >= 2))}
+    waves = {side: wave_phase(pivots, side) for side in (dow_dir, -dow_dir)}
+    allowed = {side for side,(valid,score,_,phase,_) in waves.items()
+               if mode == 'observe' or (valid and phase in (3,5) and (mode == 'structural' or score >= 2))}
     return waves, allowed
+
+
+def wave_phase(ss: list[tuple[int, int, float]], side: int) -> tuple:
+    """(valid, Fib score, ratios, next wave, P2/P4 identity); latest pivot must be a low/high correction.
+
+    Wave 3 is a *candidate* after confirmed P2. P3 is unavailable at entry.
+    Wave 5 is a candidate after confirmed P4; no P5 is read at entry.
+    """
+    chosen = []
+    for index, kind, price in reversed(ss):
+        if not chosen or chosen[-1][1] != kind:
+            chosen.append((index,kind,side*price))
+        if len(chosen) == 5:break
+    chosen.reverse()
+    if len(chosen) < 3 or chosen[-1][1] != -side:
+        return False, 0.0, (), 0, None
+    p = [v[2] for v in chosen]
+    if len(p) == 5 and chosen[0][1] == -side:
+        w1,w3=p[1]-p[0],p[3]-p[2]
+        if min(w1,w3)>0 and p[2]>p[0] and p[2]<p[1] and p[3]>p[1]:
+            if p[4] <= p[1] or p[4]>=p[3]:
+                return False, 0.0, (), 0, None
+            r2,e3,r4=(p[1]-p[2])/w1,w3/w1,(p[3]-p[4])/w3
+            score=float(.5<=r2<=.618)+float(1.618<=e3<=2.618)+float(abs(r4-.384)<=.10)
+            return True,score,(r2,e3,r4),5,chosen[-1][0]
+    p0,p1,p2=p[-3:]
+    if p1<=p0 or p2<=p0 or p2>=p1:
+        return False, 0.0, (), 0, None
+    r2=(p1-p2)/(p1-p0)
+    return True,float(.5<=r2<=.618),(r2,),3,chosen[-1][0]
 
 
 def range_wave1(bars: list[dict], pivots: list[tuple[int, int, float]], atr: float,
@@ -156,6 +186,7 @@ class VideoStrategy(Strategy):
         self.wick_counts = Counter()
         self.wave_scores = Counter()
         self.wave_valid_count = 0
+        self.traded_wave_pivots = set()
         self.stage_counts = Counter()
         self.filled_features = []
         self.current_features = None
@@ -186,6 +217,7 @@ class VideoStrategy(Strategy):
 
     def on_position_opened(self, event):
         if self.pending_entry is not None:
+            self.traded_wave_pivots.add((self.pending_entry['side'],self.pending_entry['features']['wave_pivot']))
             self.open_side = self.pending_entry['side']
             self.stop_px = self.pending_entry['stop']
             self.target_px = self.pending_entry['target']
@@ -273,6 +305,14 @@ class VideoStrategy(Strategy):
             self.armed_d = None
             return
         self.stage_counts['elliott_pass_bars'] += 1
+        for side in tuple(allowed):
+            pivot_ts=bs[wave[side][4]]['ts'] if wave[side][4] is not None else None
+            if (side,pivot_ts) in self.traded_wave_pivots:
+                allowed.remove(side)
+                self.stage_counts['already_traded_wave_bars'] += 1
+        if not allowed:
+            self.armed_c=None;self.armed_d=None
+            return
         if hdir not in allowed:self.armed_c=None
         if -hdir not in allowed:self.armed_d=None
         # Stage 3: only directions admitted above may arm or trigger A/B/C/D.
@@ -342,12 +382,14 @@ class VideoStrategy(Strategy):
             if len(picks)>1:self.denials['ambiguous']+=1
             return
         name,side,stop,level=picks[0]
-        valid,score,ratios=wave[side]
+        valid,score,ratios,phase,pivot=wave[side]
+        pivot_ts=bs[pivot]['ts'] if pivot is not None else None
         self.signal_count[name]+=1
         self.stage_counts['video_signals']+=1
         self.wave_scores[str(int(score)) if valid else 'invalid']+=1
         if valid:self.wave_valid_count+=1
         features={'wave_valid':valid,'wave_score':score,'fib_ratios':ratios,
+                  'wave_phase':phase,'wave_pivot':pivot_ts,
                   'dow_dir':hdir,'signal_side':side,'wave_mode':self.config.wave_mode,
                   'wave1_range_candidate':wave1['candidate'], 'range_probe':wave1['probe'],
                   'upper_wick_cluster':upper>=3,'lower_wick_cluster':lower>=3}
@@ -451,10 +493,14 @@ def main():
         trade['dow_dir']=feature['dow_dir']
         trade['signal_side']=feature['signal_side']
         trade['wave_mode']=feature['wave_mode']
+        trade['wave_phase']=feature['wave_phase']
+        trade['wave_pivot']=feature['wave_pivot']
     if args.wave_mode != 'observe' and any(not t['wave_valid'] for t in trades):
         raise SystemExit('WAVE_GATE_INVALID_TRADE_FAIL_CLOSED')
     if args.wave_mode == 'fib2' and any(t['wave_score']<2 for t in trades):
         raise SystemExit('FIB_GATE_INVALID_TRADE_FAIL_CLOSED')
+    if args.wave_mode != 'observe' and any(t['wave_phase'] not in (3,5) for t in trades):
+        raise SystemExit('WAVE_PHASE_INVALID_TRADE_FAIL_CLOSED')
     feature_metrics={key:{str(value):metrics([t for t in trades if t[key]==value],initial=1000,days=days)
                    for value in (False,True)} for key in
                    ('wave_valid','wave1_range_candidate','range_probe','upper_wick_cluster','lower_wick_cluster')}
@@ -465,7 +511,7 @@ def main():
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
                   wave_mode=args.wave_mode,decision_order='DOW_HTF > ELLIOTT_M1 > VIDEO_ABCD',
                   max_spread=args.max_spread,reward_risk=2.0),
-      overall=m,by_setup=by,by_feature=feature_metrics,
+      overall=m,by_setup=by,by_wave_phase={str(phase):metrics([t for t in trades if t['wave_phase']==phase],initial=1000,days=days) for phase in (3,5)},by_feature=feature_metrics,
       stages=dict(strat.stage_counts),signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
       wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),
       range_wave1_candidates=strat.wave_candidate_count,engine_tick_events=strat.tick_count,

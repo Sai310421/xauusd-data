@@ -1,0 +1,74 @@
+name: AMOS Dow Elliott Video Nautilus Raw BidAsk
+
+on:
+  push:
+    paths:
+      - 'research/amos_dow_elliott_video_nautilus.py'
+      - '.github/workflows/amos-dow-elliott-video-nautilus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amos-dow-elliott-video-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  xauusd-m1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      RAW_CATALOG: catalog/raw_bidask
+      RAW_START: '2026-07-27'
+      RAW_DAYS: '30'
+      RAW_WORKERS: '12'
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin NautilusTrader and signal dependencies
+        run: python -m pip install 'nautilus_trader==1.230.0' pandas numpy pyarrow
+      - name: Validate strategy syntax
+        run: python -m py_compile research/amos_dow_elliott_video_nautilus.py
+      - name: Restore raw Bid/Ask catalog
+        uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Ensure immutable raw catalog
+        run: |
+          set -euo pipefail
+          bash research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Save bootstrapped raw catalog
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Backtest Dow Elliott video setup on Nautilus QuoteTicks
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/baseline"
+      - name: Record immutable provenance
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "results/amos-dow-elliott/${GITHUB_RUN_ID}"
+          git rev-parse HEAD > "results/amos-dow-elliott/${GITHUB_RUN_ID}/git_sha.txt"
+          sha256sum research/amos_dow_elliott_video_nautilus.py > "results/amos-dow-elliott/${GITHUB_RUN_ID}/strategy_sha256.txt"
+      - name: Upload KPI and trade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-dow-elliott-video-${{ github.run_id }}
+          path: results/amos-dow-elliott/${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 90

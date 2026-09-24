@@ -149,6 +149,7 @@ class VideoStrategy(Strategy):
         self.filled_features = []
         self.current_features = None
         self.spread_denials = 0
+        self.entry_spreads = []
 
     @staticmethod
     def f(x):
@@ -235,7 +236,7 @@ class VideoStrategy(Strategy):
                     continue
                 reject = bs[-2]
                 rng = reject['h']-reject['l']
-                if rng > 0 and reject['h'] >= b['o'] and reject['l'] <= b['h'] and (reject['h']-max(reject['o'],reject['c']))/rng >= .45:
+                if rng > 0 and reject['h'] >= b['o'] and reject['l'] <= b['h'] and reject['c']<=b['h']+.02 and (reject['h']-max(reject['o'],reject['c']))/rng >= .45:
                     picks.append(('A',-1,max(reject['h'],b['h'])+.03,b['o']))
                     break
         # B: weak consolidation after a downward impulse, break below its low.
@@ -258,7 +259,7 @@ class VideoStrategy(Strategy):
                 p['extreme']=min(p['extreme'],row['l'])
         elif ld['highs']:
             ix, res=ld['highs'][-1]
-            if ix < len(bs)-3 and bs[-2]['c']<=res+.02 and row['c']>res+.02:
+            if ix < len(bs)-2 and bs[-2]['c']<=res+.02 and row['c']>res+.02:
                 self.armed_c=dict(ts=row['ts'],level=res,extreme=row['l'])
         # D: fixed line through 2 confirmed equal-kind pivots, break and retest.
         if self.armed_d:
@@ -314,10 +315,13 @@ class VideoStrategy(Strategy):
         if p is None or self.entry_pending or int(tick.ts_event)<=p['signal_ts']:
             return
         price=ask if p['side']==1 else bid
+        self.entry_spreads.append(ask-bid)
         if self.config.max_spread>0 and ask-bid>self.config.max_spread:
             self.pending_entry=None;self.denials['spread']+=1
             return
-        if (price-p['stop'])*p['side']<=.05:
+        # MT5 validates a long stop against bid and a short stop against ask.
+        # The catalog has no broker-specific SYMBOL_TRADE_STOPS_LEVEL; assume zero.
+        if (bid-p['stop'] if p['side']==1 else p['stop']-ask)<=0:
             self.denials['invalid_stop_distance']+=1
             self.pending_entry=None
             return
@@ -399,11 +403,15 @@ def main():
       signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
       wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),
       range_wave1_candidates=strat.wave_candidate_count,engine_tick_events=strat.tick_count,
+      entry_spread_observed=dict(n=len(strat.entry_spreads),median=float(np.median(strat.entry_spreads)) if strat.entry_spreads else None,
+                                 minimum=min(strat.entry_spreads) if strat.entry_spreads else None,
+                                 maximum=max(strat.entry_spreads) if strat.entry_spreads else None),
       range_probes=strat.range_probe_count,wick_cluster_bars=dict(strat.wick_counts),
       bar_tail_counts=dict(m1=len(strat.b1),m15=len(strat.b15)),
       limitations=['MQ5 port comparison pending; signal feature definitions aligned but MT5 compiled parity not verified',
                    'Realized closed-equity MaxDD; synchronized floating MaxDD not implemented',
                    'Raw Bid/Ask native spread; explicit fee, latency and slippage models not implemented',
+                   'Broker-specific stop/freeze levels unavailable; assumed zero',
                    'Fixed 1-unit quantity; MQ5 lot-step and risk sizing parity pending',
                    'No OOS claim; repeatability and setup mapping require separate validation'])
     pd.DataFrame(trades).to_csv(out/'trades.csv',index=False)

@@ -1,7 +1,7 @@
 """Small geometry cases for the Dow -> Elliott admission stage."""
 import unittest
 
-from research.amos_dow_elliott_video_nautilus import wave_context, wave_phase
+from research.amos_dow_elliott_video_nautilus import wave_context, wave_phase, confirmed_c_breakout
 
 
 class DecisionOrderTest(unittest.TestCase):
@@ -35,6 +35,12 @@ class DecisionOrderTest(unittest.TestCase):
 
     def test_no_wave2_below_origin(self):
         self.assertEqual(wave_phase([(0,-1,100),(1,1,110),(2,-1,99)],1)[3],0)
+
+    def test_c_breakout_requires_preexisting_confirmed_high(self):
+        bars=[{'c':100},{'c':101},{'c':105},{'c':111}]
+        self.assertTrue(confirmed_c_breakout(bars,1,110))
+        self.assertFalse(confirmed_c_breakout(bars,2,110))
+        self.assertFalse(confirmed_c_breakout(bars,1,111))
 
     def test_directional_wave_can_admit_dow_reversal_d(self):
         pivots = [(i,k,p) for i,(k,p) in enumerate(

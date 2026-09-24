@@ -42,6 +42,9 @@ class Config(StrategyConfig, frozen=True):
     size: Decimal = Decimal('1')
     wave_mode: str = 'structural'
     max_spread: float = 0.0
+    c_entry: str = 'retest'
+    c_stop: str = 'retest'
+    d_entry: str = 'retest'
 
 
 def swings(bars: list[dict], k: int = 2) -> list[tuple[int, int, float]]:
@@ -130,6 +133,12 @@ def wave_phase(ss: list[tuple[int, int, float]], side: int) -> tuple:
         return False, 0.0, (), 0, None
     r2=(p1-p2)/(p1-p0)
     return True,float(.5<=r2<=.618),(r2,),3,chosen[-1][0]
+
+
+def confirmed_c_breakout(bars: list[dict], high_index: int, level: float, eps: float = .02) -> bool:
+    """The pivot was observable before the previous closed bar; entry uses a later tick."""
+    return (high_index < len(bars)-2 and bars[-2]['c'] <= level+eps
+            and bars[-1]['c'] > level+eps)
 
 
 def range_wave1(bars: list[dict], pivots: list[tuple[int, int, float]], atr: float,
@@ -314,7 +323,9 @@ class VideoStrategy(Strategy):
             self.armed_c=None;self.armed_d=None
             return
         if hdir not in allowed:self.armed_c=None
-        if -hdir not in allowed:self.armed_d=None
+        if -hdir not in allowed and not (self.config.d_entry=='flip' and self.armed_d
+                                         and hdir==self.armed_d['side'] and hdir in allowed):
+            self.armed_d=None
         # Stage 3: only directions admitted above may arm or trigger A/B/C/D.
         picks = []
         # A: historical bullish supply candle + bearish impulse + return/rejection.
@@ -340,18 +351,29 @@ class VideoStrategy(Strategy):
         # C: arm on an older confirmed pivot high breakout; retest on a later bar.
         if hdir != 1 or 1 not in allowed:
             self.armed_c=None
+        elif self.config.c_entry=='breakout' and wave[1][3]==3:
+            self.armed_c=None
+            if ld['highs']:
+                ix,res=ld['highs'][-1]
+                if confirmed_c_breakout(bs,ix,res):
+                    picks.append(('C_BREAK',1,row['l']-.03,res))
         elif self.armed_c:
             p=self.armed_c
             if row['ts']-p['ts']>15*60*1_000_000_000 or row['c']<p['level']-.02:
                 self.armed_c=None
             elif row['l']<=p['level']+.02 and row['c']>p['level']+.02 and row['h']>bs[-2]['h']:
-                picks.append(('C',1,min(p['extreme'],row['l'])-.03,p['level']))
+                stop=min(p['extreme'],row['l'])-.03
+                name='C'
+                if self.config.c_stop=='wave_pivot':
+                    stop=bs[wave[1][4]]['l']-.03
+                    name='C_PIVOT'
+                picks.append((name,1,stop,p['level']))
                 self.armed_c=None
             else:
                 p['extreme']=min(p['extreme'],row['l'])
         elif ld['highs']:
             ix, res=ld['highs'][-1]
-            if ix < len(bs)-2 and bs[-2]['c']<=res+.02 and row['c']>res+.02:
+            if confirmed_c_breakout(bs,ix,res):
                 self.armed_c=dict(ts=row['ts'],level=res,extreme=row['l'])
         # D: fixed line through 2 confirmed equal-kind pivots, break and retest.
         if -hdir not in allowed:
@@ -359,11 +381,12 @@ class VideoStrategy(Strategy):
         elif self.armed_d:
             p=self.armed_d
             line=p['level']+p['slope']*(row['ts']-p['ts'])/1_000_000_000
-            if hdir != -p['side'] or row['ts']-p['ts']>15*60*1_000_000_000 or (row['c']-line)*p['side']<-.02:
+            trend_ok=(hdir==p['side'] if self.config.d_entry=='flip' else hdir==-p['side'])
+            if row['ts']-p['ts']>15*60*1_000_000_000 or (row['c']-line)*p['side']<-.02:
                 self.armed_d=None
-            elif row['l']<=line+.02<=row['h']+.04 and (row['c']-line)*p['side']>.02 and (row['h']>bs[-2]['h'] if p['side']==1 else row['l']<bs[-2]['l']):
+            elif trend_ok and row['l']<=line+.02<=row['h']+.04 and (row['c']-line)*p['side']>.02 and (row['h']>bs[-2]['h'] if p['side']==1 else row['l']<bs[-2]['l']):
                 stop=min(row['l'],p['extreme'])-.03 if p['side']==1 else max(row['h'],p['extreme'])+.03
-                picks.append(('D',p['side'],stop,line))
+                picks.append(('D_FLIP' if self.config.d_entry=='flip' else 'D',p['side'],stop,line))
                 self.armed_d=None
             else:
                 p['extreme']=min(p['extreme'],row['l']) if p['side']==1 else max(p['extreme'],row['h'])
@@ -390,6 +413,7 @@ class VideoStrategy(Strategy):
         if valid:self.wave_valid_count+=1
         features={'wave_valid':valid,'wave_score':score,'fib_ratios':ratios,
                   'wave_phase':phase,'wave_pivot':pivot_ts,
+                  'c_entry':self.config.c_entry,'c_stop':self.config.c_stop,'d_entry':self.config.d_entry,
                   'dow_dir':hdir,'signal_side':side,'wave_mode':self.config.wave_mode,
                   'wave1_range_candidate':wave1['candidate'], 'range_probe':wave1['probe'],
                   'upper_wick_cluster':upper>=3,'lower_wick_cluster':lower>=3}
@@ -438,6 +462,9 @@ def main():
                     help='Primary sequence uses structural Elliott confirmation; observe is a diagnostic ablation')
     ap.add_argument('--max-spread',type=float,default=0.0,
                     help='Optional price-unit ceiling; 0 uses native observed Bid/Ask costs without a fixed filter')
+    ap.add_argument('--c-entry',choices=('retest','breakout'),default='retest')
+    ap.add_argument('--c-stop',choices=('retest','wave_pivot'),default='retest')
+    ap.add_argument('--d-entry',choices=('retest','flip'),default='retest')
     args=ap.parse_args()
     if args.elliott_gate:
         if args.wave_mode!='structural':ap.error('--elliott-gate cannot be combined with --wave-mode')
@@ -470,7 +497,8 @@ def main():
     strat=VideoStrategy(Config(instrument_id=inst.id,
                  m1=BarType.from_str(f'{inst.id.value}-1-MINUTE-BID-INTERNAL'),
                  m15=BarType.from_str(f'{inst.id.value}-15-MINUTE-BID-INTERNAL'),
-                 size=Decimal('1'),wave_mode=args.wave_mode,max_spread=args.max_spread))
+                 size=Decimal('1'),wave_mode=args.wave_mode,max_spread=args.max_spread,
+                 c_entry=args.c_entry,c_stop=args.c_stop,d_entry=args.d_entry))
     engine.add_strategy(strat);engine.run()
     report=engine.trader.generate_positions_report()
     trades=extract_trades(report,'XAUUSD','M1')
@@ -482,7 +510,8 @@ def main():
     m['EV_USD']=m['NetProfit']/m['N'] if m['N'] else None
     m['Return_pct']=m['NetProfit']/1000*100
     m['MaxDD_kind']='REALIZED_CLOSE_ONLY'
-    by={name:metrics([t for t in trades if t['setup']==name],initial=1000,days=days) for name in 'ABCD'}
+    by={name:metrics([t for t in trades if t['setup']==name],initial=1000,days=days)
+        for name in ('A','B','C','D','C_BREAK','C_PIVOT','D_FLIP')}
     if len(strat.filled_features)!=len(trades):
         raise SystemExit('POSITION_FEATURE_MATCH_FAIL_CLOSED')
     for trade,feature in zip(trades,strat.filled_features):
@@ -493,6 +522,8 @@ def main():
         trade['dow_dir']=feature['dow_dir']
         trade['signal_side']=feature['signal_side']
         trade['wave_mode']=feature['wave_mode']
+        for key in ('c_entry','c_stop','d_entry'):
+            trade[key]=feature[key]
         trade['wave_phase']=feature['wave_phase']
         trade['wave_pivot']=feature['wave_pivot']
     if args.wave_mode != 'observe' and any(not t['wave_valid'] for t in trades):
@@ -516,7 +547,8 @@ def main():
       period=dict(start=manifest['start'],days=days,end_exclusive=manifest['end_exclusive']),
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
                   wave_mode=args.wave_mode,decision_order='DOW_HTF > ELLIOTT_M1 > VIDEO_ABCD',
-                  max_spread=args.max_spread,reward_risk=2.0),
+                  max_spread=args.max_spread,reward_risk=2.0,
+                  c_entry=args.c_entry,c_stop=args.c_stop,d_entry=args.d_entry),
       overall=m,by_setup=by,by_wave_phase=phase_metrics,by_feature=feature_metrics,
       stages=dict(strat.stage_counts),signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
       wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),

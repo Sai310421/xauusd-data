@@ -110,3 +110,5 @@ def main():
  out={"verification":"RAW_BIDASK_DISCOVERY","source":"Dukascopy BI5","raw_ticks":len(t),"bar_inputs":"derived directly from raw bid/ask ticks; no external OHLC fallback","period":{"start":a.start,"business_days":a.days},**s,"engine_breakdown":by,"limitations":["clean-room reconstruction; vendor private logic not available","not MT5 native fill parity","AI engine is proxy logic"]}
  (OUT/"summary.json").write_text(json.dumps(out,indent=2)); print(json.dumps(out,indent=2))
 if __name__=="__main__":main()
+
+# workflow-trigger: v1.01

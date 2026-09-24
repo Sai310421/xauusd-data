@@ -57,6 +57,13 @@ jobs:
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/baseline"
+      - name: Backtest Elliott-gated variant on Nautilus QuoteTicks
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-gated" \
+            --elliott-gate
       - name: Record immutable provenance
         if: always()
         run: |

@@ -256,7 +256,8 @@ class VideoStrategy(Strategy):
             return
         price=ask if p['side']==1 else bid
         if ask-bid>.40 or (price-p['stop'])*p['side']<=.05:
-            self.pending_entry=None;self.denials['tick_or_stop']+=1
+            self.denials['spread_gt_0_40' if ask-bid>.40 else 'invalid_stop_distance']+=1
+            self.pending_entry=None
             return
         p['target']=price+p['side']*2.0*abs(price-p['stop'])
         self.entry_pending=True

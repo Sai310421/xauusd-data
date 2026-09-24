@@ -40,7 +40,7 @@ class Config(StrategyConfig, frozen=True):
     m1: BarType
     m15: BarType
     size: Decimal = Decimal('1')
-    elliott_gate: bool = False
+    wave_mode: str = 'structural'
     max_spread: float = 0.40
 
 
@@ -90,6 +90,16 @@ def elliott(ss: list[tuple[int, int, float]], side: int) -> tuple[bool, float, t
     r2, e3, r4 = (p[1]-p[2])/w1, w3/w1, (p[3]-p[4])/w3
     score = float(.5 <= r2 <= .618) + float(1.618 <= e3 <= 2.618) + float(abs(r4-.384) <= .10)
     return True, score, (r2, e3, r4)
+
+
+def wave_context(pivots: list[tuple[int, int, float]], dow_dir: int, mode: str):
+    """Second-stage direction admission after a confirmed nonzero Dow context."""
+    if dow_dir not in (-1, 1):
+        return {}, set()
+    waves = {side: elliott(pivots, side) for side in (dow_dir, -dow_dir)}
+    allowed = {side for side,(valid,score,_) in waves.items()
+               if mode == 'observe' or (valid and (mode == 'structural' or score >= 2))}
+    return waves, allowed
 
 
 def range_wave1(bars: list[dict], pivots: list[tuple[int, int, float]], atr: float,
@@ -146,6 +156,7 @@ class VideoStrategy(Strategy):
         self.wick_counts = Counter()
         self.wave_scores = Counter()
         self.wave_valid_count = 0
+        self.stage_counts = Counter()
         self.filled_features = []
         self.current_features = None
         self.spread_denials = 0
@@ -247,9 +258,27 @@ class VideoStrategy(Strategy):
         self.observe_wick_targets(row,atr,ld['highs'][-1][1] if ld['highs'] else None,
                                   ld['lows'][-1][1] if ld['lows'] else None,upper,lower)
         if self.open_side or self.entry_pending or self.pending_entry:return
+        # Stage 1: frozen HTF Dow structure determines the permitted context.
+        if hdir == 0:
+            self.armed_c = None
+            self.armed_d = None
+            return
+        self.stage_counts['dow_bars'] += 1
+        # Stage 2: score both directional wave contexts before video logic runs.
+        # Reversal D uses the direction opposite to the current HTF Dow trend.
+        wave,allowed = wave_context(s1,hdir,self.config.wave_mode)
+        if not allowed:
+            self.stage_counts['elliott_blocked_bars'] += 1
+            self.armed_c = None
+            self.armed_d = None
+            return
+        self.stage_counts['elliott_pass_bars'] += 1
+        if hdir not in allowed:self.armed_c=None
+        if -hdir not in allowed:self.armed_d=None
+        # Stage 3: only directions admitted above may arm or trigger A/B/C/D.
         picks = []
         # A: historical bullish supply candle + bearish impulse + return/rejection.
-        if hdir == -1 and row['c'] < bs[-2]['l']-.02:
+        if hdir == -1 and -1 in allowed and row['c'] < bs[-2]['l']-.02:
             for j in range(len(bs)-5,max(len(bs)-26,-1),-1):
                 if j <= 2: break
                 b, impulse = bs[j], bs[j+1]
@@ -263,13 +292,13 @@ class VideoStrategy(Strategy):
                     picks.append(('A',-1,max(reject['h'],b['h'])+.03,b['o']))
                     break
         # B: weak consolidation after a downward impulse, break below its low.
-        if hdir == -1 and len(bs) >= 17:
+        if hdir == -1 and -1 in allowed and len(bs) >= 17:
             middle=bs[-13:-1]; imp=bs[-14]
             hi=max(b['h'] for b in middle);lo=min(b['l'] for b in middle)
             if imp['o']-imp['c'] >= atr and hi-lo < 1.5*atr and hi-imp['l'] < 1.5*atr and row['c'] < lo-.02 and row['c'] < row['o']:
                 picks.append(('B',-1,hi+.03,lo))
         # C: arm on an older confirmed pivot high breakout; retest on a later bar.
-        if hdir != 1:
+        if hdir != 1 or 1 not in allowed:
             self.armed_c=None
         elif self.armed_c:
             p=self.armed_c
@@ -285,7 +314,9 @@ class VideoStrategy(Strategy):
             if ix < len(bs)-2 and bs[-2]['c']<=res+.02 and row['c']>res+.02:
                 self.armed_c=dict(ts=row['ts'],level=res,extreme=row['l'])
         # D: fixed line through 2 confirmed equal-kind pivots, break and retest.
-        if self.armed_d:
+        if -hdir not in allowed:
+            self.armed_d=None
+        elif self.armed_d:
             p=self.armed_d
             line=p['level']+p['slope']*(row['ts']-p['ts'])/1_000_000_000
             if hdir != -p['side'] or row['ts']-p['ts']>15*60*1_000_000_000 or (row['c']-line)*p['side']<-.02:
@@ -296,7 +327,7 @@ class VideoStrategy(Strategy):
                 self.armed_d=None
             else:
                 p['extreme']=min(p['extreme'],row['l']) if p['side']==1 else max(p['extreme'],row['h'])
-        elif hdir in (-1,1):
+        elif hdir in (-1,1) and -hdir in allowed:
             side=-hdir
             anchors=ld['highs'] if side==1 else ld['lows']
             if len(anchors)>=2:
@@ -311,14 +342,13 @@ class VideoStrategy(Strategy):
             if len(picks)>1:self.denials['ambiguous']+=1
             return
         name,side,stop,level=picks[0]
-        valid,score,ratios=elliott(s1,side)
+        valid,score,ratios=wave[side]
         self.signal_count[name]+=1
+        self.stage_counts['video_signals']+=1
         self.wave_scores[str(int(score)) if valid else 'invalid']+=1
         if valid:self.wave_valid_count+=1
-        if self.config.elliott_gate and (not valid or score<2):
-            self.denials['wave']+=1
-            return
         features={'wave_valid':valid,'wave_score':score,'fib_ratios':ratios,
+                  'dow_dir':hdir,'signal_side':side,'wave_mode':self.config.wave_mode,
                   'wave1_range_candidate':wave1['candidate'], 'range_probe':wave1['probe'],
                   'upper_wick_cluster':upper>=3,'lower_wick_cluster':lower>=3}
         self.pending_entry=dict(setup=name,side=side,stop=stop,signal_ts=row['ts'],level=level,
@@ -362,9 +392,14 @@ def main():
     ap.add_argument('--catalog',required=True)
     ap.add_argument('--out',required=True)
     ap.add_argument('--elliott-gate',action='store_true')
+    ap.add_argument('--wave-mode',choices=('structural','fib2','observe'),default='structural',
+                    help='Primary sequence uses structural Elliott confirmation; observe is a diagnostic ablation')
     ap.add_argument('--max-spread',type=float,default=.40,
                     help='MQ5 entry spread ceiling in quoted price units; 0 disables for sensitivity study')
     args=ap.parse_args()
+    if args.elliott_gate:
+        if args.wave_mode!='structural':ap.error('--elliott-gate cannot be combined with --wave-mode')
+        args.wave_mode='fib2'  # compatibility with earlier workflow invocations
     out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
     root=Path(args.catalog)
     manifest=json.loads((root/'catalog_manifest.json').read_text())
@@ -393,7 +428,7 @@ def main():
     strat=VideoStrategy(Config(instrument_id=inst.id,
                  m1=BarType.from_str(f'{inst.id.value}-1-MINUTE-BID-INTERNAL'),
                  m15=BarType.from_str(f'{inst.id.value}-15-MINUTE-BID-INTERNAL'),
-                 size=Decimal('1'),elliott_gate=args.elliott_gate,max_spread=args.max_spread))
+                 size=Decimal('1'),wave_mode=args.wave_mode,max_spread=args.max_spread))
     engine.add_strategy(strat);engine.run()
     report=engine.trader.generate_positions_report()
     trades=extract_trades(report,'XAUUSD','M1')
@@ -413,6 +448,13 @@ def main():
                     'upper_wick_cluster','lower_wick_cluster'):
             trade[key]=feature[key]
         trade['fib_ratios']=json.dumps(feature['fib_ratios'])
+        trade['dow_dir']=feature['dow_dir']
+        trade['signal_side']=feature['signal_side']
+        trade['wave_mode']=feature['wave_mode']
+    if args.wave_mode != 'observe' and any(not t['wave_valid'] for t in trades):
+        raise SystemExit('WAVE_GATE_INVALID_TRADE_FAIL_CLOSED')
+    if args.wave_mode == 'fib2' and any(t['wave_score']<2 for t in trades):
+        raise SystemExit('FIB_GATE_INVALID_TRADE_FAIL_CLOSED')
     feature_metrics={key:{str(value):metrics([t for t in trades if t[key]==value],initial=1000,days=days)
                    for value in (False,True)} for key in
                    ('wave_valid','wave1_range_candidate','range_probe','upper_wick_cluster','lower_wick_cluster')}
@@ -421,9 +463,10 @@ def main():
       raw_ticks=len(ticks),zero_size_quotes_repaired=repaired_sizes,
       period=dict(start=manifest['start'],days=days,end_exclusive=manifest['end_exclusive']),
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
-                  elliott_gate=args.elliott_gate,max_spread=args.max_spread,reward_risk=2.0),
+                  wave_mode=args.wave_mode,decision_order='DOW_HTF > ELLIOTT_M1 > VIDEO_ABCD',
+                  max_spread=args.max_spread,reward_risk=2.0),
       overall=m,by_setup=by,by_feature=feature_metrics,
-      signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
+      stages=dict(strat.stage_counts),signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
       wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),
       range_wave1_candidates=strat.wave_candidate_count,engine_tick_events=strat.tick_count,
       entry_spread_observed=dict(n=len(strat.entry_spreads),median=float(np.median(strat.entry_spreads)) if strat.entry_spreads else None,

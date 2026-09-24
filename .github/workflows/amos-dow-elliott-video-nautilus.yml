@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'research/amos_dow_elliott_video_nautilus.py'
+      - 'research/test_amos_dow_elliott_sequence.py'
       - '.github/workflows/amos-dow-elliott-video-nautilus.yml'
   workflow_dispatch:
 
@@ -34,6 +35,8 @@ jobs:
         run: python -m pip install 'nautilus_trader==1.230.0' pandas numpy pyarrow
       - name: Validate strategy syntax
         run: python -m py_compile research/amos_dow_elliott_video_nautilus.py
+      - name: Verify Dow Elliott decision order
+        run: python -m unittest research.test_amos_dow_elliott_sequence
       - name: Restore raw Bid/Ask catalog
         uses: actions/cache/restore@v4
         id: cache
@@ -51,26 +54,33 @@ jobs:
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
-      - name: MQ5 spread ceiling baseline
+      - name: Primary Dow Elliott video sequence with MQ5 spread ceiling
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/baseline"
-      - name: Raw spread sensitivity without entry ceiling
+      - name: Primary sequence with raw spread sensitivity
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/spread-unlimited" \
             --max-spread 0
-      - name: Backtest Elliott-gated variant on Nautilus QuoteTicks
+      - name: Strict Elliott Fib score sensitivity
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
-            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-gated" \
-            --max-spread 0 --elliott-gate
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-fib2" \
+            --max-spread 0 --wave-mode fib2
+      - name: No Elliott gate diagnostic ablation
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-observe-only" \
+            --max-spread 0 --wave-mode observe
       - name: Record immutable provenance
         if: always()
         run: |

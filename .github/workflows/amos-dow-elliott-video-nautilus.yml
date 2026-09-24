@@ -102,6 +102,13 @@ jobs:
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/d-dow-flip" \
             --d-entry flip
+      - name: D-only in-sample research screen
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/d-only" \
+            --video-setups D
       - name: Record immutable provenance
         if: always()
         run: |
@@ -115,5 +122,74 @@ jobs:
         with:
           name: amos-dow-elliott-video-${{ github.run_id }}
           path: results/amos-dow-elliott/${{ github.run_id }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  xauusd-oos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      RAW_CATALOG: catalog/raw_bidask_oos_20260826
+      RAW_START: '2026-08-26'
+      RAW_DAYS: '29'
+      RAW_WORKERS: '12'
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-08-26-29d-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pin NautilusTrader and signal dependencies
+        run: python -m pip install 'nautilus_trader==1.230.0' pandas numpy pyarrow
+      - name: Restore untouched later raw catalog
+        uses: actions/cache/restore@v4
+        id: cache
+        with:
+          path: catalog/raw_bidask_oos_20260826
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Build and verify later Raw Bid Ask period
+        run: |
+          set -euo pipefail
+          bash research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          m=json.loads((Path(os.environ['RAW_CATALOG'])/'catalog_manifest.json').read_text())
+          assert (m['start'],m['days'],m['end_exclusive'])==('2026-08-26',29,'2026-09-24')
+          PY
+      - name: Save later raw catalog
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask_oos_20260826
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Later-period frozen baseline
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott-oos/${GITHUB_RUN_ID}/baseline"
+      - name: Later-period frozen D-only screen
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott-oos/${GITHUB_RUN_ID}/d-only" \
+            --video-setups D
+      - name: Save OOS provenance
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "results/amos-dow-elliott-oos/${GITHUB_RUN_ID}"
+          git rev-parse HEAD > "results/amos-dow-elliott-oos/${GITHUB_RUN_ID}/git_sha.txt"
+          sha256sum research/amos_dow_elliott_video_nautilus.py > "results/amos-dow-elliott-oos/${GITHUB_RUN_ID}/strategy_sha256.txt"
+      - name: Upload later-period KPI and trades
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-dow-elliott-oos-${{ github.run_id }}
+          path: results/amos-dow-elliott-oos/${{ github.run_id }}/
           if-no-files-found: error
           retention-days: 90

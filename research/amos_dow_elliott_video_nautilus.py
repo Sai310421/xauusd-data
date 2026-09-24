@@ -45,6 +45,7 @@ class Config(StrategyConfig, frozen=True):
     c_entry: str = 'retest'
     c_stop: str = 'retest'
     d_entry: str = 'retest'
+    video_setups: str = 'ABCD'
 
 
 def swings(bars: list[dict], k: int = 2) -> list[tuple[int, int, float]]:
@@ -332,13 +333,13 @@ class VideoStrategy(Strategy):
                 self.armed_d=None
             return
         if hdir not in allowed:self.armed_c=None
-        if -hdir not in allowed and not (self.config.d_entry=='flip' and self.armed_d
+        if ('D' not in self.config.video_setups or -hdir not in allowed) and not (self.config.d_entry=='flip' and self.armed_d
                                          and hdir==self.armed_d['side'] and hdir in allowed):
             self.armed_d=None
         # Stage 3: only directions admitted above may arm or trigger A/B/C/D.
         picks = []
         # A: historical bullish supply candle + bearish impulse + return/rejection.
-        if hdir == -1 and -1 in allowed and row['c'] < bs[-2]['l']-.02:
+        if 'A' in self.config.video_setups and hdir == -1 and -1 in allowed and row['c'] < bs[-2]['l']-.02:
             for j in range(len(bs)-5,max(len(bs)-26,-1),-1):
                 if j <= 2: break
                 b, impulse = bs[j], bs[j+1]
@@ -352,13 +353,13 @@ class VideoStrategy(Strategy):
                     picks.append(('A',-1,max(reject['h'],b['h'])+.03,b['o']))
                     break
         # B: weak consolidation after a downward impulse, break below its low.
-        if hdir == -1 and -1 in allowed and len(bs) >= 17:
+        if 'B' in self.config.video_setups and hdir == -1 and -1 in allowed and len(bs) >= 17:
             middle=bs[-13:-1]; imp=bs[-14]
             hi=max(b['h'] for b in middle);lo=min(b['l'] for b in middle)
             if imp['o']-imp['c'] >= atr and hi-lo < 1.5*atr and hi-imp['l'] < 1.5*atr and row['c'] < lo-.02 and row['c'] < row['o']:
                 picks.append(('B',-1,hi+.03,lo))
         # C: arm on an older confirmed pivot high breakout; retest on a later bar.
-        if hdir != 1 or 1 not in allowed:
+        if 'C' not in self.config.video_setups or hdir != 1 or 1 not in allowed:
             self.armed_c=None
         elif self.config.c_entry=='breakout' and wave[1][3]==3:
             self.armed_c=None
@@ -385,7 +386,7 @@ class VideoStrategy(Strategy):
             if confirmed_c_breakout(bs,ix,res):
                 self.armed_c=dict(ts=row['ts'],level=res,extreme=row['l'])
         # D: fixed line through 2 confirmed equal-kind pivots, break and retest.
-        if -hdir not in allowed:
+        if 'D' not in self.config.video_setups or -hdir not in allowed:
             self.armed_d=None
         elif self.armed_d:
             p=self.armed_d
@@ -423,6 +424,7 @@ class VideoStrategy(Strategy):
         features={'wave_valid':valid,'wave_score':score,'fib_ratios':ratios,
                   'wave_phase':phase,'wave_pivot':pivot_ts,
                   'c_entry':self.config.c_entry,'c_stop':self.config.c_stop,'d_entry':self.config.d_entry,
+                  'video_setups':self.config.video_setups,
                   'dow_dir':hdir,'signal_side':side,'wave_mode':self.config.wave_mode,
                   'wave1_range_candidate':wave1['candidate'], 'range_probe':wave1['probe'],
                   'upper_wick_cluster':upper>=3,'lower_wick_cluster':lower>=3}
@@ -474,6 +476,8 @@ def main():
     ap.add_argument('--c-entry',choices=('retest','breakout'),default='retest')
     ap.add_argument('--c-stop',choices=('retest','wave_pivot'),default='retest')
     ap.add_argument('--d-entry',choices=('retest','flip'),default='retest')
+    ap.add_argument('--video-setups',choices=('ABCD','D'),default='ABCD',
+                    help='Prespecified D-only research arm; not a production selection')
     args=ap.parse_args()
     if args.elliott_gate:
         if args.wave_mode!='structural':ap.error('--elliott-gate cannot be combined with --wave-mode')
@@ -507,7 +511,8 @@ def main():
                  m1=BarType.from_str(f'{inst.id.value}-1-MINUTE-BID-INTERNAL'),
                  m15=BarType.from_str(f'{inst.id.value}-15-MINUTE-BID-INTERNAL'),
                  size=Decimal('1'),wave_mode=args.wave_mode,max_spread=args.max_spread,
-                 c_entry=args.c_entry,c_stop=args.c_stop,d_entry=args.d_entry))
+                 c_entry=args.c_entry,c_stop=args.c_stop,d_entry=args.d_entry,
+                 video_setups=args.video_setups))
     engine.add_strategy(strat);engine.run()
     report=engine.trader.generate_positions_report()
     trades=extract_trades(report,'XAUUSD','M1')
@@ -531,7 +536,7 @@ def main():
         trade['dow_dir']=feature['dow_dir']
         trade['signal_side']=feature['signal_side']
         trade['wave_mode']=feature['wave_mode']
-        for key in ('c_entry','c_stop','d_entry'):
+        for key in ('c_entry','c_stop','d_entry','video_setups'):
             trade[key]=feature[key]
         trade['wave_phase']=feature['wave_phase']
         trade['wave_pivot']=feature['wave_pivot']
@@ -557,7 +562,8 @@ def main():
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
                   wave_mode=args.wave_mode,decision_order='DOW_HTF > ELLIOTT_M1 > VIDEO_ABCD',
                   max_spread=args.max_spread,reward_risk=2.0,
-                  c_entry=args.c_entry,c_stop=args.c_stop,d_entry=args.d_entry),
+                  c_entry=args.c_entry,c_stop=args.c_stop,d_entry=args.d_entry,
+                  video_setups=args.video_setups),
       overall=m,by_setup=by,by_wave_phase=phase_metrics,by_feature=feature_metrics,
       stages=dict(strat.stage_counts),signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
       wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),

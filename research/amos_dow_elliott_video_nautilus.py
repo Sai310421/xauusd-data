@@ -41,6 +41,7 @@ class Config(StrategyConfig, frozen=True):
     m15: BarType
     size: Decimal = Decimal('1')
     elliott_gate: bool = False
+    max_spread: float = 0.40
 
 
 def swings(bars: list[dict], k: int = 2) -> list[tuple[int, int, float]]:
@@ -76,6 +77,8 @@ def elliott(ss: list[tuple[int, int, float]], side: int) -> tuple[bool, float, t
         if len(chosen) == 6:
             break
     chosen.reverse()
+    if len(chosen) == 6 and chosen[0][0] != -side:
+        chosen = chosen[1:]  # newest five pivots can identify P0..P4 before P5 exists
     if len(chosen) < 5 or chosen[0][0] != -side:
         return False, 0.0, ()
     p = [x[1] for x in chosen]
@@ -89,11 +92,41 @@ def elliott(ss: list[tuple[int, int, float]], side: int) -> tuple[bool, float, t
     return True, score, (r2, e3, r4)
 
 
+def range_wave1(bars: list[dict], pivots: list[tuple[int, int, float]], atr: float,
+                eps: float = .02, count: int = 12) -> dict:
+    """Match the MQ5 closed-bar range probe; P1 remains unconfirmed."""
+    if len(bars) < count + 5 or atr <= 0:
+        return {'candidate': False, 'probe': False}
+    history = bars[-count-1:-1]  # excludes signal bar, matches MQ5 shifts 2..N+1
+    floor = min(b['l'] for b in history)
+    ceiling = max(b['h'] for b in history)
+    left, right = len(bars)-count-1, len(bars)-2
+    hi = sum(1 for i, k, _ in pivots if left <= i <= right and k == 1 and i+2 <= right)
+    lo = sum(1 for i, k, _ in pivots if left <= i <= right and k == -1 and i+2 <= right)
+    qualified = ceiling-floor <= 1.8*atr and hi >= 2 and lo >= 2
+    return {'candidate': qualified and bars[-1]['c'] > ceiling+eps,
+            'probe': qualified and bars[-1]['h'] >= ceiling-eps and bars[-1]['c'] <= ceiling+eps,
+            'floor': floor, 'ceiling': ceiling, 'high_pivots': hi, 'low_pivots': lo}
+
+
+def wick_cluster(bars: list[dict], upper: bool, level: float, atr: float,
+                 tick_size: float = .001, lookback: int = 40) -> int:
+    """Historical wick-only excursions, excluding the current signal bar."""
+    tol = max(2*tick_size, .10*atr)
+    count, last = 0, -1000
+    for i, bar in enumerate(bars[max(0, len(bars)-lookback-1):-1]):
+        body_hi, body_lo = max(bar['o'],bar['c']), min(bar['o'],bar['c'])
+        in_wick = (bar['h'] >= level-tol and body_hi < level-tol) if upper else (bar['l'] <= level+tol and body_lo > level+tol)
+        if in_wick and i-last > 1:
+            count, last = count+1, i
+    return count
+
+
 class VideoStrategy(Strategy):
     def __init__(self, config: Config):
         super().__init__(config)
-        self.b1 = deque(maxlen=240)
-        self.b15 = deque(maxlen=240)
+        self.b1 = deque(maxlen=180)
+        self.b15 = deque(maxlen=180)
         self.armed_c = None
         self.armed_d = None
         self.pending_entry = None
@@ -108,6 +141,13 @@ class VideoStrategy(Strategy):
         self.last_bid = self.last_ask = None
         self.tick_count = 0
         self.wave_candidate_count = 0
+        self.range_probe_count = 0
+        self.wick_counts = Counter()
+        self.wave_scores = Counter()
+        self.wave_valid_count = 0
+        self.filled_features = []
+        self.current_features = None
+        self.spread_denials = 0
 
     @staticmethod
     def f(x):
@@ -135,12 +175,15 @@ class VideoStrategy(Strategy):
             self.stop_px = self.pending_entry['stop']
             self.target_px = self.pending_entry['target']
             self.current_setup = self.pending_entry['setup']
+            self.current_features = self.pending_entry['features']
             self.pending_entry = None
             self.entry_pending = False
 
     def on_position_closed(self, event):
         self.completed.append(self.current_setup)
+        self.filled_features.append(self.current_features)
         self.current_setup = None
+        self.current_features = None
         self.open_side = 0
         self.stop_px = self.target_px = None
         self.exit_pending = False
@@ -159,8 +202,8 @@ class VideoStrategy(Strategy):
             return
         self.b1.append(row)
         bs = list(self.b1)
-        ht = [b for b in self.b15 if b['ts'] < row['ts']]
-        if len(bs) < 50 or len(ht) < 15 or self.open_side or self.entry_pending or self.pending_entry:
+        ht = [b for b in self.b15 if b['ts'] <= row['ts']]
+        if len(bs) < 180 or len(ht) < 180 or self.open_side or self.entry_pending or self.pending_entry:
             return
         tr = [max(bs[i]['h']-bs[i]['l'], abs(bs[i]['h']-bs[i-1]['c']), abs(bs[i]['l']-bs[i-1]['c'])) for i in range(len(bs)-14,len(bs))]
         atr = float(np.mean(tr))
@@ -169,13 +212,17 @@ class VideoStrategy(Strategy):
         s1, s15 = swings(bs), swings(ht)
         ldir, ld = dow(s1)
         hdir, _ = dow(s15)
-        if len(bs) >= 14 and max(x['h'] for x in bs[-13:-1])-min(x['l'] for x in bs[-13:-1]) < 1.8*atr:
-            if row['c'] > max(x['h'] for x in bs[-13:-1])+.02:
-                self.wave_candidate_count += 1
+        wave1=range_wave1(bs,s1,atr)
+        if wave1['candidate']:self.wave_candidate_count+=1
+        if wave1['probe']:self.range_probe_count+=1
+        upper=wick_cluster(bs,True,ld['highs'][-1][1],atr) if ld['highs'] else 0
+        lower=wick_cluster(bs,False,ld['lows'][-1][1],atr) if ld['lows'] else 0
+        if upper>=3:self.wick_counts['upper']+=1
+        if lower>=3:self.wick_counts['lower']+=1
         picks = []
         # A: historical bullish supply candle + bearish impulse + return/rejection.
         if hdir == -1 and row['c'] < bs[-2]['l']-.02:
-            for j in range(len(bs)-6,max(len(bs)-27,-1),-1):
+            for j in range(len(bs)-5,max(len(bs)-26,-1),-1):
                 if j <= 2: break
                 b, impulse = bs[j], bs[j+1]
                 if b['c'] <= b['o'] or impulse['o']-impulse['c'] < atr:
@@ -238,10 +285,16 @@ class VideoStrategy(Strategy):
         name,side,stop,level=picks[0]
         valid,score,ratios=elliott(s1,side)
         self.signal_count[name]+=1
+        self.wave_scores[str(int(score)) if valid else 'invalid']+=1
+        if valid:self.wave_valid_count+=1
         if self.config.elliott_gate and (not valid or score<2):
             self.denials['wave']+=1
             return
-        self.pending_entry=dict(setup=name,side=side,stop=stop,signal_ts=row['ts'],level=level,wave_score=score)
+        features={'wave_valid':valid,'wave_score':score,'fib_ratios':ratios,
+                  'wave1_range_candidate':wave1['candidate'], 'range_probe':wave1['probe'],
+                  'upper_wick_cluster':upper>=3,'lower_wick_cluster':lower>=3}
+        self.pending_entry=dict(setup=name,side=side,stop=stop,signal_ts=row['ts'],level=level,
+                                wave_score=score,features=features)
 
     def on_quote_tick(self, tick):
         self.tick_count+=1
@@ -257,6 +310,9 @@ class VideoStrategy(Strategy):
         if p is None or self.entry_pending or int(tick.ts_event)<=p['signal_ts']:
             return
         price=ask if p['side']==1 else bid
+        if self.config.max_spread>0 and ask-bid>self.config.max_spread:
+            self.pending_entry=None;self.denials['spread']+=1
+            return
         if (price-p['stop'])*p['side']<=.05:
             self.denials['invalid_stop_distance']+=1
             self.pending_entry=None
@@ -275,6 +331,8 @@ def main():
     ap.add_argument('--catalog',required=True)
     ap.add_argument('--out',required=True)
     ap.add_argument('--elliott-gate',action='store_true')
+    ap.add_argument('--max-spread',type=float,default=.40,
+                    help='MQ5 entry spread ceiling in quoted price units; 0 disables for sensitivity study')
     args=ap.parse_args()
     out=Path(args.out);out.mkdir(parents=True,exist_ok=True)
     root=Path(args.catalog)
@@ -304,7 +362,7 @@ def main():
     strat=VideoStrategy(Config(instrument_id=inst.id,
                  m1=BarType.from_str(f'{inst.id.value}-1-MINUTE-BID-INTERNAL'),
                  m15=BarType.from_str(f'{inst.id.value}-15-MINUTE-BID-INTERNAL'),
-                 size=Decimal('1'),elliott_gate=args.elliott_gate))
+                 size=Decimal('1'),elliott_gate=args.elliott_gate,max_spread=args.max_spread))
     engine.add_strategy(strat);engine.run()
     report=engine.trader.generate_positions_report()
     trades=extract_trades(report,'XAUUSD','M1')
@@ -317,19 +375,32 @@ def main():
     m['Return_pct']=m['NetProfit']/1000*100
     m['MaxDD_kind']='REALIZED_CLOSE_ONLY'
     by={name:metrics([t for t in trades if t['setup']==name],initial=1000,days=days) for name in 'ABCD'}
+    if len(strat.filled_features)!=len(trades):
+        raise SystemExit('POSITION_FEATURE_MATCH_FAIL_CLOSED')
+    for trade,feature in zip(trades,strat.filled_features):
+        for key in ('wave_valid','wave_score','wave1_range_candidate','range_probe',
+                    'upper_wick_cluster','lower_wick_cluster'):
+            trade[key]=feature[key]
+        trade['fib_ratios']=json.dumps(feature['fib_ratios'])
+    feature_metrics={key:{str(value):metrics([t for t in trades if t[key]==value],initial=1000,days=days)
+                   for value in (False,True)} for key in
+                   ('wave_valid','wave1_range_candidate','range_probe','upper_wick_cluster','lower_wick_cluster')}
     summary=dict(status='COMPLETED',verification_level='NAUTILUS_RAW_BIDASK_SIGNAL_GATE',
       version=nautilus_trader.__version__,source='Dukascopy via Nautilus ParquetDataCatalog',
       raw_ticks=len(ticks),zero_size_quotes_repaired=repaired_sizes,
       period=dict(start=manifest['start'],days=days,end_exclusive=manifest['end_exclusive']),
       config=dict(symbol='XAUUSD',signal_tf='M1',trend_tf='M15',size='1',initial_usd=1000,leverage='2000',
-                  elliott_gate=args.elliott_gate,reward_risk=2.0),
-      overall=m,by_setup=by,signals=dict(strat.signal_count),denials=dict(strat.denials),
+                  elliott_gate=args.elliott_gate,max_spread=args.max_spread,reward_risk=2.0),
+      overall=m,by_setup=by,by_feature=feature_metrics,
+      signals=dict(strat.signal_count),wave_scores=dict(strat.wave_scores),
+      wave_valid_signals=strat.wave_valid_count,denials=dict(strat.denials),
       range_wave1_candidates=strat.wave_candidate_count,engine_tick_events=strat.tick_count,
+      range_probes=strat.range_probe_count,wick_cluster_bars=dict(strat.wick_counts),
       bar_tail_counts=dict(m1=len(strat.b1),m15=len(strat.b15)),
-      limitations=['MQ5 port comparison pending; standalone Python research strategy, not MQL5 binary execution',
+      limitations=['MQ5 port comparison pending; signal feature definitions aligned but MT5 compiled parity not verified',
                    'Realized closed-equity MaxDD; synchronized floating MaxDD not implemented',
                    'Raw Bid/Ask native spread; explicit fee, latency and slippage models not implemented',
-                   'Fixed 1-unit quantity; lot-step and risk sizing parity pending',
+                   'Fixed 1-unit quantity; MQ5 lot-step and risk sizing parity pending',
                    'No OOS claim; repeatability and setup mapping require separate validation'])
     pd.DataFrame(trades).to_csv(out/'trades.csv',index=False)
     def finite(value):

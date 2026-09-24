@@ -51,19 +51,26 @@ jobs:
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
-      - name: Backtest Dow Elliott video setup on Nautilus QuoteTicks
+      - name: MQ5 spread ceiling baseline
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/baseline"
+      - name: Raw spread sensitivity without entry ceiling
+        run: |
+          set -euo pipefail
+          python -m research.amos_dow_elliott_video_nautilus \
+            --catalog "$RAW_CATALOG" \
+            --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/spread-unlimited" \
+            --max-spread 0
       - name: Backtest Elliott-gated variant on Nautilus QuoteTicks
         run: |
           set -euo pipefail
           python -m research.amos_dow_elliott_video_nautilus \
             --catalog "$RAW_CATALOG" \
             --out "results/amos-dow-elliott/${GITHUB_RUN_ID}/elliott-gated" \
-            --elliott-gate
+            --max-spread 0 --elliott-gate
       - name: Record immutable provenance
         if: always()
         run: |

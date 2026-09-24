@@ -103,8 +103,8 @@ def main():
  OUT.mkdir(parents=True,exist_ok=True); t=load(days(a.start,a.days),a.workers)
  m5=prep(bars(t,"5min"));m15=prep(bars(t,"15min"));h1=prep(bars(t,"1h"));d1=prep(bars(t,"1D"))
  sig=signals(m5,m15,h1,d1);
-  if a.engine!="ALL": sig=[z for z in sig if (z[1].startswith("NINE") if a.engine=="NINE" else z[1]==a.engine)]
-  tr,s=simulate(t,sig); tr.to_csv(OUT/"trades.csv",index=False)
+ if a.engine!="ALL": sig=[z for z in sig if (z[1].startswith("NINE") if a.engine=="NINE" else z[1]==a.engine)]
+ tr,s=simulate(t,sig); tr.to_csv(OUT/"trades.csv",index=False)
  by={}
  if len(tr):
   for e,g in tr.groupby("engine"):

@@ -1,0 +1,36 @@
+name: AMOS GOLD 5IN1 Engine-Isolated RawTick Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [bt/amos-gold-5in1-v101]
+    paths:
+      - research/amos_gold_5in1_v101_rawtick_bt.py
+      - .github/workflows/amos-gold-5in1-engine-isolated.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        engine: [GRAND, AI, FLASH, LIMIT, NINE, ALL]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install pandas numpy 'nautilus_trader==1.230.0'
+      - name: Validate ${{ matrix.engine }} on identical Raw BidAsk window
+        run: python research/amos_gold_5in1_v101_rawtick_bt.py --start 2026-07-27 --days 21 --workers 48 --engine ${{ matrix.engine }}
+      - name: Preserve engine KPI artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-gold-5in1-${{ matrix.engine }}-rawtick
+          path: results/amos_gold_5in1_v101/
+          if-no-files-found: warn
+          retention-days: 90

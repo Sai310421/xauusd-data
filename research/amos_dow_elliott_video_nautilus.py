@@ -119,6 +119,7 @@ class VideoStrategy(Strategy):
 
     def on_order_rejected(self, event):
         self.denials['rejected'] += 1
+        self.denials['reject_reason: '+str(getattr(event, 'reason', 'unknown'))] += 1
         self.entry_pending = False
         self.pending_entry = None
 
@@ -255,8 +256,8 @@ class VideoStrategy(Strategy):
         if p is None or self.entry_pending or int(tick.ts_event)<=p['signal_ts']:
             return
         price=ask if p['side']==1 else bid
-        if ask-bid>.40 or (price-p['stop'])*p['side']<=.05:
-            self.denials['spread_gt_0_40' if ask-bid>.40 else 'invalid_stop_distance']+=1
+        if (price-p['stop'])*p['side']<=.05:
+            self.denials['invalid_stop_distance']+=1
             self.pending_entry=None
             return
         p['target']=price+p['side']*2.0*abs(price-p['stop'])

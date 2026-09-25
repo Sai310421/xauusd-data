@@ -19,7 +19,7 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
  ParquetDataCatalog.query_quote_ticks=_q
 class Cfg(StrategyConfig,frozen=True):
  instrument_id: object
- base_qty: Decimal=Decimal('1'); first_mult:float=1.4666666667; later_mult:float=1.5; max_layers:int=10
+ base_qty: Decimal=Decimal('0.30'); contract_units_per_lot:Decimal=Decimal('100'); first_mult:float=1.4666666667; later_mult:float=1.5; max_layers:int=10
  add_distance:float=3.0; basket_offset:float=.8; emergency_distance:float=9.0
 def floor_step(x,step=.01): return math.floor((x+1e-12)/step)*step
 def layer_lot(base,n,c):
@@ -31,7 +31,7 @@ class TickScalperCandidate(Strategy):
   super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0
  def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id)
  def _submit(self,side,lot):
-  inst=self.cache.instrument(self.config.instrument_id);o=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if side>0 else OrderSide.SELL,quantity=inst.make_qty(Decimal(str(lot))));self.submit_order(o)
+  inst=self.cache.instrument(self.config.instrument_id);o=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if side>0 else OrderSide.SELL,quantity=inst.make_qty(Decimal(str(lot))*self.config.contract_units_per_lot));self.submit_order(o)
  def _be(self):
   q=sum(l for _,l in self.entries);return sum(p*l for p,l in self.entries)/q
  def _open(self,side):
@@ -72,6 +72,6 @@ def main():
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
  st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot))));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'PLACEHOLDER_ALTERNATING_SIDE',**st.summary()}
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'PLACEHOLDER_ALTERNATING_SIDE','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

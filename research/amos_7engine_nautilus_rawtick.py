@@ -67,3 +67,5 @@ def main():
  rep={"runtime":"NautilusTrader","nautilus_version":getattr(nautilus_trader,"__version__","unknown"),"data":"Dukascopy XAUUSD Raw Bid/Ask BI5","raw_ticks":len(t),"period":{"start":a.start,"business_days":a.days},"capital_usd":1000,"engines":rows,"fidelity":{"TREND_FOLLOW":"source-logic port; initial adapter omits 60-bar time exit and dynamic 0.25% risk sizing","EA31337_LIBRE":"screening proxy only: repo default STRAT_MA H1+H4 confirmed, exact dependency strategy parity pending","GRAND_AI_FLASH_LIMIT_NINE":"existing clean-room reconstruction; vendor private logic unavailable"},"engine_mode":"NautilusTrader runtime + Raw BidAsk deterministic adapter; native BacktestEngine parity gate pending"}
  (out/"summary.json").write_text(json.dumps(rep,indent=2));print(json.dumps(rep,indent=2))
 if __name__=="__main__":main()
+
+# workflow-trigger: v1

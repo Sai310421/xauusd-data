@@ -30,3 +30,4 @@ jobs:
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true
+ 

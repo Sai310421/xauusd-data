@@ -1,0 +1,36 @@
+name: AMOS 7-Engine Nautilus RawTick BT
+on:
+  push:
+    branches: [ "bt/amos-7engine-nautilus-v1" ]
+    paths:
+      - "research/amos_7engine_nautilus_rawtick.py"
+      - ".github/workflows/amos-7engine-nautilus-rawtick.yml"
+  workflow_dispatch:
+jobs:
+  bt:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: 21d, start: "2026-07-27", days: 21 }
+          - { label: 90d, start: "2026-05-18", days: 90 }
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install Nautilus
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==1.230.0" pandas numpy
+      - name: Syntax gate
+        run: python -m py_compile research/amos_gold_5in1_v101_rawtick_bt.py research/amos_7engine_nautilus_rawtick.py
+      - name: Seven-engine Raw BidAsk BT
+        run: |
+          python research/amos_7engine_nautilus_rawtick.py --start "${{ matrix.start }}" --days "${{ matrix.days }}" --workers 8 --cache "/tmp/amos7_${{ matrix.label }}.pkl.gz" --out "results/amos_7engine/${{ matrix.label }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-7engine-${{ matrix.label }}
+          path: results/amos_7engine/${{ matrix.label }}/
+          retention-days: 90

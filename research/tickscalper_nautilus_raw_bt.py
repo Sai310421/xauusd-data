@@ -21,8 +21,8 @@ class Cfg(StrategyConfig,frozen=True):
  instrument_id: object
  base_qty: Decimal=Decimal('0.30'); contract_units_per_lot:Decimal=Decimal('100'); first_mult:float=1.4666666667; later_mult:float=1.5; max_layers:int=10
  add_distance:float=3.11; basket_offset:float=1.20; emergency_distance:float=3.80
- session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.80; cooldown_seconds:int=45
- er_window:int=64; risk_gate_from_depth:int=7; er_tail_threshold:float=0.33; spread_tail_threshold:float=0.70; trend_er_threshold:float=0.24; trend_target:float=1.20
+ session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.20; cooldown_seconds:int=45
+ er_window:int=64; risk_gate_from_depth:int=7; er_tail_threshold:float=0.33; spread_tail_threshold:float=0.70; trend_er_threshold:float=0.995; trend_target:float=1.20
 def floor_step(x,step=.01): return math.floor((x+1e-12)/step)*step
 def layer_lot(base,n,c):
  if n==0:return base
@@ -70,10 +70,9 @@ class TickScalperCandidate(Strategy):
     if sig:self._open(sig)
    return
   mark=self.bid if self.side>0 else self.ask;s=self.side;be=self._be()
-  target=self.config.trend_target if self.mode=='TREND' else self.config.basket_offset
-  if (mark-be)*s>=target:self._close('TREND' if self.mode=='TREND' else 'BASKET');return
+  if (mark-be)*s>=self.config.basket_offset:self._close('BASKET');return
   last=self.entries[-1][0];adverse=(last-mark) if s>0 else (mark-last)
-  if self.mode=='RANGE' and adverse>=self.config.add_distance and len(self.entries)<self.config.max_layers:
+  if adverse>=self.config.add_distance and len(self.entries)<self.config.max_layers:
    if len(self.entries)>=self.config.risk_gate_from_depth and len(self.mid_hist)>=3 and len(self.entries) not in self.risk_seen_depths:
     net=abs(self.mid_hist[-1]-self.mid_hist[0]);path=sum(abs(b-a) for a,b in zip(self.mid_hist,self.mid_hist[1:]));er=net/path if path>0 else 0.;spread=self.ask-self.bid
     if er>=self.config.er_tail_threshold or spread>=self.config.spread_tail_threshold:self.risk_signals+=1
@@ -100,6 +99,6 @@ def main():
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
  st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot))));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'MATH_V9_P75_DUAL_ENGINE','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'PARITY_V10_L2_DOMINANT_ENTRY_CADENCE','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

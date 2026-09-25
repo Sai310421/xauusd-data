@@ -32,3 +32,4 @@ jobs:
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true
  
 
+

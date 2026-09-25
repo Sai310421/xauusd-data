@@ -2,9 +2,6 @@ name: TickScalper Candidate Nautilus Raw BidAsk BT
 on:
   push:
     branches: [research/tickscalper-nautilus-v1]
-    paths:
-      - 'research/tickscalper_nautilus_raw_bt.py'
-      - '.github/workflows/tickscalper-nautilus-raw-bt.yml'
   workflow_dispatch:
 permissions:
   contents: read

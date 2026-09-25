@@ -1,0 +1,33 @@
+name: AMOS XAU Scalper CleanRoom RawTick Audit
+on:
+  push:
+    branches: [ "bt/amos-xau-scalper-cleanroom-v100" ]
+    paths:
+      - "research/amos_xau_scalper_cleanroom_rawtick.py"
+      - ".github/workflows/amos-xau-scalper-cleanroom-rawtick.yml"
+  workflow_dispatch:
+jobs:
+  audit:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: 21d, start: "2026-07-27", days: 21 }
+          - { label: 90d, start: "2026-05-18", days: 90 }
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pandas numpy
+      - name: Syntax gate
+        run: python -m py_compile research/amos_xau_scalper_cleanroom_rawtick.py
+      - name: Raw BidAsk audit
+        run: |
+          python research/amos_xau_scalper_cleanroom_rawtick.py --start "${{ matrix.start }}" --days "${{ matrix.days }}" --workers 8 --cache "/tmp/amos_xau_scalper_${{ matrix.label }}.pkl.gz" --out "results/amos_xau_scalper_cleanroom/${{ matrix.label }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-xau-scalper-cleanroom-${{ matrix.label }}
+          path: results/amos_xau_scalper_cleanroom/${{ matrix.label }}/
+          retention-days: 90

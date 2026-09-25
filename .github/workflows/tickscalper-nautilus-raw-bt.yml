@@ -1,0 +1,35 @@
+name: TickScalper Candidate Nautilus Raw BidAsk BT
+on:
+  push:
+    branches: [research/tickscalper-nautilus-v1]
+    paths:
+      - 'research/tickscalper_nautilus_raw_bt.py'
+      - '.github/workflows/tickscalper-nautilus-raw-bt.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}" --base-lot 0.30 --raw-bidask-only
+      - name: Print KPI
+        if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

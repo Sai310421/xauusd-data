@@ -30,7 +30,7 @@ def layer_lot(base,n,c):
  return floor_step(base*(c.later_mult**n))
 class TickScalperCandidate(Strategy):
  def __init__(self,c):
-  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.mid_hist=[];self.risk_blocked_adds=0
+  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.mid_hist=[];self.risk_signals=0;self.risk_seen_depths=set();self.ticket_pnls=[]
  def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id)
  def _submit(self,side,lot):
   inst=self.cache.instrument(self.config.instrument_id);o=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if side>0 else OrderSide.SELL,quantity=inst.make_qty(Decimal(str(lot))*self.config.contract_units_per_lot));self.submit_order(o)
@@ -41,10 +41,11 @@ class TickScalperCandidate(Strategy):
  def _close(self,reason):
   px=self.bid if self.side>0 else self.ask;pnl=sum((px-p)*self.side*l for p,l in self.entries)
   for _,l in self.entries:self._submit(-self.side,l)
+  for p,l in self.entries:self.ticket_pnls.append((px-p)*self.side*l)
   self.trades.append({'pnl':pnl,'depth':len(self.entries),'reason':reason});self.net+=pnl;self.eq+=pnl;self.peak=max(self.peak,self.eq);self.mdd=max(self.mdd,(self.peak-self.eq)/self.peak*100)
   if pnl>0:self.gw+=pnl
   elif pnl<0:self.gl+=abs(pnl)
-  self.side=0;self.entries=[];self.last_close_ns=getattr(self,'now_ns',self.last_close_ns)
+  self.side=0;self.entries=[];self.risk_seen_depths=set();self.last_close_ns=getattr(self,'now_ns',self.last_close_ns)
  def _entry_signal(self):
   # Statement-constrained parity arm: only enter during observed active-hour band;
   # direction follows a short tick displacement proxy until exact ER/L1/L2 is fitted.
@@ -67,10 +68,10 @@ class TickScalperCandidate(Strategy):
   if (mark-be)*s>=self.config.basket_offset:self._close('BASKET');return
   last=self.entries[-1][0];adverse=(last-mark) if s>0 else (mark-last)
   if adverse>=self.config.add_distance and len(self.entries)<self.config.max_layers:
-   if len(self.entries)>=self.config.risk_gate_from_depth and len(self.mid_hist)>=3:
+   if len(self.entries)>=self.config.risk_gate_from_depth and len(self.mid_hist)>=3 and len(self.entries) not in self.risk_seen_depths:
     net=abs(self.mid_hist[-1]-self.mid_hist[0]);path=sum(abs(b-a) for a,b in zip(self.mid_hist,self.mid_hist[1:]));er=net/path if path>0 else 0.;spread=self.ask-self.bid
-    if er>=self.config.er_tail_threshold or spread>=self.config.spread_tail_threshold:
-     self.risk_blocked_adds+=1;return
+    if er>=self.config.er_tail_threshold or spread>=self.config.spread_tail_threshold:self.risk_signals+=1
+    self.risk_seen_depths.add(len(self.entries))
    lot=layer_lot(float(self.config.base_qty),len(self.entries),self.config);self._submit(s,lot);self.entries.append((self.ask if s>0 else self.bid,lot));self.max_layer=max(self.max_layer,len(self.entries));self.max_lots=max(self.max_lots,sum(l for _,l in self.entries));return
   if len(self.entries)>=self.config.max_layers:
    adverse2=(self.entries[-1][0]-mark) if s>0 else (mark-self.entries[-1][0])
@@ -78,7 +79,7 @@ class TickScalperCandidate(Strategy):
  def on_stop(self):
   if self.entries:self._close('EOD')
  def summary(self):
-  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'risk_blocked_adds':self.risk_blocked_adds}
+  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'risk_signals':self.risk_signals,'ticket_N':len(self.ticket_pnls),'ticket_WR_pct':100*sum(p>0 for p in self.ticket_pnls)/max(len(self.ticket_pnls),1),'ticket_PF':sum(p for p in self.ticket_pnls if p>0)/max(sum(-p for p in self.ticket_pnls if p<0),1e-12)}
 def fix_sizes(ticks):
  one=Quantity.from_int(1);out=[]
  for t in ticks:
@@ -93,6 +94,6 @@ def main():
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
  st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot))));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'MATH_EDGE_V5_ER_SPREAD_DEPTH_GATE','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'MATH_DIAGNOSTIC_V6_OBSERVE_ONLY_TICKET_KPI','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

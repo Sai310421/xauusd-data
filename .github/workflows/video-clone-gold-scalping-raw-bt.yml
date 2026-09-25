@@ -1,0 +1,26 @@
+name: Video Clone Gold Scalping Raw Tick BT
+on:
+  push:
+    branches:
+      - feature/video-clone-gold-scalping-raw-bt
+    paths:
+      - 'research/video_clone_gold_scalping_raw_bt_v01.py'
+      - '.github/workflows/video-clone-gold-scalping-raw-bt.yml'
+  workflow_dispatch:
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - name: Raw tick fail-closed backtest
+        run: python research/video_clone_gold_scalping_raw_bt_v01.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-clone-gold-scalping-raw-bt-v01
+          path: bt_results/video_clone_gold_scalping_v01/

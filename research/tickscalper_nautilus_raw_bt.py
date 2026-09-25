@@ -20,7 +20,8 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
 class Cfg(StrategyConfig,frozen=True):
  instrument_id: object
  base_qty: Decimal=Decimal('0.30'); contract_units_per_lot:Decimal=Decimal('100'); first_mult:float=1.4666666667; later_mult:float=1.5; max_layers:int=10
- add_distance:float=3.0; basket_offset:float=.8; emergency_distance:float=9.0
+ add_distance:float=3.11; basket_offset:float=.876; emergency_distance:float=3.80
+ session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.20
 def floor_step(x,step=.01): return math.floor((x+1e-12)/step)*step
 def layer_lot(base,n,c):
  if n==0:return base
@@ -43,9 +44,23 @@ class TickScalperCandidate(Strategy):
   if pnl>0:self.gw+=pnl
   elif pnl<0:self.gl+=abs(pnl)
   self.side=0;self.entries=[]
+ def _entry_signal(self):
+  # Statement-constrained parity arm: only enter during observed active-hour band;
+  # direction follows a short tick displacement proxy until exact ER/L1/L2 is fitted.
+  if not hasattr(self,'anchor'): self.anchor=(self.bid+self.ask)/2; return 0
+  mid=(self.bid+self.ask)/2; move=mid-self.anchor
+  if abs(move)>=self.config.entry_move:
+   self.anchor=mid; return 1 if move>0 else -1
+  return 0
  def on_quote_tick(self,t):
   self.bid=float(t.bid_price.as_double());self.ask=float(t.ask_price.as_double())
-  if not self.entries:self._open(1 if len(self.trades)%2==0 else -1);return
+  if not self.entries:
+   import datetime
+   h=datetime.datetime.fromtimestamp(t.ts_event/1e9,datetime.timezone.utc).hour
+   if self.config.session_start_hour<=h<self.config.session_end_hour:
+    sig=self._entry_signal()
+    if sig:self._open(sig)
+   return
   mark=self.bid if self.side>0 else self.ask;s=self.side;be=self._be()
   if (mark-be)*s>=self.config.basket_offset:self._close('BASKET');return
   last=self.entries[-1][0];adverse=(last-mark) if s>0 else (mark-last)
@@ -72,6 +87,6 @@ def main():
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
  st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot))));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'PLACEHOLDER_ALTERNATING_SIDE','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'STATEMENT_CONSTRAINED_SESSION_PLUS_TICK_DISPLACEMENT_V1','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

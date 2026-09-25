@@ -20,7 +20,7 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
 class Cfg(StrategyConfig,frozen=True):
  instrument_id: object
  base_qty: Decimal=Decimal('0.30'); contract_units_per_lot:Decimal=Decimal('100'); first_mult:float=1.4666666667; later_mult:float=1.5; max_layers:int=10
- add_distance:float=3.11; basket_offset:float=1.20; emergency_distance:float=3.80
+ add_distance:float=3.11; basket_offset:float=1.20; emergency_distance:float=3.60
  session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.80; cooldown_seconds:int=45
 def floor_step(x,step=.01): return math.floor((x+1e-12)/step)*step
 def layer_lot(base,n,c):
@@ -88,6 +88,6 @@ def main():
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
  st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot))));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'STATEMENT_CONSTRAINED_V4_V2_BASELINE','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'STATEMENT_CONSTRAINED_V4_TAIL_A','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

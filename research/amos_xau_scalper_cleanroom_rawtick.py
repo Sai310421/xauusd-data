@@ -82,3 +82,5 @@ def main():
  rep={"verification":"INDEPENDENT_RAW_BIDASK_FALSIFICATION","source":"Dukascopy BI5","raw_ticks":len(t),"period":{"start":a.start,"business_days":a.days},"public_claim":{"N":847,"WR_pct":77.3,"PF":2.31,"MaxDD_pct":4.2,"claim_period":"2023-01 to 2024-04"},"default_cleanroom":default,"best_in_sample_variant":best,"limits":["Original proprietary code not executed.","Exact ATR threshold and RSI-divergence definition are not specified in README.","Repository backtester references Yahoo GC=F futures 5m, while this audit uses XAUUSD spot raw bid/ask.","Best variant is in-sample exploration, not OOS evidence."]}
  (out/"summary.json").write_text(json.dumps(rep,indent=2));print(json.dumps(rep,indent=2))
 if __name__=="__main__":main()
+
+# workflow-trigger: audit-v1

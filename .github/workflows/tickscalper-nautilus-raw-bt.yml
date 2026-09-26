@@ -20,51 +20,123 @@ jobs:
           - name: baseline_none
             risk_mode: none
             risk_start_layer: 1
-            fp_threshold: 0.60
-            fp_block: 0.78
-            min_scale: 1.00
-          - name: fp_L9_055_075
-            risk_mode: firstpass
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 1.00
+            dd_s2: 1.00
+            dd_s3: 1.00
+            fdd_t1: 15
+            fdd_t2: 25
+            fdd_t3: 35
+            fdd_s1: 1.00
+            fdd_s2: 1.00
+            fdd_s3: 1.00
+          - name: dd_adaptive_15_25_35
+            risk_mode: dd_adaptive
+            risk_start_layer: 1
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 0.90
+            dd_s2: 0.75
+            dd_s3: 0.55
+            fdd_t1: 15
+            fdd_t2: 25
+            fdd_t3: 35
+            fdd_s1: 1.00
+            fdd_s2: 1.00
+            fdd_s3: 1.00
+          - name: floating_L9_15_25_35
+            risk_mode: floating_governor
             risk_start_layer: 9
-            fp_threshold: 0.55
-            fp_block: 0.75
-            min_scale: 0.85
-          - name: fp_L9_060_078
-            risk_mode: firstpass
-            risk_start_layer: 9
-            fp_threshold: 0.60
-            fp_block: 0.78
-            min_scale: 0.85
-          - name: fp_L9_065_082
-            risk_mode: firstpass
-            risk_start_layer: 9
-            fp_threshold: 0.65
-            fp_block: 0.82
-            min_scale: 0.90
-          - name: fpbar_L9_060_078
-            risk_mode: fp_barrier
-            risk_start_layer: 9
-            fp_threshold: 0.60
-            fp_block: 0.78
-            min_scale: 0.90
-          - name: fp_L8_060_078
-            risk_mode: firstpass
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 1.00
+            dd_s2: 1.00
+            dd_s3: 1.00
+            fdd_t1: 15
+            fdd_t2: 25
+            fdd_t3: 35
+            fdd_s1: 0.90
+            fdd_s2: 0.75
+            fdd_s3: 0.55
+          - name: floating_L8_15_25_35
+            risk_mode: floating_governor
             risk_start_layer: 8
-            fp_threshold: 0.60
-            fp_block: 0.78
-            min_scale: 0.90
-          - name: fp_L8_065_082
-            risk_mode: firstpass
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 1.00
+            dd_s2: 1.00
+            dd_s3: 1.00
+            fdd_t1: 15
+            fdd_t2: 25
+            fdd_t3: 35
+            fdd_s1: 0.90
+            fdd_s2: 0.75
+            fdd_s3: 0.55
+          - name: floating_L9_20_30_38
+            risk_mode: floating_governor
+            risk_start_layer: 9
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 1.00
+            dd_s2: 1.00
+            dd_s3: 1.00
+            fdd_t1: 20
+            fdd_t2: 30
+            fdd_t3: 38
+            fdd_s1: 0.92
+            fdd_s2: 0.82
+            fdd_s3: 0.65
+          - name: combo_L9_15_25_35
+            risk_mode: dd_floating_combo
+            risk_start_layer: 9
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 0.95
+            dd_s2: 0.85
+            dd_s3: 0.70
+            fdd_t1: 15
+            fdd_t2: 25
+            fdd_t3: 35
+            fdd_s1: 0.90
+            fdd_s2: 0.75
+            fdd_s3: 0.55
+          - name: combo_L8_20_30_38
+            risk_mode: dd_floating_combo
             risk_start_layer: 8
-            fp_threshold: 0.65
-            fp_block: 0.82
-            min_scale: 0.90
+            dd_t1: 20
+            dd_t2: 30
+            dd_t3: 38
+            dd_s1: 0.97
+            dd_s2: 0.90
+            dd_s3: 0.75
+            fdd_t1: 20
+            fdd_t2: 30
+            fdd_t3: 38
+            fdd_s1: 0.92
+            fdd_s2: 0.82
+            fdd_s3: 0.65
           - name: barrier_L9_reference
             risk_mode: barrier
             risk_start_layer: 9
-            fp_threshold: 0.60
-            fp_block: 0.78
-            min_scale: 0.85
+            dd_t1: 15
+            dd_t2: 25
+            dd_t3: 35
+            dd_s1: 1.00
+            dd_s2: 1.00
+            dd_s3: 1.00
+            fdd_t1: 15
+            fdd_t2: 25
+            fdd_t3: 35
+            fdd_s1: 1.00
+            fdd_s2: 1.00
+            fdd_s3: 1.00
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,7 +150,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --risk-start-layer ${{ matrix.risk_start_layer }} --fp-threshold ${{ matrix.fp_threshold }} --fp-block-threshold ${{ matrix.fp_block }} --dd-soft-pct 20 --dd-barrier-k 1.2 --min-add-scale ${{ matrix.min_scale }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --risk-start-layer ${{ matrix.risk_start_layer }} --dd-t1 ${{ matrix.dd_t1 }} --dd-t2 ${{ matrix.dd_t2 }} --dd-t3 ${{ matrix.dd_t3 }} --dd-s1 ${{ matrix.dd_s1 }} --dd-s2 ${{ matrix.dd_s2 }} --dd-s3 ${{ matrix.dd_s3 }} --fdd-t1 ${{ matrix.fdd_t1 }} --fdd-t2 ${{ matrix.fdd_t2 }} --fdd-t3 ${{ matrix.fdd_t3 }} --fdd-s1 ${{ matrix.fdd_s1 }} --fdd-s2 ${{ matrix.fdd_s2 }} --fdd-s3 ${{ matrix.fdd_s3 }} --dd-soft-pct 20 --dd-barrier-k 1.2 --min-add-scale 0.85 --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

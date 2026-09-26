@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,subprocess,tempfile
+import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,subprocess,tempfile\nfrom concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 REC=struct.Struct(">IIIff")
 HOST="https://datafeed.dukascopy.com/datafeed"
 def fetch(url):
  with tempfile.NamedTemporaryFile() as tmp:
-  r=subprocess.run(["curl","-sS","-L","--http1.1","-m","30","-A","Mozilla/5.0","-o",tmp.name,"-w","%{http_code}",url],capture_output=True,text=True)
+  r=subprocess.run(["curl","-sS","-L","--http1.1","-m","10","-A","Mozilla/5.0","-o",tmp.name,"-w","%{http_code}",url],capture_output=True,text=True)
   code=(r.stdout or "0").strip()
   tmp.seek(0); data=tmp.read()
   if code=="200" and data:return data
@@ -15,9 +15,12 @@ def main():
  p=argparse.ArgumentParser();p.add_argument("--date",required=True);p.add_argument("--out",required=True);a=p.parse_args()
  day=dt.date.fromisoformat(a.date); out=Path(a.out); out.parent.mkdir(parents=True,exist_ok=True)
  rows=[]; hashes=[]
- for h in range(24):
+ def one(h):
   url=f"{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{h:02d}h_ticks.bi5"
-  blob=fetch(url)
+  return h,fetch(url)
+ with ThreadPoolExecutor(max_workers=8) as ex:
+  blobs=list(ex.map(one,range(24)))
+ for h,blob in sorted(blobs):
   if not blob: continue
   hashes.append(hashlib.sha256(blob).hexdigest())
   try: raw=lzma.decompress(blob)

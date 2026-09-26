@@ -17,38 +17,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ts5_exit0855
-            basket_offset: 0.855
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit0858
-            basket_offset: 0.858
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit0860
-            basket_offset: 0.860
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit0862
-            basket_offset: 0.862
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit0865
-            basket_offset: 0.865
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit086_s8_16
-            basket_offset: 0.860
-            session_start: 8
-            session_end: 16
-          - name: ts5_exit086_s75_165
-            basket_offset: 0.860
-            session_start: 7
-            session_end: 16
-          - name: ts5_exit086_s7_16
-            basket_offset: 0.860
-            session_start: 7
-            session_end: 16
+          - name: ts5_exit08550
+            basket_offset: 0.8550
+          - name: ts5_exit08560
+            basket_offset: 0.8560
+          - name: ts5_exit08570
+            basket_offset: 0.8570
+          - name: ts5_exit08575
+            basket_offset: 0.8575
+          - name: ts5_exit08580
+            basket_offset: 0.8580
+          - name: ts5_exit08585
+            basket_offset: 0.8585
+          - name: ts5_exit08590
+            basket_offset: 0.8590
+          - name: ts5_exit08595
+            basket_offset: 0.8595
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,7 +46,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start ${{ matrix.session_start }} --session-end ${{ matrix.session_end }} --basket-offset ${{ matrix.basket_offset }} --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset ${{ matrix.basket_offset }} --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

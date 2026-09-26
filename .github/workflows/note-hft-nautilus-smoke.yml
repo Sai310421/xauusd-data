@@ -9,6 +9,7 @@ on:
       - 'research/note_hft_nautilus_smoke.py'
       - 'research/vra_bot01_xauusd_prebt.py'
       - 'research/vra_bot01_adaptive_ab.py'
+      - 'research/vra_bot01_exit_ab.py'
 
 permissions:
   contents: read
@@ -34,6 +35,17 @@ jobs:
       - name: Run VRA BOT-01 Adaptive A/B
         if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
         run: python research/vra_bot01_adaptive_ab.py
+      - name: Run VRA BOT-01 Exit A/B
+        if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
+        run: python research/vra_bot01_exit_ab.py
+      - name: Upload VRA BOT-01 Exit A/B
+        if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vra-bot01-exit-ab
+          path: results/vra-bot01-exit-ab/
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload VRA BOT-01 Adaptive A/B
         if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
         uses: actions/upload-artifact@v4

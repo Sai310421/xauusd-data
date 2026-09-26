@@ -17,8 +17,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: eligibility_shadow_8h
-            horizon: 28800
+          - name: baseline_core
+            elig_mode: none
+            fast_frac: 0.00
+            deep_frac: 0.00
+            hard_fdd: 45
+          - name: elig_cons_fast003
+            elig_mode: conservative
+            fast_frac: 0.03
+            deep_frac: 0.00
+            hard_fdd: 45
+          - name: elig_cons_fast005
+            elig_mode: conservative
+            fast_frac: 0.05
+            deep_frac: 0.00
+            hard_fdd: 45
+          - name: elig_adapt_003_015
+            elig_mode: adaptive
+            fast_frac: 0.03
+            deep_frac: 0.15
+            hard_fdd: 45
+          - name: elig_adapt_005_015
+            elig_mode: adaptive
+            fast_frac: 0.05
+            deep_frac: 0.15
+            hard_fdd: 45
+          - name: elig_adapt_003_010
+            elig_mode: adaptive
+            fast_frac: 0.03
+            deep_frac: 0.10
+            hard_fdd: 45
+          - name: elig_adapt_003_015_h40
+            elig_mode: adaptive
+            fast_frac: 0.03
+            deep_frac: 0.15
+            hard_fdd: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,7 +65,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode none --math-rescue-mode none --shadow-rescue-lab --shadow-rescue-horizon-sec ${{ matrix.horizon }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode none --math-rescue-mode none --eligibility-mode ${{ matrix.elig_mode }} --eligibility-fast-frac ${{ matrix.fast_frac }} --eligibility-deep-frac ${{ matrix.deep_frac }} --eligibility-hard-fdd ${{ matrix.hard_fdd }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

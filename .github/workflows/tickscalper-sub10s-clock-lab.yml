@@ -2,10 +2,16 @@ name: TickScalper Sub10s Raw BidAsk Clock Lab
 on:
   workflow_dispatch:
     inputs:
-      tick_csv:
-        description: 'Raw BidAsk CSV: timestamp,bid,ask'
+      date:
+        description: 'Dukascopy XAUUSD UTC trading date'
         required: true
-        default: 'raw/XAUUSD_ticks.csv'
+        default: '2026-08-27'
+  push:
+    branches: ['feature/tickscalper-sub10s-clock-lab-v1']
+    paths:
+      - 'research/dukascopy_xau_quote_tick_gate.py'
+      - 'research/tickscalper_sub10s_clock_lab.py'
+      - '.github/workflows/tickscalper-sub10s-clock-lab.yml'
 permissions:
   contents: read
 jobs:
@@ -17,13 +23,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Raw BidAsk fail-closed gate
-        shell: bash
-        run: |
-          test -f "${{ inputs.tick_csv }}" || { echo 'Raw BidAsk input missing'; exit 2; }
-          head -1 "${{ inputs.tick_csv }}" | grep -q 'timestamp.*bid.*ask' || { echo 'timestamp,bid,ask required'; exit 3; }
+      - name: Fetch and validate Dukascopy XAUUSD QuoteTicks
+        run: python research/dukascopy_xau_quote_tick_gate.py --date "${{ inputs.date || '2026-08-27' }}" --out raw/XAUUSD_ticks.csv
       - name: Run clock ablation
-        run: python research/tickscalper_sub10s_clock_lab.py --ticks "${{ inputs.tick_csv }}"
+        run: python research/tickscalper_sub10s_clock_lab.py --ticks raw/XAUUSD_ticks.csv
+      - name: Preserve provenance
+        run: cp raw/XAUUSD_ticks.meta.txt results/tickscalper-sub10s-clock-lab/
       - name: Upload KPI
         if: always()
         uses: actions/upload-artifact@v4

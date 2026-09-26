@@ -20,123 +20,75 @@ jobs:
           - name: baseline_none
             risk_mode: none
             risk_start_layer: 1
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 1.00
-            dd_s2: 1.00
-            dd_s3: 1.00
             fdd_t1: 15
             fdd_t2: 25
             fdd_t3: 35
             fdd_s1: 1.00
             fdd_s2: 1.00
             fdd_s3: 1.00
-          - name: dd_adaptive_15_25_35
-            risk_mode: dd_adaptive
-            risk_start_layer: 1
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 0.90
-            dd_s2: 0.75
-            dd_s3: 0.55
-            fdd_t1: 15
-            fdd_t2: 25
-            fdd_t3: 35
-            fdd_s1: 1.00
-            fdd_s2: 1.00
-            fdd_s3: 1.00
-          - name: floating_L9_15_25_35
+          - name: L9_t15_s806040
             risk_mode: floating_governor
             risk_start_layer: 9
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 1.00
-            dd_s2: 1.00
-            dd_s3: 1.00
             fdd_t1: 15
             fdd_t2: 25
             fdd_t3: 35
-            fdd_s1: 0.90
-            fdd_s2: 0.75
-            fdd_s3: 0.55
-          - name: floating_L8_15_25_35
-            risk_mode: floating_governor
-            risk_start_layer: 8
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 1.00
-            dd_s2: 1.00
-            dd_s3: 1.00
-            fdd_t1: 15
-            fdd_t2: 25
-            fdd_t3: 35
-            fdd_s1: 0.90
-            fdd_s2: 0.75
-            fdd_s3: 0.55
-          - name: floating_L9_20_30_38
+            fdd_s1: 0.80
+            fdd_s2: 0.60
+            fdd_s3: 0.40
+          - name: L9_t10_s856545
             risk_mode: floating_governor
             risk_start_layer: 9
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 1.00
-            dd_s2: 1.00
-            dd_s3: 1.00
+            fdd_t1: 10
+            fdd_t2: 20
+            fdd_t3: 30
+            fdd_s1: 0.85
+            fdd_s2: 0.65
+            fdd_s3: 0.45
+          - name: L9_t20_s856545
+            risk_mode: floating_governor
+            risk_start_layer: 9
             fdd_t1: 20
             fdd_t2: 30
             fdd_t3: 38
-            fdd_s1: 0.92
-            fdd_s2: 0.82
-            fdd_s3: 0.65
-          - name: combo_L9_15_25_35
-            risk_mode: dd_floating_combo
-            risk_start_layer: 9
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 0.95
-            dd_s2: 0.85
-            dd_s3: 0.70
+            fdd_s1: 0.85
+            fdd_s2: 0.65
+            fdd_s3: 0.45
+          - name: L8_t15_s989590
+            risk_mode: floating_governor
+            risk_start_layer: 8
             fdd_t1: 15
             fdd_t2: 25
             fdd_t3: 35
-            fdd_s1: 0.90
-            fdd_s2: 0.75
-            fdd_s3: 0.55
-          - name: combo_L8_20_30_38
-            risk_mode: dd_floating_combo
+            fdd_s1: 0.98
+            fdd_s2: 0.95
+            fdd_s3: 0.90
+          - name: L8_t20_s989590
+            risk_mode: floating_governor
             risk_start_layer: 8
-            dd_t1: 20
-            dd_t2: 30
-            dd_t3: 38
-            dd_s1: 0.97
-            dd_s2: 0.90
-            dd_s3: 0.75
             fdd_t1: 20
             fdd_t2: 30
             fdd_t3: 38
-            fdd_s1: 0.92
-            fdd_s2: 0.82
-            fdd_s3: 0.65
-          - name: barrier_L9_reference
-            risk_mode: barrier
-            risk_start_layer: 9
-            dd_t1: 15
-            dd_t2: 25
-            dd_t3: 35
-            dd_s1: 1.00
-            dd_s2: 1.00
-            dd_s3: 1.00
+            fdd_s1: 0.98
+            fdd_s2: 0.95
+            fdd_s3: 0.90
+          - name: L8_t15_s999794
+            risk_mode: floating_governor
+            risk_start_layer: 8
             fdd_t1: 15
             fdd_t2: 25
             fdd_t3: 35
-            fdd_s1: 1.00
-            fdd_s2: 1.00
-            fdd_s3: 1.00
+            fdd_s1: 0.99
+            fdd_s2: 0.97
+            fdd_s3: 0.94
+          - name: L8_t20_s999794
+            risk_mode: floating_governor
+            risk_start_layer: 8
+            fdd_t1: 20
+            fdd_t2: 30
+            fdd_t3: 38
+            fdd_s1: 0.99
+            fdd_s2: 0.97
+            fdd_s3: 0.94
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -150,7 +102,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --risk-start-layer ${{ matrix.risk_start_layer }} --dd-t1 ${{ matrix.dd_t1 }} --dd-t2 ${{ matrix.dd_t2 }} --dd-t3 ${{ matrix.dd_t3 }} --dd-s1 ${{ matrix.dd_s1 }} --dd-s2 ${{ matrix.dd_s2 }} --dd-s3 ${{ matrix.dd_s3 }} --fdd-t1 ${{ matrix.fdd_t1 }} --fdd-t2 ${{ matrix.fdd_t2 }} --fdd-t3 ${{ matrix.fdd_t3 }} --fdd-s1 ${{ matrix.fdd_s1 }} --fdd-s2 ${{ matrix.fdd_s2 }} --fdd-s3 ${{ matrix.fdd_s3 }} --dd-soft-pct 20 --dd-barrier-k 1.2 --min-add-scale 0.85 --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --risk-start-layer ${{ matrix.risk_start_layer }} --dd-t1 15 --dd-t2 25 --dd-t3 35 --dd-s1 1.00 --dd-s2 1.00 --dd-s3 1.00 --fdd-t1 ${{ matrix.fdd_t1 }} --fdd-t2 ${{ matrix.fdd_t2 }} --fdd-t3 ${{ matrix.fdd_t3 }} --fdd-s1 ${{ matrix.fdd_s1 }} --fdd-s2 ${{ matrix.fdd_s2 }} --fdd-s3 ${{ matrix.fdd_s3 }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

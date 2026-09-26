@@ -17,42 +17,54 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: baseline
+          - name: exit_060_d10
             direction_sign: 1
             session_start: 7
             session_end: 17
-            basket_offset: 1.20
+            basket_offset: 0.60
             max_layers: 10
-          - name: direction_inverse
-            direction_sign: -1
+          - name: exit_070_d10
+            direction_sign: 1
             session_start: 7
             session_end: 17
-            basket_offset: 1.20
+            basket_offset: 0.70
             max_layers: 10
-          - name: timing_24h
-            direction_sign: 1
-            session_start: 0
-            session_end: 24
-            basket_offset: 1.20
-            max_layers: 10
-          - name: exit_080
+          - name: exit_080_d10
             direction_sign: 1
             session_start: 7
             session_end: 17
             basket_offset: 0.80
             max_layers: 10
-          - name: exit_160
+          - name: exit_090_d10
             direction_sign: 1
             session_start: 7
             session_end: 17
-            basket_offset: 1.60
+            basket_offset: 0.90
             max_layers: 10
-          - name: recovery_off
+          - name: exit_080_d9
             direction_sign: 1
             session_start: 7
             session_end: 17
-            basket_offset: 1.20
-            max_layers: 1
+            basket_offset: 0.80
+            max_layers: 9
+          - name: exit_080_d8
+            direction_sign: 1
+            session_start: 7
+            session_end: 17
+            basket_offset: 0.80
+            max_layers: 8
+          - name: exit_080_d7
+            direction_sign: 1
+            session_start: 7
+            session_end: 17
+            basket_offset: 0.80
+            max_layers: 7
+          - name: exit_080_session_8_16
+            direction_sign: 1
+            session_start: 8
+            session_end: 16
+            basket_offset: 0.80
+            max_layers: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

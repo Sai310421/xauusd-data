@@ -1,0 +1,16 @@
+name: VRA BOT-01 Sizing Stress
+on:
+  push:
+    branches: [feature/vra-bot01-xauusd-prebt-20260926]
+    paths: ['research/vra_bot01_sizing_stress.py','.github/workflows/vra-bot01-sizing-stress.yml']
+permissions: {contents: read}
+jobs:
+  sizing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python research/vra_bot01_sizing_stress.py
+      - uses: actions/upload-artifact@v4
+        with: {name: vra-bot01-sizing-stress, path: results/vra-bot01-sizing/, if-no-files-found: error}

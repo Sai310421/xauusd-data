@@ -1,0 +1,13 @@
+repo,category,priority,status,edge_hypothesis,validation_gate
+ReturnDistributions,Distribution,A+,QUEUED,heavy-tail distribution selection,fit stability + OOS likelihood
+Return-Mixtures,Distribution,A+,QUEUED,latent mixture regimes,regime stability + OOS
+Return-Mixtures-of-Normals,Distribution,A+,QUEUED,mixture-state risk,component stability + OOS
+Time-Series-Distributions,Distribution,A+,QUEUED,time-dependent distribution fit,rolling OOS
+Conditional-Skew,Distribution,A+,QUEUED,conditional asymmetry,rolling OOS + tail calibration
+intraday-prices,Data,A+,QUEUED,intraday data quality/vendor reconciliation,parity + anomaly tests
+moving-average-systems,Backtest,A+,QUEUED,multiple-testing-aware parameter search,deflated performance + OOS
+Sharpe-out-of-sample,Backtest,A+,QUEUED,OOS Sharpe diagnostics,walk-forward
+OHLC-Vol,Volatility,A+,QUEUED,range-based volatility estimator,forecast error + regime split
+Intraday-Vol,Volatility,A+,QUEUED,intraday volatility state,forecast error + stress
+GARCH-variants,Volatility,A+,QUEUED,conditional volatility family,rolling forecast + stress
+High-Frequency-Trading-Software,HFT,A,QUEUED,microstructure/execution components,tick replay + cost stress

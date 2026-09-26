@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,subprocess,tempfile\nfrom concurrent.futures import ThreadPoolExecutor
+import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,subprocess,tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 REC=struct.Struct(">IIIff")
 HOST="https://datafeed.dukascopy.com/datafeed"

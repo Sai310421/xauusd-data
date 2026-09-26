@@ -1,0 +1,26 @@
+name: VRA BOT-01 XAUUSD Pre-BT
+on:
+  push:
+    branches: [feature/vra-bot01-xauusd-prebt-20260926]
+    paths:
+      - 'research/vra_bot01_xauusd_prebt.py'
+      - '.github/workflows/vra-bot01-xauusd-prebt.yml'
+permissions:
+  contents: read
+jobs:
+  prebt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run BAR-DATA pre-BT (NOT Raw Tick certification)
+        run: python research/vra_bot01_xauusd_prebt.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vra-bot01-xauusd-prebt
+          path: results/vra-bot01-prebt/
+          if-no-files-found: error
+          retention-days: 30

@@ -10,6 +10,7 @@ on:
       - 'research/vra_bot01_xauusd_prebt.py'
       - 'research/vra_bot01_adaptive_ab.py'
       - 'research/vra_bot01_exit_ab.py'
+      - 'research/vra_bot01_sizing_stress.py'
 
 permissions:
   contents: read
@@ -38,6 +39,16 @@ jobs:
       - name: Run VRA BOT-01 Exit A/B
         if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
         run: python research/vra_bot01_exit_ab.py
+      - name: Run VRA BOT-01 DD4 sizing stress
+        if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
+        run: python research/vra_bot01_sizing_stress.py
+      - name: Upload VRA BOT-01 DD4 sizing stress
+        if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vra-bot01-sizing-stress
+          path: results/vra-bot01-sizing/
+          if-no-files-found: error
       - name: Upload VRA BOT-01 Exit A/B
         if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
         uses: actions/upload-artifact@v4

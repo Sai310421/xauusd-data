@@ -24,6 +24,7 @@ class Cfg(StrategyConfig,frozen=True):
  add_distance:float=3.11; basket_offset:float=1.20; emergency_distance:float=3.80
  session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.80; cooldown_seconds:int=45; direction_sign:int=1
  entry_mode:str='proxy'; ts_ticks_per_bar:int=3; ts_fast:int=3; ts_slow:int=5; ts_conf1:int=8; ts_conf2:int=13; ts_cross_only:bool=False; ts_use_macd:bool=False; ts_include_conf:bool=True
+ risk_mode:str='none'; dd_soft_pct:float=10.0; dd_barrier_k:float=1.5; min_add_scale:float=0.25; cvar_alpha:float=0.95; cvar_window:int=400; cvar_horizon:int=20; cvar_budget_pct:float=2.0
 def floor_step(x,step=.01): return math.floor((x+1e-12)/step)*step
 def layer_lot(base,n,c):
  if n==0:return base
@@ -31,12 +32,42 @@ def layer_lot(base,n,c):
  return floor_step(base*(c.later_mult**n))
 class TickScalperCandidate(Strategy):
  def __init__(self,c):
-  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.ticket_pnls=[];self.ts_tick_count=0;self.ts_bar_open=None;self.ts_bar_hi=None;self.ts_bar_lo=None;self.ts_closes=deque(maxlen=max(256,c.ts_conf2*8));self.ts_last_bar_close=None;self.ts_prev_signal=0
+  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.ticket_pnls=[];self.ts_tick_count=0;self.ts_bar_open=None;self.ts_bar_hi=None;self.ts_bar_lo=None;self.ts_closes=deque(maxlen=max(256,c.ts_conf2*8));self.ts_last_bar_close=None;self.ts_prev_signal=0;self.mtm_peak=1000.;self.mfdd=0.;self.recent_mid_deltas=deque(maxlen=max(50,c.cvar_window));self.prev_mid=None;self.risk_scaled_adds=0;self.risk_blocked_adds=0
  def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id)
  def _submit(self,side,lot):
   inst=self.cache.instrument(self.config.instrument_id);o=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if side>0 else OrderSide.SELL,quantity=inst.make_qty(Decimal(str(lot))*self.config.contract_units_per_lot));self.submit_order(o)
  def _be(self):
   q=sum(l for _,l in self.entries);return sum(p*l for p,l in self.entries)/q
+ def _floating_pnl(self):
+  if not self.entries:return 0.0
+  px=self.bid if self.side>0 else self.ask
+  return sum((px-p)*self.side*l for p,l in self.entries)
+ def _update_mtm_dd(self):
+  mtm=self.eq+self._floating_pnl()
+  self.mtm_peak=max(self.mtm_peak,mtm)
+  if self.mtm_peak>0:self.mfdd=max(self.mfdd,(self.mtm_peak-mtm)/self.mtm_peak*100.0)
+ def _empirical_cvar_pct(self,prospective_lot=0.0):
+  vals=[abs(x) for x in self.recent_mid_deltas if x!=0]
+  if len(vals)<50:return 0.0
+  vals.sort(reverse=True)
+  tail_n=max(1,int(math.ceil((1.0-self.config.cvar_alpha)*len(vals))))
+  es=sum(vals[:tail_n])/tail_n
+  gross=sum(l for _,l in self.entries)+prospective_lot
+  est_loss=es*gross*self.config.cvar_horizon
+  return 100.0*est_loss/max(self.mtm_peak,1e-9)
+ def _risk_add_scale(self,prospective_lot):
+  if self.config.risk_mode=='none':return 1.0
+  mtm=self.eq+self._floating_pnl()
+  dd=100.0*(self.mtm_peak-mtm)/max(self.mtm_peak,1e-9)
+  scale=1.0
+  if self.config.risk_mode in ('barrier','hybrid'):
+   x=max(0.0,dd-self.config.dd_soft_pct)/max(self.config.dd_soft_pct,1e-9)
+   if x>0: scale=min(scale,max(self.config.min_add_scale,math.exp(-self.config.dd_barrier_k*x*x)))
+  if self.config.risk_mode in ('cvar','hybrid'):
+   cv=self._empirical_cvar_pct(prospective_lot)
+   if cv>self.config.cvar_budget_pct:
+    scale=min(scale,max(self.config.min_add_scale,self.config.cvar_budget_pct/max(cv,1e-9)))
+  return scale
  def _open(self,side):
   px=self.ask if side>0 else self.bid;lot=layer_lot(float(self.config.base_qty),0,self.config);self._submit(side,lot);self.side=side;self.entries=[(px,lot)]
  def _close(self,reason):
@@ -109,6 +140,10 @@ class TickScalperCandidate(Strategy):
   return 0
  def on_quote_tick(self,t):
   self.bid=float(t.bid_price.as_double());self.ask=float(t.ask_price.as_double());self.now_ns=int(t.ts_event)
+  mid=(self.bid+self.ask)/2
+  if self.prev_mid is not None:self.recent_mid_deltas.append(mid-self.prev_mid)
+  self.prev_mid=mid
+  self._update_mtm_dd()
   if not self.entries:
    if self.last_close_ns and (self.now_ns-self.last_close_ns)<self.config.cooldown_seconds*1_000_000_000:return
    import datetime
@@ -121,14 +156,21 @@ class TickScalperCandidate(Strategy):
   if (mark-be)*s>=self.config.basket_offset:self._close('BASKET');return
   last=self.entries[-1][0];adverse=(last-mark) if s>0 else (mark-last)
   if adverse>=self.config.add_distance and len(self.entries)<self.config.max_layers:
-   lot=layer_lot(float(self.config.base_qty),len(self.entries),self.config);self._submit(s,lot);self.entries.append((self.ask if s>0 else self.bid,lot));self.max_layer=max(self.max_layer,len(self.entries));self.max_lots=max(self.max_lots,sum(l for _,l in self.entries));return
+   raw_lot=layer_lot(float(self.config.base_qty),len(self.entries),self.config)
+   scale=self._risk_add_scale(raw_lot)
+   lot=floor_step(raw_lot*scale)
+   if lot<0.01:
+    self.risk_blocked_adds+=1
+    return
+   if scale<0.999:self.risk_scaled_adds+=1
+   self._submit(s,lot);self.entries.append((self.ask if s>0 else self.bid,lot));self.max_layer=max(self.max_layer,len(self.entries));self.max_lots=max(self.max_lots,sum(l for _,l in self.entries));return
   if len(self.entries)>=self.config.max_layers:
    adverse2=(self.entries[-1][0]-mark) if s>0 else (mark-self.entries[-1][0])
    if adverse2>=self.config.emergency_distance:self._close('EMERGENCY')
  def on_stop(self):
   if self.entries:self._close('EOD')
  def summary(self):
-  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'ticket_N':len(self.ticket_pnls),'ticket_WR_pct':100*sum(p>0 for p in self.ticket_pnls)/max(len(self.ticket_pnls),1),'ticket_PF':sum(p for p in self.ticket_pnls if p>0)/max(sum(-p for p in self.ticket_pnls if p<0),1e-12)}
+  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'MaxFloatingDD_pct':self.mfdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'risk_scaled_adds':self.risk_scaled_adds,'risk_blocked_adds':self.risk_blocked_adds,'ticket_N':len(self.ticket_pnls),'ticket_WR_pct':100*sum(p>0 for p in self.ticket_pnls)/max(len(self.ticket_pnls),1),'ticket_PF':sum(p for p in self.ticket_pnls if p>0)/max(sum(-p for p in self.ticket_pnls if p<0),1e-12)}
 def fix_sizes(ticks):
  one=Quantity.from_int(1);out=[]
  for t in ticks:
@@ -136,13 +178,13 @@ def fix_sizes(ticks):
   out.append(QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,bid_size=one if b<=0 else bs,ask_size=one if q<=0 else qs,ts_event=t.ts_event,ts_init=t.ts_init) if b<=0 or q<=0 else t)
  return out
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--experiment-id',required=True);ap.add_argument('--base-lot',type=float,default=.30);ap.add_argument('--direction-sign',type=int,default=1);ap.add_argument('--session-start',type=int,default=7);ap.add_argument('--session-end',type=int,default=17);ap.add_argument('--basket-offset',type=float,default=1.20);ap.add_argument('--max-layers',type=int,default=10);ap.add_argument('--entry-mode',choices=['proxy','ticksmoother'],default='proxy');ap.add_argument('--ts-ticks-per-bar',type=int,default=3);ap.add_argument('--ts-fast',type=int,default=3);ap.add_argument('--ts-slow',type=int,default=5);ap.add_argument('--ts-conf1',type=int,default=8);ap.add_argument('--ts-conf2',type=int,default=13);ap.add_argument('--ts-cross-only',action='store_true');ap.add_argument('--ts-use-macd',action='store_true');ap.add_argument('--ts-no-conf',action='store_true');ap.add_argument('--raw-bidask-only',action='store_true');a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--experiment-id',required=True);ap.add_argument('--base-lot',type=float,default=.30);ap.add_argument('--direction-sign',type=int,default=1);ap.add_argument('--session-start',type=int,default=7);ap.add_argument('--session-end',type=int,default=17);ap.add_argument('--basket-offset',type=float,default=1.20);ap.add_argument('--max-layers',type=int,default=10);ap.add_argument('--entry-mode',choices=['proxy','ticksmoother'],default='proxy');ap.add_argument('--ts-ticks-per-bar',type=int,default=3);ap.add_argument('--ts-fast',type=int,default=3);ap.add_argument('--ts-slow',type=int,default=5);ap.add_argument('--ts-conf1',type=int,default=8);ap.add_argument('--ts-conf2',type=int,default=13);ap.add_argument('--ts-cross-only',action='store_true');ap.add_argument('--ts-use-macd',action='store_true');ap.add_argument('--ts-no-conf',action='store_true');ap.add_argument('--risk-mode',choices=['none','barrier','cvar','hybrid'],default='none');ap.add_argument('--dd-soft-pct',type=float,default=10.0);ap.add_argument('--dd-barrier-k',type=float,default=1.5);ap.add_argument('--min-add-scale',type=float,default=0.25);ap.add_argument('--cvar-budget-pct',type=float,default=2.0);ap.add_argument('--raw-bidask-only',action='store_true');a=ap.parse_args()
  if not a.raw_bidask_only:raise SystemExit('raw-bidask-only mandatory')
  cat=ParquetDataCatalog(a.catalog);inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
  if inst is None:raise SystemExit('XAUUSD missing')
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
- st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot)),direction_sign=a.direction_sign,session_start_hour=a.session_start,session_end_hour=a.session_end,basket_offset=a.basket_offset,max_layers=a.max_layers,entry_mode=a.entry_mode,ts_ticks_per_bar=a.ts_ticks_per_bar,ts_fast=a.ts_fast,ts_slow=a.ts_slow,ts_conf1=a.ts_conf1,ts_conf2=a.ts_conf2,ts_cross_only=a.ts_cross_only,ts_use_macd=a.ts_use_macd,ts_include_conf=not a.ts_no_conf));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':('TICKSMOOTHER_V21_SOURCE_DERIVED_CANDIDATE' if a.entry_mode=='ticksmoother' else 'EDGE_REVALIDATION_V1'),'entry_mode':a.entry_mode,'ts_ticks_per_bar':a.ts_ticks_per_bar,'ts_fast':a.ts_fast,'ts_slow':a.ts_slow,'ts_conf1':a.ts_conf1,'ts_conf2':a.ts_conf2,'ts_cross_only':a.ts_cross_only,'ts_use_macd':a.ts_use_macd,'ts_include_conf':not a.ts_no_conf,'direction_sign':a.direction_sign,'session_start':a.session_start,'session_end':a.session_end,'basket_offset':a.basket_offset,'max_layers_cfg':a.max_layers,'quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
+ st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot)),direction_sign=a.direction_sign,session_start_hour=a.session_start,session_end_hour=a.session_end,basket_offset=a.basket_offset,max_layers=a.max_layers,entry_mode=a.entry_mode,ts_ticks_per_bar=a.ts_ticks_per_bar,ts_fast=a.ts_fast,ts_slow=a.ts_slow,ts_conf1=a.ts_conf1,ts_conf2=a.ts_conf2,ts_cross_only=a.ts_cross_only,ts_use_macd=a.ts_use_macd,ts_include_conf=not a.ts_no_conf,risk_mode=a.risk_mode,dd_soft_pct=a.dd_soft_pct,dd_barrier_k=a.dd_barrier_k,min_add_scale=a.min_add_scale,cvar_budget_pct=a.cvar_budget_pct));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':('TICKSMOOTHER_V21_SOURCE_DERIVED_CANDIDATE' if a.entry_mode=='ticksmoother' else 'EDGE_REVALIDATION_V1'),'entry_mode':a.entry_mode,'ts_ticks_per_bar':a.ts_ticks_per_bar,'ts_fast':a.ts_fast,'ts_slow':a.ts_slow,'ts_conf1':a.ts_conf1,'ts_conf2':a.ts_conf2,'ts_cross_only':a.ts_cross_only,'ts_use_macd':a.ts_use_macd,'ts_include_conf':not a.ts_no_conf,'risk_mode':a.risk_mode,'dd_soft_pct':a.dd_soft_pct,'dd_barrier_k':a.dd_barrier_k,'min_add_scale':a.min_add_scale,'cvar_budget_pct':a.cvar_budget_pct,'direction_sign':a.direction_sign,'session_start':a.session_start,'session_end':a.session_end,'basket_offset':a.basket_offset,'max_layers_cfg':a.max_layers,'quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

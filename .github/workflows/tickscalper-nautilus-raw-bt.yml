@@ -17,11 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: baseline_shadow_1h
-            horizon: 3600
-          - name: baseline_shadow_4h
-            horizon: 14400
-          - name: baseline_shadow_8h
+          - name: eligibility_shadow_8h
             horizon: 28800
     steps:
       - uses: actions/checkout@v4

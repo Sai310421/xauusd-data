@@ -1,0 +1,64 @@
+{
+  "project": "TickScalper Original Lineage Reconstruction",
+  "captured_at": "2026-09-26",
+  "sources": [
+    {
+      "version": "v3.42",
+      "author": "Igor Durkin (igorad)",
+      "forum": "https://www.mql5.com/en/forum/179720",
+      "artifacts": [
+        "tickscalper_v342.zip",
+        "ticksmoother_v2.1.mq4",
+        "spreadometer_v1.mq4"
+      ],
+      "notes": "Igor states TS_TimeFrame=-1 uses TickSmoother and cannot be correctly tested in ordinary MT4 tester tick mode."
+    },
+    {
+      "version": "v3.44",
+      "forum": "https://www.mql5.com/en/forum/179720/page47",
+      "artifacts": [
+        "settings.zip",
+        "spreadometer_v1.mq4",
+        "tickscalper_v3.44.mq4",
+        "ticksmoother_v2.1.mq4",
+        "ts_3.44_forum.tpl"
+      ],
+      "notes": "Five risk presets; M1-oriented; martingale ExitMode 11/12 documented."
+    },
+    {
+      "version": "v3.44_newopen_nmc",
+      "author": "Mladen Rakic",
+      "forum": "https://www.mql5.com/en/forum/179720/page64",
+      "artifact": "tickscalper_v3.44_newopen_nmc.mq4",
+      "direct_attachment": "https://c.mql5.com/forextsd/forum/137/tickscalper_v3.44_newopen_nmc.mq4",
+      "dependency": "TickSmoother_v2.1"
+    },
+    {
+      "version": "v3.45.7a_nmc",
+      "author": "Mladen Rakic",
+      "forum": "https://www.mql5.com/en/forum/179720/page64",
+      "artifact": "tickscalper_v3.45.7a_nmc.mq4",
+      "direct_attachment": "https://c.mql5.com/forextsd/forum/140/tickscalper_v3.45.7a_nmc.mq4",
+      "dependency": "TickSmoother_v2.1"
+    },
+    {
+      "version": "v4_nmc",
+      "author": "Jean Francois Le Bas (Jeff)",
+      "forum": "https://www.mql5.com/en/forum/179720/page78",
+      "mirror": "https://forex-station.com/attach/file/3509604",
+      "artifacts": [
+        "tickscalper_v4_nmc.mq4",
+        "tickScalper_moemoresafe.set",
+        "spreadometer_v1.mq4",
+        "ticksmoother_v2.1.mq4"
+      ],
+      "direct_attachments": {
+        "tickscalper_v4_nmc.mq4": "https://c.mql5.com/3/458/tickscalper_v4_nmc.mq4",
+        "tickScalper_moemoresafe.set": "https://c.mql5.com/3/458/tickScalper_moemoresafe.set",
+        "spreadometer_v1.mq4": "https://c.mql5.com/3/458/spreadometer_v1.mq4",
+        "ticksmoother_v2.1.mq4": "https://c.mql5.com/3/458/ticksmoother_v2.1.mq4"
+      },
+      "notes": "Jeff says fixed compile/runtime errors and slightly modified a known setfile to remove martingale."
+    }
+  ]
+}

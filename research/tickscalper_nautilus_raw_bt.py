@@ -21,7 +21,7 @@ class Cfg(StrategyConfig,frozen=True):
  instrument_id: object
  base_qty: Decimal=Decimal('0.30'); contract_units_per_lot:Decimal=Decimal('100'); first_mult:float=1.4666666667; later_mult:float=1.5; max_layers:int=10
  add_distance:float=3.11; basket_offset:float=1.20; emergency_distance:float=3.80
- session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.80; cooldown_seconds:int=45
+ session_start_hour:int=7; session_end_hour:int=17; entry_move:float=1.80; cooldown_seconds:int=45; direction_sign:int=1
 def floor_step(x,step=.01): return math.floor((x+1e-12)/step)*step
 def layer_lot(base,n,c):
  if n==0:return base
@@ -29,7 +29,7 @@ def layer_lot(base,n,c):
  return floor_step(base*(c.later_mult**n))
 class TickScalperCandidate(Strategy):
  def __init__(self,c):
-  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0
+  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.ticket_pnls=[]
  def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id)
  def _submit(self,side,lot):
   inst=self.cache.instrument(self.config.instrument_id);o=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if side>0 else OrderSide.SELL,quantity=inst.make_qty(Decimal(str(lot))*self.config.contract_units_per_lot));self.submit_order(o)
@@ -40,6 +40,7 @@ class TickScalperCandidate(Strategy):
  def _close(self,reason):
   px=self.bid if self.side>0 else self.ask;pnl=sum((px-p)*self.side*l for p,l in self.entries)
   for _,l in self.entries:self._submit(-self.side,l)
+  for p,l in self.entries:self.ticket_pnls.append((px-p)*self.side*l)
   self.trades.append({'pnl':pnl,'depth':len(self.entries),'reason':reason});self.net+=pnl;self.eq+=pnl;self.peak=max(self.peak,self.eq);self.mdd=max(self.mdd,(self.peak-self.eq)/self.peak*100)
   if pnl>0:self.gw+=pnl
   elif pnl<0:self.gl+=abs(pnl)
@@ -50,7 +51,7 @@ class TickScalperCandidate(Strategy):
   if not hasattr(self,'anchor'): self.anchor=(self.bid+self.ask)/2; return 0
   mid=(self.bid+self.ask)/2; move=mid-self.anchor
   if abs(move)>=self.config.entry_move:
-   self.anchor=mid; return 1 if move>0 else -1
+   self.anchor=mid; return (1 if move>0 else -1)*self.config.direction_sign
   return 0
  def on_quote_tick(self,t):
   self.bid=float(t.bid_price.as_double());self.ask=float(t.ask_price.as_double());self.now_ns=int(t.ts_event)
@@ -73,7 +74,7 @@ class TickScalperCandidate(Strategy):
  def on_stop(self):
   if self.entries:self._close('EOD')
  def summary(self):
-  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades)}
+  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'ticket_N':len(self.ticket_pnls),'ticket_WR_pct':100*sum(p>0 for p in self.ticket_pnls)/max(len(self.ticket_pnls),1),'ticket_PF':sum(p for p in self.ticket_pnls if p>0)/max(sum(-p for p in self.ticket_pnls if p<0),1e-12)}
 def fix_sizes(ticks):
  one=Quantity.from_int(1);out=[]
  for t in ticks:
@@ -81,13 +82,13 @@ def fix_sizes(ticks):
   out.append(QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,bid_size=one if b<=0 else bs,ask_size=one if q<=0 else qs,ts_event=t.ts_event,ts_init=t.ts_init) if b<=0 or q<=0 else t)
  return out
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--experiment-id',required=True);ap.add_argument('--base-lot',type=float,default=.30);ap.add_argument('--raw-bidask-only',action='store_true');a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--experiment-id',required=True);ap.add_argument('--base-lot',type=float,default=.30);ap.add_argument('--direction-sign',type=int,default=1);ap.add_argument('--session-start',type=int,default=7);ap.add_argument('--session-end',type=int,default=17);ap.add_argument('--basket-offset',type=float,default=1.20);ap.add_argument('--max-layers',type=int,default=10);ap.add_argument('--raw-bidask-only',action='store_true');a=ap.parse_args()
  if not a.raw_bidask_only:raise SystemExit('raw-bidask-only mandatory')
  cat=ParquetDataCatalog(a.catalog);inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
  if inst is None:raise SystemExit('XAUUSD missing')
  ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]));eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));eng.add_instrument(inst);eng.add_data(ticks)
- st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot))));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
- o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'STATEMENT_CONSTRAINED_SESSION_PLUS_TICK_DISPLACEMENT_V2_COOLDOWN','quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
+ st=TickScalperCandidate(Cfg(instrument_id=inst.id,base_qty=Decimal(str(a.base_lot)),direction_sign=a.direction_sign,session_start_hour=a.session_start,session_end_hour=a.session_end,basket_offset=a.basket_offset,max_layers=a.max_layers));eng.add_strategy(st);eng.run();fills=eng.trader.generate_order_fills_report()
+ o={'verification_level':'NAUTILUS_RAW_BIDASK_CANDIDATE_NOT_REPLICA','raw_ticks':len(ticks),'native_fills':len(fills) if fills is not None else 0,'ohlc_resample_used':False,'entry_rule':'EDGE_REVALIDATION_V1','direction_sign':a.direction_sign,'session_start':a.session_start,'session_end':a.session_end,'basket_offset':a.basket_offset,'max_layers_cfg':a.max_layers,'quantity_mapping':'1.00 lot = 100 XAU units; 0.30 lot = 30 native units','instrument_size_precision':getattr(inst,'size_precision',None),**st.summary()}
  out=Path('results/tickscalper-nautilus')/a.experiment_id;out.mkdir(parents=True,exist_ok=True);(out/'kpi.json').write_text(json.dumps(o,indent=2),encoding='utf-8');print(json.dumps(o,indent=2));eng.dispose()
 if __name__=='__main__':main()

@@ -13,6 +13,26 @@ jobs:
   bt:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: v1
+            strength: 0.85
+            min_scale: 0.30
+            from_depth: 7
+          - name: stronger
+            strength: 0.95
+            min_scale: 0.25
+            from_depth: 7
+          - name: earlier
+            strength: 0.85
+            min_scale: 0.30
+            from_depth: 6
+          - name: conservative
+            strength: 0.65
+            min_scale: 0.40
+            from_depth: 7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +46,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}" --base-lot 0.30 --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --control-strength ${{ matrix.strength }} --control-min-scale ${{ matrix.min_scale }} --control-from-depth ${{ matrix.from_depth }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

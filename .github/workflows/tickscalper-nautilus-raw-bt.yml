@@ -22,36 +22,41 @@ jobs:
             fast_frac: 0.00
             deep_frac: 0.00
             hard_fdd: 45
-          - name: elig_cons_fast003
+          - name: fast_001
+            elig_mode: conservative
+            fast_frac: 0.01
+            deep_frac: 0.00
+            hard_fdd: 45
+          - name: fast_002
+            elig_mode: conservative
+            fast_frac: 0.02
+            deep_frac: 0.00
+            hard_fdd: 45
+          - name: fast_003
             elig_mode: conservative
             fast_frac: 0.03
             deep_frac: 0.00
             hard_fdd: 45
-          - name: elig_cons_fast005
+          - name: fast_004
+            elig_mode: conservative
+            fast_frac: 0.04
+            deep_frac: 0.00
+            hard_fdd: 45
+          - name: fast_005
             elig_mode: conservative
             fast_frac: 0.05
             deep_frac: 0.00
             hard_fdd: 45
-          - name: elig_adapt_003_015
-            elig_mode: adaptive
-            fast_frac: 0.03
-            deep_frac: 0.15
+          - name: fast_006
+            elig_mode: conservative
+            fast_frac: 0.06
+            deep_frac: 0.00
             hard_fdd: 45
-          - name: elig_adapt_005_015
-            elig_mode: adaptive
-            fast_frac: 0.05
-            deep_frac: 0.15
+          - name: fast_0075
+            elig_mode: conservative
+            fast_frac: 0.075
+            deep_frac: 0.00
             hard_fdd: 45
-          - name: elig_adapt_003_010
-            elig_mode: adaptive
-            fast_frac: 0.03
-            deep_frac: 0.10
-            hard_fdd: 45
-          - name: elig_adapt_003_015_h40
-            elig_mode: adaptive
-            fast_frac: 0.03
-            deep_frac: 0.15
-            hard_fdd: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

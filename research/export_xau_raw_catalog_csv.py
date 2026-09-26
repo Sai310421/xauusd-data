@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import argparse,csv
 from pathlib import Path
-from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from nautilus_trader.persistence.catalog import ParquetDataCatalog\nfrom nautilus_trader.model.data import QuoteTick
 def main():
  p=argparse.ArgumentParser();p.add_argument("--catalog",required=True);p.add_argument("--out",required=True);a=p.parse_args()
  c=ParquetDataCatalog(a.catalog); inst=next((x for x in c.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD"),None)
  if inst is None: raise SystemExit("RAW_BIDASK_FAIL_CLOSED: XAUUSD missing")
- ticks=c.query_quote_ticks(identifiers=[inst.id.value])
+ ticks=(c.query_quote_ticks(identifiers=[inst.id.value]) if hasattr(c,'query_quote_ticks') else c.query(data_cls=QuoteTick,identifiers=[inst.id.value]))
  if len(ticks)<100000: raise SystemExit(f"RAW_BIDASK_FAIL_CLOSED: ticks={len(ticks)}")
  o=Path(a.out);o.parent.mkdir(parents=True,exist_ok=True)
  with o.open("w",newline="") as f:

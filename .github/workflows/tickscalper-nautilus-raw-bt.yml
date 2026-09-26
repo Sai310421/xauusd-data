@@ -1,7 +1,7 @@
 name: TickScalper Candidate Nautilus Raw BidAsk BT
 on:
   push:
-    branches: [research/tickscalper-nautilus-v1, research/tickscalper-edge-revalidation-v1]
+    branches: [research/tickscalper-nautilus-v1, research/tickscalper-edge-revalidation-v1, research/tickscalper-original-lineage-v1]
   workflow_dispatch:
 permissions:
   contents: read

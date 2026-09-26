@@ -1,0 +1,25 @@
+name: TickScalper Sub10s Fast OneDay
+on:
+  push:
+    branches: ['feature/tickscalper-sub10s-clock-lab-v1']
+    paths:
+      - '.github/workflows/tickscalper-sub10s-fast-oneday.yml'
+permissions:
+  contents: read
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python research/dukascopy_xau_quote_tick_gate.py --date 2026-08-27 --out raw/XAUUSD_ticks.csv
+      - run: python research/tickscalper_sub10s_clock_lab.py --ticks raw/XAUUSD_ticks.csv
+      - run: cp raw/XAUUSD_ticks.meta.txt results/tickscalper-sub10s-clock-lab/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tickscalper-sub10s-fast-oneday
+          path: results/tickscalper-sub10s-clock-lab/
+          if-no-files-found: error

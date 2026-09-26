@@ -19,36 +19,52 @@ jobs:
         include:
           - name: baseline_none
             risk_mode: none
-            dd_soft: 10
-            cvar_budget: 2.0
-          - name: barrier_dd8
+            dd_soft: 20
+            cvar_budget: 4.0
+            risk_start_layer: 1
+            min_scale: 1.0
+          - name: barrier_L8_dd20
             risk_mode: barrier
-            dd_soft: 8
-            cvar_budget: 2.0
-          - name: barrier_dd12
+            dd_soft: 20
+            cvar_budget: 4.0
+            risk_start_layer: 8
+            min_scale: 0.75
+          - name: barrier_L9_dd20
             risk_mode: barrier
-            dd_soft: 12
-            cvar_budget: 2.0
-          - name: barrier_dd16
-            risk_mode: barrier
-            dd_soft: 16
-            cvar_budget: 2.0
-          - name: cvar_1pct
-            risk_mode: cvar
-            dd_soft: 10
-            cvar_budget: 1.0
-          - name: cvar_2pct
-            risk_mode: cvar
-            dd_soft: 10
-            cvar_budget: 2.0
-          - name: hybrid_dd12_cvar15
+            dd_soft: 20
+            cvar_budget: 4.0
+            risk_start_layer: 9
+            min_scale: 0.75
+          - name: hybrid_L8_dd20_cv4
             risk_mode: hybrid
-            dd_soft: 12
-            cvar_budget: 1.5
-          - name: hybrid_dd16_cvar20
+            dd_soft: 20
+            cvar_budget: 4.0
+            risk_start_layer: 8
+            min_scale: 0.75
+          - name: hybrid_L9_dd20_cv4
             risk_mode: hybrid
-            dd_soft: 16
-            cvar_budget: 2.0
+            dd_soft: 20
+            cvar_budget: 4.0
+            risk_start_layer: 9
+            min_scale: 0.75
+          - name: hybrid_L8_dd24_cv5
+            risk_mode: hybrid
+            dd_soft: 24
+            cvar_budget: 5.0
+            risk_start_layer: 8
+            min_scale: 0.80
+          - name: hybrid_L9_dd24_cv5
+            risk_mode: hybrid
+            dd_soft: 24
+            cvar_budget: 5.0
+            risk_start_layer: 9
+            min_scale: 0.80
+          - name: cvar_L9_cv5
+            risk_mode: cvar
+            dd_soft: 20
+            cvar_budget: 5.0
+            risk_start_layer: 9
+            min_scale: 0.80
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,7 +78,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --dd-soft-pct ${{ matrix.dd_soft }} --cvar-budget-pct ${{ matrix.cvar_budget }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --dd-soft-pct ${{ matrix.dd_soft }} --cvar-budget-pct ${{ matrix.cvar_budget }} --risk-start-layer ${{ matrix.risk_start_layer }} --min-add-scale ${{ matrix.min_scale }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

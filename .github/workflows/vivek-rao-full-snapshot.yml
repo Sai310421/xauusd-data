@@ -1,0 +1,56 @@
+name: Vivek Rao Full Public Repo Snapshot
+on:
+  push:
+    branches: [research/vivek-rao-full-snapshot-v1]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect all public repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor/vivek-v-rao/{mirrors,working,meta}
+          python - <<'PY'
+          import json, urllib.request, pathlib
+          url='https://api.github.com/users/vivek-v-rao/repos?per_page=100&sort=full_name'
+          req=urllib.request.Request(url,headers={'User-Agent':'amos-snapshot'})
+          with urllib.request.urlopen(req) as r:
+              repos=json.load(r)
+          repos=[x for x in repos if not x.get('private')]
+          pathlib.Path('vendor/vivek-v-rao/meta/repos.json').write_text(json.dumps(repos,indent=2),encoding='utf-8')
+          pathlib.Path('vendor/vivek-v-rao/meta/repo_names.txt').write_text('\n'.join(x['name'] for x in repos)+'\n',encoding='utf-8')
+          print('repo_count=',len(repos))
+          PY
+          while IFS= read -r name; do
+            echo "=== $name ==="
+            url="https://github.com/vivek-v-rao/$name.git"
+            git clone --mirror "$url" "vendor/vivek-v-rao/mirrors/$name.git"
+            mkdir -p "vendor/vivek-v-rao/working/$name"
+            git --git-dir="vendor/vivek-v-rao/mirrors/$name.git" archive --format=tar HEAD | tar -xf - -C "vendor/vivek-v-rao/working/$name"
+            git --git-dir="vendor/vivek-v-rao/mirrors/$name.git" rev-parse HEAD > "vendor/vivek-v-rao/meta/$name.head.txt"
+          done < vendor/vivek-v-rao/meta/repo_names.txt
+          cat > vendor/vivek-v-rao/README_SNAPSHOT.md <<'EOF'
+          # vivek-v-rao public repository snapshot
+          - mirrors/: full Git mirrors (history, branches, tags/refs available to clone from locally)
+          - working/: default-branch HEAD source snapshots
+          - meta/: GitHub repository metadata and HEAD SHAs
+          Source owner: https://github.com/vivek-v-rao
+          Each repository retains its original LICENSE and copyright notices.
+          EOF
+          tar -czf vivek-v-rao-full-public-snapshot.tar.gz vendor/vivek-v-rao
+          sha256sum vivek-v-rao-full-public-snapshot.tar.gz > vivek-v-rao-full-public-snapshot.tar.gz.sha256
+      - name: Upload full snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: vivek-v-rao-full-public-snapshot
+          path: |
+            vivek-v-rao-full-public-snapshot.tar.gz
+            vivek-v-rao-full-public-snapshot.tar.gz.sha256
+          compression-level: 0
+          retention-days: 30

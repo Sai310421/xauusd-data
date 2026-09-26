@@ -1,11 +1,40 @@
 #!/usr/bin/env python3
-import argparse,csv,datetime as dt,lzma,struct,urllib.request
+import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,urllib.request
 from pathlib import Path
 REC=struct.Struct(">IIIff")
+HOST="https://datafeed.dukascopy.com/datafeed"
+def fetch(url):
+ try:
+  with urllib.request.urlopen(url,timeout=30) as r:return r.read()
+ except Exception:return b""
 def main():
- p=argparse.ArgumentParser();p.add_argument("--date",required=True);p.add_argument("--scale",type=float,required=True);p.add_argument("--out",required=True);a=p.parse_args()
- d=dt.date.fromisoformat(a.date); m=d.month-1
- url=f"https://datafeed.dukascopy.com/datafeed/XAUUSD/{d.year}/{m:02d}/{d.day:02d}/BID_candles_min_1.bi5"
- # Deliberate guard: minute candles are NOT acceptable as QuoteTick.
- raise SystemExit("FAIL-CLOSED: legacy candle URL cannot be used for sub-second QuoteTick BT; wire verified daily tick object before execution")
-if __name__=="__main__": main()
+ p=argparse.ArgumentParser();p.add_argument("--date",required=True);p.add_argument("--out",required=True);a=p.parse_args()
+ day=dt.date.fromisoformat(a.date); out=Path(a.out); out.parent.mkdir(parents=True,exist_ok=True)
+ rows=[]; hashes=[]
+ for h in range(24):
+  url=f"{HOST}/XAUUSD/{day.year}/{day.month-1:02d}/{day.day:02d}/{h:02d}h_ticks.bi5"
+  blob=fetch(url)
+  if not blob: continue
+  hashes.append(hashlib.sha256(blob).hexdigest())
+  try: raw=lzma.decompress(blob)
+  except Exception as e: raise SystemExit(f"FAIL-CLOSED decompress hour={h}: {e}")
+  if len(raw)%REC.size: raise SystemExit(f"FAIL-CLOSED record alignment hour={h}")
+  for i in range(0,len(raw),REC.size):
+   ms,ask_i,bid_i,av,bv=REC.unpack_from(raw,i)
+   ask,bid=ask_i/1000.0,bid_i/1000.0
+   ts=dt.datetime(day.year,day.month,day.day,tzinfo=dt.timezone.utc).timestamp()+h*3600+ms/1000
+   rows.append((ts,bid,ask,av,bv))
+ if len(rows)<1000: raise SystemExit(f"FAIL-CLOSED insufficient ticks: {len(rows)}")
+ prices=[(x[1]+x[2])/2 for x in rows]; spreads=[x[2]-x[1] for x in rows]
+ med=statistics.median(prices)
+ if not (500<med<10000): raise SystemExit(f"FAIL-CLOSED implausible XAU median {med}")
+ if any(x[2]<x[1] for x in rows): raise SystemExit("FAIL-CLOSED ask<bid")
+ if any(rows[i][0]<rows[i-1][0] for i in range(1,len(rows))): raise SystemExit("FAIL-CLOSED nonmonotonic timestamp")
+ distinct_ms=len({int(x[0]*1000) for x in rows})
+ if distinct_ms<1000: raise SystemExit("FAIL-CLOSED insufficient millisecond diversity")
+ with out.open("w",newline="") as f:
+  z=csv.writer(f);z.writerow(["timestamp","bid","ask","bid_volume","ask_volume"]);z.writerows((t,b,a,bv,av) for t,b,a,av,bv in rows)
+ meta=out.with_suffix(".meta.txt")
+ meta.write_text(f"date={day}\nticks={len(rows)}\nmedian_price={med}\nmedian_spread={statistics.median(spreads)}\ndistinct_ms={distinct_ms}\nscale=1000\nhour_hashes={','.join(hashes)}\n")
+ print(meta.read_text())
+if __name__=="__main__":main()

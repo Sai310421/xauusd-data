@@ -17,37 +17,37 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ts5_exit082
-            basket_offset: 0.82
+          - name: ts5_exit0855
+            basket_offset: 0.855
             session_start: 7
             session_end: 17
-          - name: ts5_exit083
-            basket_offset: 0.83
+          - name: ts5_exit0858
+            basket_offset: 0.858
             session_start: 7
             session_end: 17
-          - name: ts5_exit084
-            basket_offset: 0.84
+          - name: ts5_exit0860
+            basket_offset: 0.860
             session_start: 7
             session_end: 17
-          - name: ts5_exit085
-            basket_offset: 0.85
+          - name: ts5_exit0862
+            basket_offset: 0.862
             session_start: 7
             session_end: 17
-          - name: ts5_exit086
-            basket_offset: 0.86
+          - name: ts5_exit0865
+            basket_offset: 0.865
             session_start: 7
             session_end: 17
-          - name: ts5_exit087
-            basket_offset: 0.87
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit088
-            basket_offset: 0.88
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit085_s8_16
-            basket_offset: 0.85
+          - name: ts5_exit086_s8_16
+            basket_offset: 0.860
             session_start: 8
+            session_end: 16
+          - name: ts5_exit086_s75_165
+            basket_offset: 0.860
+            session_start: 7
+            session_end: 16
+          - name: ts5_exit086_s7_16
+            basket_offset: 0.860
+            session_start: 7
             session_end: 16
     steps:
       - uses: actions/checkout@v4

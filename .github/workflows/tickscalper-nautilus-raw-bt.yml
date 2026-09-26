@@ -24,41 +24,53 @@ jobs:
             slow: 5
             conf1: 8
             conf2: 13
-          - name: ts_1t_3_5_8_13
-            entry_mode: ticksmoother
-            ticks_per_bar: 1
-            fast: 3
-            slow: 5
-            conf1: 8
-            conf2: 13
-          - name: ts_3t_3_5_8_13
+            cross_only: false
+            use_macd: false
+          - name: ts_3t_cross
             entry_mode: ticksmoother
             ticks_per_bar: 3
             fast: 3
             slow: 5
             conf1: 8
             conf2: 13
-          - name: ts_5t_3_5_8_13
+            cross_only: true
+            use_macd: false
+          - name: ts_5t_cross
             entry_mode: ticksmoother
             ticks_per_bar: 5
             fast: 3
             slow: 5
             conf1: 8
             conf2: 13
-          - name: ts_3t_5_8_13_21
+            cross_only: true
+            use_macd: false
+          - name: ts_3t_cross_macd
             entry_mode: ticksmoother
             ticks_per_bar: 3
-            fast: 5
-            slow: 8
-            conf1: 13
-            conf2: 21
-          - name: ts_5t_5_8_13_21
+            fast: 3
+            slow: 5
+            conf1: 8
+            conf2: 13
+            cross_only: true
+            use_macd: true
+          - name: ts_5t_cross_macd
+            entry_mode: ticksmoother
+            ticks_per_bar: 5
+            fast: 3
+            slow: 5
+            conf1: 8
+            conf2: 13
+            cross_only: true
+            use_macd: true
+          - name: ts_5t_cross_macd_slow
             entry_mode: ticksmoother
             ticks_per_bar: 5
             fast: 5
             slow: 8
             conf1: 13
             conf2: 21
+            cross_only: true
+            use_macd: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -72,7 +84,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.80 --max-layers 10 --entry-mode ${{ matrix.entry_mode }} --ts-ticks-per-bar ${{ matrix.ticks_per_bar }} --ts-fast ${{ matrix.fast }} --ts-slow ${{ matrix.slow }} --ts-conf1 ${{ matrix.conf1 }} --ts-conf2 ${{ matrix.conf2 }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.80 --max-layers 10 --entry-mode ${{ matrix.entry_mode }} --ts-ticks-per-bar ${{ matrix.ticks_per_bar }} --ts-fast ${{ matrix.fast }} --ts-slow ${{ matrix.slow }} --ts-conf1 ${{ matrix.conf1 }} --ts-conf2 ${{ matrix.conf2 }} ${{ matrix.cross_only && '--ts-cross-only' || '' }} ${{ matrix.use_macd && '--ts-use-macd' || '' }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

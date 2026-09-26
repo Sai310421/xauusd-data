@@ -20,75 +20,75 @@ jobs:
           - name: baseline_core
             math_mode: none
             fp_min: 0.55
-            fp_max: 0.85
+            fp_max: 1.00
             base_frac: 0.00
             max_frac: 0.00
-            cdar_budget: 35
-            edar_budget: 35
+            cdar_budget: 12
+            edar_budget: 12
             regime_arg: ''
-          - name: fp_gate_005
+          - name: fp_highrisk_003
             math_mode: fp
-            fp_min: 0.55
-            fp_max: 0.85
+            fp_min: 0.85
+            fp_max: 1.00
+            base_frac: 0.03
+            max_frac: 0.03
+            cdar_budget: 12
+            edar_budget: 12
+            regime_arg: ''
+          - name: fp_highrisk_005
+            math_mode: fp
+            fp_min: 0.85
+            fp_max: 1.00
             base_frac: 0.05
             max_frac: 0.05
-            cdar_budget: 35
-            edar_budget: 35
+            cdar_budget: 12
+            edar_budget: 12
             regime_arg: ''
-          - name: fp_gate_010
+          - name: fp_cdar_005_b10
+            math_mode: fp_cdar
+            fp_min: 0.85
+            fp_max: 1.00
+            base_frac: 0.05
+            max_frac: 0.05
+            cdar_budget: 10
+            edar_budget: 12
+            regime_arg: ''
+          - name: fp_cdar_0075_b12
+            math_mode: fp_cdar
+            fp_min: 0.85
+            fp_max: 1.00
+            base_frac: 0.075
+            max_frac: 0.075
+            cdar_budget: 12
+            edar_budget: 12
+            regime_arg: ''
+          - name: fp_edar_regime_005_b10
+            math_mode: fp_edar_regime
+            fp_min: 0.85
+            fp_max: 1.00
+            base_frac: 0.05
+            max_frac: 0.05
+            cdar_budget: 10
+            edar_budget: 10
+            regime_arg: --math-rescue-regime-block
+          - name: fp_edar_regime_0075_b12
+            math_mode: fp_edar_regime
+            fp_min: 0.85
+            fp_max: 1.00
+            base_frac: 0.075
+            max_frac: 0.075
+            cdar_budget: 12
+            edar_budget: 12
+            regime_arg: --math-rescue-regime-block
+          - name: fp_veryhigh_005
             math_mode: fp
-            fp_min: 0.55
-            fp_max: 0.85
-            base_frac: 0.10
-            max_frac: 0.10
-            cdar_budget: 35
-            edar_budget: 35
+            fp_min: 0.95
+            fp_max: 1.00
+            base_frac: 0.05
+            max_frac: 0.05
+            cdar_budget: 12
+            edar_budget: 12
             regime_arg: ''
-          - name: fp_cdar_010_b30
-            math_mode: fp_cdar
-            fp_min: 0.55
-            fp_max: 0.85
-            base_frac: 0.10
-            max_frac: 0.10
-            cdar_budget: 30
-            edar_budget: 35
-            regime_arg: ''
-          - name: fp_cdar_015_b35
-            math_mode: fp_cdar
-            fp_min: 0.55
-            fp_max: 0.85
-            base_frac: 0.15
-            max_frac: 0.15
-            cdar_budget: 35
-            edar_budget: 35
-            regime_arg: ''
-          - name: fp_edar_regime_010
-            math_mode: fp_edar_regime
-            fp_min: 0.55
-            fp_max: 0.85
-            base_frac: 0.10
-            max_frac: 0.10
-            cdar_budget: 35
-            edar_budget: 35
-            regime_arg: --math-rescue-regime-block
-          - name: fp_edar_regime_015
-            math_mode: fp_edar_regime
-            fp_min: 0.55
-            fp_max: 0.85
-            base_frac: 0.15
-            max_frac: 0.15
-            cdar_budget: 35
-            edar_budget: 35
-            regime_arg: --math-rescue-regime-block
-          - name: fp_edar_regime_tight
-            math_mode: fp_edar_regime
-            fp_min: 0.60
-            fp_max: 0.80
-            base_frac: 0.10
-            max_frac: 0.10
-            cdar_budget: 30
-            edar_budget: 30
-            regime_arg: --math-rescue-regime-block
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

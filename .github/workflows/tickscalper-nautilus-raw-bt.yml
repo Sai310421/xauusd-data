@@ -18,45 +18,77 @@ jobs:
       matrix:
         include:
           - name: baseline_core
-            rescue_mode: none
-            rescue_frac: 0.00
-            rescue_target: 0.00
-            hard_fdd: 45
-          - name: loss_003_h40
-            rescue_mode: loss_side
-            rescue_frac: 0.03
-            rescue_target: 0.00
-            hard_fdd: 40
-          - name: loss_005_h35
-            rescue_mode: loss_side
-            rescue_frac: 0.05
-            rescue_target: 0.00
-            hard_fdd: 35
-          - name: loss_005_h40
-            rescue_mode: loss_side
-            rescue_frac: 0.05
-            rescue_target: 0.00
-            hard_fdd: 40
-          - name: loss_005_h45
-            rescue_mode: loss_side
-            rescue_frac: 0.05
-            rescue_target: 0.00
-            hard_fdd: 45
-          - name: loss_0075_h35
-            rescue_mode: loss_side
-            rescue_frac: 0.075
-            rescue_target: 0.00
-            hard_fdd: 35
-          - name: loss_0075_h40
-            rescue_mode: loss_side
-            rescue_frac: 0.075
-            rescue_target: 0.00
-            hard_fdd: 40
-          - name: loss_010_h40
-            rescue_mode: loss_side
-            rescue_frac: 0.10
-            rescue_target: 0.00
-            hard_fdd: 40
+            math_mode: none
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.00
+            max_frac: 0.00
+            cdar_budget: 35
+            edar_budget: 35
+            regime_arg: ''
+          - name: fp_gate_005
+            math_mode: fp
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.05
+            max_frac: 0.05
+            cdar_budget: 35
+            edar_budget: 35
+            regime_arg: ''
+          - name: fp_gate_010
+            math_mode: fp
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.10
+            max_frac: 0.10
+            cdar_budget: 35
+            edar_budget: 35
+            regime_arg: ''
+          - name: fp_cdar_010_b30
+            math_mode: fp_cdar
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.10
+            max_frac: 0.10
+            cdar_budget: 30
+            edar_budget: 35
+            regime_arg: ''
+          - name: fp_cdar_015_b35
+            math_mode: fp_cdar
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.15
+            max_frac: 0.15
+            cdar_budget: 35
+            edar_budget: 35
+            regime_arg: ''
+          - name: fp_edar_regime_010
+            math_mode: fp_edar_regime
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.10
+            max_frac: 0.10
+            cdar_budget: 35
+            edar_budget: 35
+            regime_arg: --math-rescue-regime-block
+          - name: fp_edar_regime_015
+            math_mode: fp_edar_regime
+            fp_min: 0.55
+            fp_max: 0.85
+            base_frac: 0.15
+            max_frac: 0.15
+            cdar_budget: 35
+            edar_budget: 35
+            regime_arg: --math-rescue-regime-block
+          - name: fp_edar_regime_tight
+            math_mode: fp_edar_regime
+            fp_min: 0.60
+            fp_max: 0.80
+            base_frac: 0.10
+            max_frac: 0.10
+            cdar_budget: 30
+            edar_budget: 30
+            regime_arg: --math-rescue-regime-block
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -70,7 +102,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode ${{ matrix.rescue_mode }} --loss-rescue-fraction ${{ matrix.rescue_frac }} --loss-rescue-target ${{ matrix.rescue_target }} --loss-rescue-hard-fdd ${{ matrix.hard_fdd }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode none --loss-rescue-hard-fdd 45 --math-rescue-mode ${{ matrix.math_mode }} --math-rescue-fp-min ${{ matrix.fp_min }} --math-rescue-fp-max ${{ matrix.fp_max }} --math-rescue-base-fraction ${{ matrix.base_frac }} --math-rescue-max-fraction ${{ matrix.max_frac }} --math-rescue-cdar-budget ${{ matrix.cdar_budget }} --math-rescue-edar-budget ${{ matrix.edar_budget }} ${{ matrix.regime_arg }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

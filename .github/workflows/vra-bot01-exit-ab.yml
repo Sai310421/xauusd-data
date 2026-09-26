@@ -1,0 +1,19 @@
+name: VRA BOT-01 Exit AB
+on:
+  push:
+    branches: [feature/vra-bot01-xauusd-prebt-20260926]
+    paths: ['research/vra_bot01_exit_ab.py','.github/workflows/vra-bot01-exit-ab.yml']
+permissions: {contents: read}
+jobs:
+  exitab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python research/vra_bot01_exit_ab.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vra-bot01-exit-ab
+          path: results/vra-bot01-exit-ab/
+          if-no-files-found: error

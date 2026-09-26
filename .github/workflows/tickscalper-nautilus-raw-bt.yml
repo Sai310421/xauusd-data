@@ -19,52 +19,52 @@ jobs:
         include:
           - name: baseline_none
             risk_mode: none
-            dd_soft: 20
-            barrier_k: 1.5
             risk_start_layer: 1
-            min_scale: 1.0
-          - name: barrier_L9_dd18_k08_s90
-            risk_mode: barrier
-            dd_soft: 18
-            barrier_k: 0.8
+            fp_threshold: 0.60
+            fp_block: 0.78
+            min_scale: 1.00
+          - name: fp_L9_055_075
+            risk_mode: firstpass
             risk_start_layer: 9
-            min_scale: 0.90
-          - name: barrier_L9_dd18_k12_s85
-            risk_mode: barrier
-            dd_soft: 18
-            barrier_k: 1.2
-            risk_start_layer: 9
+            fp_threshold: 0.55
+            fp_block: 0.75
             min_scale: 0.85
-          - name: barrier_L9_dd20_k08_s90
-            risk_mode: barrier
-            dd_soft: 20
-            barrier_k: 0.8
+          - name: fp_L9_060_078
+            risk_mode: firstpass
             risk_start_layer: 9
-            min_scale: 0.90
-          - name: barrier_L9_dd20_k12_s85
-            risk_mode: barrier
-            dd_soft: 20
-            barrier_k: 1.2
-            risk_start_layer: 9
+            fp_threshold: 0.60
+            fp_block: 0.78
             min_scale: 0.85
-          - name: barrier_L9_dd22_k08_s90
-            risk_mode: barrier
-            dd_soft: 22
-            barrier_k: 0.8
+          - name: fp_L9_065_082
+            risk_mode: firstpass
             risk_start_layer: 9
+            fp_threshold: 0.65
+            fp_block: 0.82
             min_scale: 0.90
-          - name: barrier_L8_dd20_k08_s90
-            risk_mode: barrier
-            dd_soft: 20
-            barrier_k: 0.8
+          - name: fpbar_L9_060_078
+            risk_mode: fp_barrier
+            risk_start_layer: 9
+            fp_threshold: 0.60
+            fp_block: 0.78
+            min_scale: 0.90
+          - name: fp_L8_060_078
+            risk_mode: firstpass
             risk_start_layer: 8
+            fp_threshold: 0.60
+            fp_block: 0.78
             min_scale: 0.90
-          - name: barrier_L8_dd22_k08_s90
-            risk_mode: barrier
-            dd_soft: 22
-            barrier_k: 0.8
+          - name: fp_L8_065_082
+            risk_mode: firstpass
             risk_start_layer: 8
+            fp_threshold: 0.65
+            fp_block: 0.82
             min_scale: 0.90
+          - name: barrier_L9_reference
+            risk_mode: barrier
+            risk_start_layer: 9
+            fp_threshold: 0.60
+            fp_block: 0.78
+            min_scale: 0.85
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,7 +78,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --dd-soft-pct ${{ matrix.dd_soft }} --dd-barrier-k ${{ matrix.barrier_k }} --risk-start-layer ${{ matrix.risk_start_layer }} --min-add-scale ${{ matrix.min_scale }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ${{ matrix.risk_mode }} --risk-start-layer ${{ matrix.risk_start_layer }} --fp-threshold ${{ matrix.fp_threshold }} --fp-block-threshold ${{ matrix.fp_block }} --dd-soft-pct 20 --dd-barrier-k 1.2 --min-add-scale ${{ matrix.min_scale }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

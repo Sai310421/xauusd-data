@@ -1,0 +1,46 @@
+name: TickScalper Conditional Stop Live Signal
+on:
+  push:
+    branches: [research/tickscalper-original-lineage-v1]
+    paths: [.github/workflows/tickscalper-conditional-stop-live.yml]
+permissions:
+  contents: read
+env:
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        include:
+          - {name: H58_R55_W16_CD30, hard: 5.8, ratio: 0.55, win: 16, cd: 30}
+          - {name: H58_R62_W16_CD30, hard: 5.8, ratio: 0.62, win: 16, cd: 30}
+          - {name: H58_R68_W16_CD30, hard: 5.8, ratio: 0.68, win: 16, cd: 30}
+          - {name: H58_R55_W24_CD30, hard: 5.8, ratio: 0.55, win: 24, cd: 30}
+          - {name: H58_R62_W24_CD30, hard: 5.8, ratio: 0.62, win: 24, cd: 30}
+          - {name: H58_R68_W24_CD30, hard: 5.8, ratio: 0.68, win: 24, cd: 30}
+          - {name: H58_R62_W32_CD30, hard: 5.8, ratio: 0.62, win: 32, cd: 30}
+          - {name: H58_R62_W24_CD40, hard: 5.8, ratio: 0.62, win: 24, cd: 40}
+          - {name: H58_R62_W24_CD50, hard: 5.8, ratio: 0.62, win: 24, cd: 50}
+          - {name: H60_R62_W24_CD30, hard: 6.0, ratio: 0.62, win: 24, cd: 30}
+          - {name: H60_R62_W24_CD40, hard: 6.0, ratio: 0.62, win: 24, cd: 40}
+          - {name: H60_R62_W24_CD50, hard: 6.0, ratio: 0.62, win: 24, cd: 50}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install 'nautilus_trader==1.230.0' numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - run: python research/tickscalper_conditional_stop_live.py --catalog "$RAW_CATALOG" --experiment-id "${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 9 --emergency-distance 4.5 --emergency-cooldown ${{ matrix.cd }} --conditional-stop --stop-gate-distance 4.5 --hard-stop-distance ${{ matrix.hard }} --stop-vel-window ${{ matrix.win }} --stop-adverse-ratio ${{ matrix.ratio }} --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --raw-bidask-only
+      - name: Print KPI
+        if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

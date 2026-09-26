@@ -1,0 +1,34 @@
+name: TickScalper Sub10s Raw BidAsk Clock Lab
+on:
+  workflow_dispatch:
+    inputs:
+      tick_csv:
+        description: 'Raw BidAsk CSV: timestamp,bid,ask'
+        required: true
+        default: 'raw/XAUUSD_ticks.csv'
+permissions:
+  contents: read
+jobs:
+  clock-lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Raw BidAsk fail-closed gate
+        shell: bash
+        run: |
+          test -f "${{ inputs.tick_csv }}" || { echo 'Raw BidAsk input missing'; exit 2; }
+          head -1 "${{ inputs.tick_csv }}" | grep -q 'timestamp.*bid.*ask' || { echo 'timestamp,bid,ask required'; exit 3; }
+      - name: Run clock ablation
+        run: python research/tickscalper_sub10s_clock_lab.py --ticks "${{ inputs.tick_csv }}"
+      - name: Upload KPI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tickscalper-sub10s-clock-lab
+          path: results/tickscalper-sub10s-clock-lab/
+          if-no-files-found: error
+          retention-days: 30

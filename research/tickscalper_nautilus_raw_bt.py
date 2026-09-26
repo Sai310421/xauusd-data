@@ -32,7 +32,7 @@ def layer_lot(base,n,c):
  return floor_step(base*(c.later_mult**n))
 class TickScalperCandidate(Strategy):
  def __init__(self,c):
-  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.ticket_pnls=[];self.ts_tick_count=0;self.ts_bar_open=None;self.ts_bar_hi=None;self.ts_bar_lo=None;self.ts_closes=deque(maxlen=max(256,c.ts_conf2*8));self.ts_last_bar_close=None;self.ts_prev_signal=0;self.mtm_peak=1000.;self.mfdd=0.;self.recent_mid_deltas=deque(maxlen=max(50,c.cvar_window,c.fp_window));self.prev_mid=None;self.risk_scaled_adds=0;self.risk_blocked_adds=0;self.fp_last_prob=0.0;self.fp_trigger_count=0;self.hazard_delays=0;self.hazard_last_prob=0.0;self.rescue_active=False;self.rescue_legs=[];self.rescue_turns=0;self.rescue_anchor=0.0;self.rescue_roll=0.0;self.rescue_started_count=0;self.rescue_completed_count=0;self.rescue_hard_close_count=0;self.early_rescue_used=False;self.early_rescue_started=0;self.early_rescue_completed=0;self.early_rescue_hard_closed=0;self.loss_rescue_started=0;self.loss_rescue_completed=0;self.loss_rescue_hard_closed=0;self.recent_fdd=deque(maxlen=1000);self.math_rescue_started=0;self.math_rescue_completed=0;self.math_rescue_hard_closed=0;self.math_rescue_denied=0;self.math_rescue_last_fp=0.0;self.math_rescue_last_cdar=0.0;self.math_rescue_last_edar=0.0;self.math_rescue_last_regime='UNKNOWN';self.shadow_cases=[];self.shadow_stats={str(x):{'started':0,'completed':0,'timeout':0,'sum_recovery_sec':0.0,'max_adverse_pnl':0.0} for x in (0.03,0.05,0.075,0.10,0.15)}
+  super().__init__(c);self.bid=self.ask=None;self.side=0;self.entries=[];self.trades=[];self.gw=self.gl=self.net=0.;self.eq=self.peak=1000.;self.mdd=self.max_lots=0.;self.max_layer=0;self.last_close_ns=0;self.ticket_pnls=[];self.ts_tick_count=0;self.ts_bar_open=None;self.ts_bar_hi=None;self.ts_bar_lo=None;self.ts_closes=deque(maxlen=max(256,c.ts_conf2*8));self.ts_last_bar_close=None;self.ts_prev_signal=0;self.mtm_peak=1000.;self.mfdd=0.;self.recent_mid_deltas=deque(maxlen=max(50,c.cvar_window,c.fp_window));self.prev_mid=None;self.risk_scaled_adds=0;self.risk_blocked_adds=0;self.fp_last_prob=0.0;self.fp_trigger_count=0;self.hazard_delays=0;self.hazard_last_prob=0.0;self.rescue_active=False;self.rescue_legs=[];self.rescue_turns=0;self.rescue_anchor=0.0;self.rescue_roll=0.0;self.rescue_started_count=0;self.rescue_completed_count=0;self.rescue_hard_close_count=0;self.early_rescue_used=False;self.early_rescue_started=0;self.early_rescue_completed=0;self.early_rescue_hard_closed=0;self.loss_rescue_started=0;self.loss_rescue_completed=0;self.loss_rescue_hard_closed=0;self.recent_fdd=deque(maxlen=1000);self.math_rescue_started=0;self.math_rescue_completed=0;self.math_rescue_hard_closed=0;self.math_rescue_denied=0;self.math_rescue_last_fp=0.0;self.math_rescue_last_cdar=0.0;self.math_rescue_last_edar=0.0;self.math_rescue_last_regime='UNKNOWN';self.shadow_cases=[];self.shadow_case_results=[];self.shadow_case_seq=0;self.shadow_stats={str(x):{'started':0,'completed':0,'timeout':0,'sum_recovery_sec':0.0,'max_adverse_pnl':0.0} for x in (0.03,0.05,0.075,0.10,0.15)}
  def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id)
  def _submit(self,side,lot):
   inst=self.cache.instrument(self.config.instrument_id);o=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if side>0 else OrderSide.SELL,quantity=inst.make_qty(Decimal(str(lot))*self.config.contract_units_per_lot));self.submit_order(o)
@@ -191,11 +191,21 @@ class TickScalperCandidate(Strategy):
   return max(0.0,min(self.config.math_rescue_max_fraction,frac))
  def _shadow_spawn_rescues(self):
   if not self.config.shadow_rescue_lab or not self.entries:return
+  self.shadow_case_seq+=1
   gross=sum(l for _,l in self.entries)
+  mark=self.bid if self.side>0 else self.ask
+  be=self._be()
+  vals=list(self.recent_mid_deltas)[-200:]
+  signed=[d*self.side for d in vals] if vals else []
+  mu=sum(signed)/len(signed) if signed else 0.0
+  var=sum((x-mu)*(x-mu) for x in signed)/max(len(signed)-1,1) if signed else 0.0
+  sd=math.sqrt(max(var,0.0))
+  adverse_share=sum(1 for x in signed if x<0)/len(signed) if signed else 0.0
+  snap={'case_id':self.shadow_case_seq,'depth':len(self.entries),'side':self.side,'gross_lot':gross,'fdd_pct':self._floating_dd_pct(),'be_distance':(be-mark)*self.side,'fp':self._first_passage_adverse_prob(0.0),'cdar':self._cdar_estimate(),'edar':self._edar_estimate(),'regime':self._rescue_regime(),'drift':mu,'vol':sd,'adverse_share':adverse_share}
   for frac in (0.03,0.05,0.075,0.10,0.15):
    lot=max(0.01,floor_step(gross*frac))
    px=self.ask if self.side>0 else self.bid
-   case={'frac':frac,'side':self.side,'entries':list(self.entries),'rescue':(px,lot),'start_ns':self.now_ns,'min_pnl':0.0}
+   case={'frac':frac,'side':self.side,'entries':list(self.entries),'rescue':(px,lot),'start_ns':self.now_ns,'min_pnl':0.0,'snap':snap}
    self.shadow_cases.append(case);self.shadow_stats[str(frac)]['started']+=1
  def _shadow_update(self):
   if not self.shadow_cases:return
@@ -209,9 +219,9 @@ class TickScalperCandidate(Strategy):
    st['max_adverse_pnl']=min(st['max_adverse_pnl'],case['min_pnl'])
    age=(self.now_ns-case['start_ns'])/1e9
    if pnl>=0:
-    st['completed']+=1;st['sum_recovery_sec']+=age;continue
+    st['completed']+=1;st['sum_recovery_sec']+=age;self.shadow_case_results.append({**case['snap'],'frac':case['frac'],'outcome':'COMPLETE','recovery_sec':age,'max_adverse_pnl':case['min_pnl']});continue
    if age>=self.config.shadow_rescue_horizon_sec:
-    st['timeout']+=1;continue
+    st['timeout']+=1;self.shadow_case_results.append({**case['snap'],'frac':case['frac'],'outcome':'TIMEOUT','recovery_sec':age,'max_adverse_pnl':case['min_pnl']});continue
    keep.append(case)
   self.shadow_cases=keep
  def _start_math_rescue(self):
@@ -425,7 +435,7 @@ class TickScalperCandidate(Strategy):
  def on_stop(self):
   if self.entries:self._close('EOD')
  def summary(self):
-  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'MaxFloatingDD_pct':self.mfdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'risk_scaled_adds':self.risk_scaled_adds,'risk_blocked_adds':self.risk_blocked_adds,'fp_trigger_count':self.fp_trigger_count,'fp_last_prob':self.fp_last_prob,'hazard_delays':self.hazard_delays,'hazard_last_prob':self.hazard_last_prob,'rescue_started':self.rescue_started_count,'rescue_completed':self.rescue_completed_count,'rescue_hard_closed':self.rescue_hard_close_count,'early_rescue_started':self.early_rescue_started,'early_rescue_completed':self.early_rescue_completed,'early_rescue_hard_closed':self.early_rescue_hard_closed,'loss_rescue_started':self.loss_rescue_started,'loss_rescue_completed':self.loss_rescue_completed,'loss_rescue_hard_closed':self.loss_rescue_hard_closed,'math_rescue_started':self.math_rescue_started,'math_rescue_completed':self.math_rescue_completed,'math_rescue_hard_closed':self.math_rescue_hard_closed,'math_rescue_denied':self.math_rescue_denied,'math_rescue_last_fp':self.math_rescue_last_fp,'math_rescue_last_cdar':self.math_rescue_last_cdar,'math_rescue_last_edar':self.math_rescue_last_edar,'math_rescue_last_regime':self.math_rescue_last_regime,'shadow_rescue_stats':self.shadow_stats,'shadow_open_cases':len(self.shadow_cases),'ticket_N':len(self.ticket_pnls),'ticket_WR_pct':100*sum(p>0 for p in self.ticket_pnls)/max(len(self.ticket_pnls),1),'ticket_PF':sum(p for p in self.ticket_pnls if p>0)/max(sum(-p for p in self.ticket_pnls if p<0),1e-12)}
+  n=len(self.trades);wins=sum(x['pnl']>0 for x in self.trades);return {'N':n,'WR_pct':100*wins/max(n,1),'PF':self.gw/self.gl if self.gl else None,'EV':self.net/max(n,1),'Net':self.net,'Return_pct':100*self.net/1000,'MaxDD_pct':self.mdd,'MaxFloatingDD_pct':self.mfdd,'max_layer':self.max_layer,'max_concurrent_lots':self.max_lots,'depth10':sum(x['depth']>=10 for x in self.trades),'risk_scaled_adds':self.risk_scaled_adds,'risk_blocked_adds':self.risk_blocked_adds,'fp_trigger_count':self.fp_trigger_count,'fp_last_prob':self.fp_last_prob,'hazard_delays':self.hazard_delays,'hazard_last_prob':self.hazard_last_prob,'rescue_started':self.rescue_started_count,'rescue_completed':self.rescue_completed_count,'rescue_hard_closed':self.rescue_hard_close_count,'early_rescue_started':self.early_rescue_started,'early_rescue_completed':self.early_rescue_completed,'early_rescue_hard_closed':self.early_rescue_hard_closed,'loss_rescue_started':self.loss_rescue_started,'loss_rescue_completed':self.loss_rescue_completed,'loss_rescue_hard_closed':self.loss_rescue_hard_closed,'math_rescue_started':self.math_rescue_started,'math_rescue_completed':self.math_rescue_completed,'math_rescue_hard_closed':self.math_rescue_hard_closed,'math_rescue_denied':self.math_rescue_denied,'math_rescue_last_fp':self.math_rescue_last_fp,'math_rescue_last_cdar':self.math_rescue_last_cdar,'math_rescue_last_edar':self.math_rescue_last_edar,'math_rescue_last_regime':self.math_rescue_last_regime,'shadow_rescue_stats':self.shadow_stats,'shadow_case_results':self.shadow_case_results,'shadow_open_cases':len(self.shadow_cases),'ticket_N':len(self.ticket_pnls),'ticket_WR_pct':100*sum(p>0 for p in self.ticket_pnls)/max(len(self.ticket_pnls),1),'ticket_PF':sum(p for p in self.ticket_pnls if p>0)/max(sum(-p for p in self.ticket_pnls if p<0),1e-12)}
 def fix_sizes(ticks):
  one=Quantity.from_int(1);out=[]
  for t in ticks:

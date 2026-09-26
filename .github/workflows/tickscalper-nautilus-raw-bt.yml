@@ -18,61 +18,53 @@ jobs:
       matrix:
         include:
           - name: baseline_core
-            hazard_arg: ''
-            hazard_start: 7
-            hazard_threshold: 0.60
-            hazard_lambda: 1.0
             rescue_mode: none
-            zr_hard_fdd: 45
-          - name: hazard_L7_p055_l05
-            hazard_arg: --hazard-distance
-            hazard_start: 7
-            hazard_threshold: 0.55
-            hazard_lambda: 0.5
-            rescue_mode: none
-            zr_hard_fdd: 45
-          - name: hazard_L7_p060_l10
-            hazard_arg: --hazard-distance
-            hazard_start: 7
-            hazard_threshold: 0.60
-            hazard_lambda: 1.0
-            rescue_mode: none
-            zr_hard_fdd: 45
-          - name: hazard_L8_p060_l10
-            hazard_arg: --hazard-distance
-            hazard_start: 8
-            hazard_threshold: 0.60
-            hazard_lambda: 1.0
-            rescue_mode: none
-            zr_hard_fdd: 45
-          - name: zr_rescue_hard45
-            hazard_arg: ''
-            hazard_start: 7
-            hazard_threshold: 0.60
-            hazard_lambda: 1.0
-            rescue_mode: zr_adaptive
-            zr_hard_fdd: 45
-          - name: zr_rescue_hard35
-            hazard_arg: ''
-            hazard_start: 7
-            hazard_threshold: 0.60
-            hazard_lambda: 1.0
-            rescue_mode: zr_adaptive
-            zr_hard_fdd: 35
-          - name: hazard_zr_hard45
-            hazard_arg: --hazard-distance
-            hazard_start: 7
-            hazard_threshold: 0.60
-            hazard_lambda: 0.75
-            rescue_mode: zr_adaptive
-            zr_hard_fdd: 45
-          - name: hazard_zr_hard35
-            hazard_arg: --hazard-distance
-            hazard_start: 7
-            hazard_threshold: 0.60
-            hazard_lambda: 0.75
-            rescue_mode: zr_adaptive
-            zr_hard_fdd: 35
+            early_layer: 8
+            early_fdd: 25
+            hedge_frac: 0.00
+            hard_fdd: 45
+          - name: early_L8_fdd20_h25
+            rescue_mode: early_partial
+            early_layer: 8
+            early_fdd: 20
+            hedge_frac: 0.25
+            hard_fdd: 45
+          - name: early_L8_fdd25_h25
+            rescue_mode: early_partial
+            early_layer: 8
+            early_fdd: 25
+            hedge_frac: 0.25
+            hard_fdd: 45
+          - name: early_L8_fdd25_h40
+            rescue_mode: early_partial
+            early_layer: 8
+            early_fdd: 25
+            hedge_frac: 0.40
+            hard_fdd: 45
+          - name: early_L8_fdd25_h60
+            rescue_mode: early_partial
+            early_layer: 8
+            early_fdd: 25
+            hedge_frac: 0.60
+            hard_fdd: 45
+          - name: early_L9_fdd20_h25
+            rescue_mode: early_partial
+            early_layer: 9
+            early_fdd: 20
+            hedge_frac: 0.25
+            hard_fdd: 45
+          - name: early_L9_fdd25_h40
+            rescue_mode: early_partial
+            early_layer: 9
+            early_fdd: 25
+            hedge_frac: 0.40
+            hard_fdd: 45
+          - name: early_L9_fdd30_h60
+            rescue_mode: early_partial
+            early_layer: 9
+            early_fdd: 30
+            hedge_frac: 0.60
+            hard_fdd: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -86,7 +78,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none ${{ matrix.hazard_arg }} --hazard-start-layer ${{ matrix.hazard_start }} --hazard-threshold ${{ matrix.hazard_threshold }} --hazard-lambda ${{ matrix.hazard_lambda }} --rescue-mode ${{ matrix.rescue_mode }} --zr-lot-coeff 1.35 --zr-max-turns 4 --zr-zone-width 3.11 --zr-defense-fdd-trigger 30 --zr-target-pnl 0 --zr-hard-fdd-pct ${{ matrix.zr_hard_fdd }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode ${{ matrix.rescue_mode }} --early-start-layer ${{ matrix.early_layer }} --early-fdd-trigger ${{ matrix.early_fdd }} --early-hedge-fraction ${{ matrix.hedge_frac }} --zr-target-pnl 0 --zr-hard-fdd-pct ${{ matrix.hard_fdd }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

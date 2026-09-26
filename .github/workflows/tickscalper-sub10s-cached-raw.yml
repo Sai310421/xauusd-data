@@ -1,0 +1,33 @@
+name: TickScalper Sub10s Cached Raw Clock Lab
+on:
+  push:
+    branches: ['feature/tickscalper-sub10s-clock-lab-v1']
+    paths: ['.github/workflows/tickscalper-sub10s-cached-raw.yml']
+permissions:
+  contents: read
+env:
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'nautilus_trader==1.230.0'
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/export_xau_raw_catalog_csv.py --catalog catalog/raw_bidask --out raw/XAUUSD_ticks.csv
+      - run: python research/tickscalper_sub10s_clock_lab.py --ticks raw/XAUUSD_ticks.csv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tickscalper-sub10s-cached-raw
+          path: results/tickscalper-sub10s-clock-lab/
+          if-no-files-found: error
+          retention-days: 30

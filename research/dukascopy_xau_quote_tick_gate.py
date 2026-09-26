@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,urllib.request
+import argparse,csv,datetime as dt,hashlib,lzma,statistics,struct,subprocess,tempfile
 from pathlib import Path
 REC=struct.Struct(">IIIff")
 HOST="https://datafeed.dukascopy.com/datafeed"
 def fetch(url):
- try:
-  with urllib.request.urlopen(url,timeout=30) as r:return r.read()
- except Exception:return b""
+ with tempfile.NamedTemporaryFile() as tmp:
+  r=subprocess.run(["curl","-sS","-L","--http1.1","-m","30","-A","Mozilla/5.0","-o",tmp.name,"-w","%{http_code}",url],capture_output=True,text=True)
+  code=(r.stdout or "0").strip()
+  tmp.seek(0); data=tmp.read()
+  if code=="200" and data:return data
+  print(f"FETCH {code} bytes={len(data)} {url}")
+  return b""
 def main():
  p=argparse.ArgumentParser();p.add_argument("--date",required=True);p.add_argument("--out",required=True);a=p.parse_args()
  day=dt.date.fromisoformat(a.date); out=Path(a.out); out.parent.mkdir(parents=True,exist_ok=True)

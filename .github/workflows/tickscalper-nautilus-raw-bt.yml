@@ -17,54 +17,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ts5_m2_4_7_11
-            entry_mode: ticksmoother
-            ticks_per_bar: 5
-            fast: 2
-            slow: 4
-            conf1: 7
-            conf2: 11
-            max_layers: 10
-          - name: ts5_m3_5_8_13
-            entry_mode: ticksmoother
-            ticks_per_bar: 5
-            fast: 3
-            slow: 5
-            conf1: 8
-            conf2: 13
-            max_layers: 10
-          - name: ts5_m4_6_9_14
-            entry_mode: ticksmoother
-            ticks_per_bar: 5
-            fast: 4
-            slow: 6
-            conf1: 9
-            conf2: 14
-            max_layers: 10
-          - name: ts5_m5_8_13_21
-            entry_mode: ticksmoother
-            ticks_per_bar: 5
-            fast: 5
-            slow: 8
-            conf1: 13
-            conf2: 21
-            max_layers: 10
-          - name: ts5_best_d9
-            entry_mode: ticksmoother
-            ticks_per_bar: 5
-            fast: 3
-            slow: 5
-            conf1: 8
-            conf2: 13
-            max_layers: 9
-          - name: ts5_best_d8
-            entry_mode: ticksmoother
-            ticks_per_bar: 5
-            fast: 3
-            slow: 5
-            conf1: 8
-            conf2: 13
-            max_layers: 8
+          - name: ts5_exit065
+            basket_offset: 0.65
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit070
+            basket_offset: 0.70
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit075
+            basket_offset: 0.75
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit080
+            basket_offset: 0.80
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit085
+            basket_offset: 0.85
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit090
+            basket_offset: 0.90
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit080_s8_16
+            basket_offset: 0.80
+            session_start: 8
+            session_end: 16
+          - name: ts5_exit080_s6_18
+            basket_offset: 0.80
+            session_start: 6
+            session_end: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,7 +62,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.80 --max-layers ${{ matrix.max_layers }} --entry-mode ${{ matrix.entry_mode }} --ts-ticks-per-bar ${{ matrix.ticks_per_bar }} --ts-fast ${{ matrix.fast }} --ts-slow ${{ matrix.slow }} --ts-conf1 ${{ matrix.conf1 }} --ts-conf2 ${{ matrix.conf2 }} --ts-cross-only --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start ${{ matrix.session_start }} --session-end ${{ matrix.session_end }} --basket-offset ${{ matrix.basket_offset }} --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

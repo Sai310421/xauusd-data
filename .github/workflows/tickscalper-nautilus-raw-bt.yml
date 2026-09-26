@@ -1,7 +1,7 @@
 name: TickScalper Candidate Nautilus Raw BidAsk BT
 on:
   push:
-    branches: [research/tickscalper-nautilus-v1]
+    branches: [research/tickscalper-nautilus-v1, research/tickscalper-parity-calibration-v1]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,6 +13,30 @@ jobs:
   bt:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: e060
+            entry_move: 0.60
+            session_start: 6
+            session_end: 19
+            cooldown: 45
+          - name: e070
+            entry_move: 0.70
+            session_start: 6
+            session_end: 19
+            cooldown: 45
+          - name: e080
+            entry_move: 0.80
+            session_start: 6
+            session_end: 19
+            cooldown: 45
+          - name: e090
+            entry_move: 0.90
+            session_start: 6
+            session_end: 19
+            cooldown: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +50,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}" --base-lot 0.30 --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --entry-move ${{ matrix.entry_move }} --session-start ${{ matrix.session_start }} --session-end ${{ matrix.session_end }} --cooldown ${{ matrix.cooldown }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

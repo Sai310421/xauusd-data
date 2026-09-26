@@ -17,38 +17,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: ts5_exit065
-            basket_offset: 0.65
+          - name: ts5_exit082
+            basket_offset: 0.82
             session_start: 7
             session_end: 17
-          - name: ts5_exit070
-            basket_offset: 0.70
+          - name: ts5_exit083
+            basket_offset: 0.83
             session_start: 7
             session_end: 17
-          - name: ts5_exit075
-            basket_offset: 0.75
-            session_start: 7
-            session_end: 17
-          - name: ts5_exit080
-            basket_offset: 0.80
+          - name: ts5_exit084
+            basket_offset: 0.84
             session_start: 7
             session_end: 17
           - name: ts5_exit085
             basket_offset: 0.85
             session_start: 7
             session_end: 17
-          - name: ts5_exit090
-            basket_offset: 0.90
+          - name: ts5_exit086
+            basket_offset: 0.86
             session_start: 7
             session_end: 17
-          - name: ts5_exit080_s8_16
-            basket_offset: 0.80
+          - name: ts5_exit087
+            basket_offset: 0.87
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit088
+            basket_offset: 0.88
+            session_start: 7
+            session_end: 17
+          - name: ts5_exit085_s8_16
+            basket_offset: 0.85
             session_start: 8
             session_end: 16
-          - name: ts5_exit080_s6_18
-            basket_offset: 0.80
-            session_start: 6
-            session_end: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

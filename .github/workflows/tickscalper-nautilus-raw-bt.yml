@@ -22,41 +22,41 @@ jobs:
             rescue_frac: 0.00
             rescue_target: 0.00
             hard_fdd: 45
-          - name: loss_rescue_010
+          - name: loss_003_h40
+            rescue_mode: loss_side
+            rescue_frac: 0.03
+            rescue_target: 0.00
+            hard_fdd: 40
+          - name: loss_005_h35
+            rescue_mode: loss_side
+            rescue_frac: 0.05
+            rescue_target: 0.00
+            hard_fdd: 35
+          - name: loss_005_h40
+            rescue_mode: loss_side
+            rescue_frac: 0.05
+            rescue_target: 0.00
+            hard_fdd: 40
+          - name: loss_005_h45
+            rescue_mode: loss_side
+            rescue_frac: 0.05
+            rescue_target: 0.00
+            hard_fdd: 45
+          - name: loss_0075_h35
+            rescue_mode: loss_side
+            rescue_frac: 0.075
+            rescue_target: 0.00
+            hard_fdd: 35
+          - name: loss_0075_h40
+            rescue_mode: loss_side
+            rescue_frac: 0.075
+            rescue_target: 0.00
+            hard_fdd: 40
+          - name: loss_010_h40
             rescue_mode: loss_side
             rescue_frac: 0.10
             rescue_target: 0.00
-            hard_fdd: 45
-          - name: loss_rescue_015
-            rescue_mode: loss_side
-            rescue_frac: 0.15
-            rescue_target: 0.00
-            hard_fdd: 45
-          - name: loss_rescue_020
-            rescue_mode: loss_side
-            rescue_frac: 0.20
-            rescue_target: 0.00
-            hard_fdd: 45
-          - name: loss_rescue_025
-            rescue_mode: loss_side
-            rescue_frac: 0.25
-            rescue_target: 0.00
-            hard_fdd: 45
-          - name: loss_rescue_015_t010
-            rescue_mode: loss_side
-            rescue_frac: 0.15
-            rescue_target: 0.10
-            hard_fdd: 45
-          - name: loss_rescue_020_h40
-            rescue_mode: loss_side
-            rescue_frac: 0.20
-            rescue_target: 0.00
             hard_fdd: 40
-          - name: loss_rescue_020_h50
-            rescue_mode: loss_side
-            rescue_frac: 0.20
-            rescue_target: 0.00
-            hard_fdd: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

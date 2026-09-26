@@ -1,0 +1,23 @@
+name: Count XAU Raw Trading Days
+on:
+  push:
+    branches: [research/tickscalper-original-lineage-v1]
+    paths: [.github/workflows/count-xau-raw-trading-days.yml]
+permissions:
+  contents: read
+env:
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  count:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install 'nautilus_trader==1.230.0'
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/count_xau_raw_trading_days.py

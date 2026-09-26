@@ -19,52 +19,44 @@ jobs:
         include:
           - name: baseline_core
             rescue_mode: none
-            early_layer: 8
-            early_fdd: 25
-            hedge_frac: 0.00
+            rescue_frac: 0.00
+            rescue_target: 0.00
             hard_fdd: 45
-          - name: early_L8_fdd20_h25
-            rescue_mode: early_partial
-            early_layer: 8
-            early_fdd: 20
-            hedge_frac: 0.25
+          - name: loss_rescue_010
+            rescue_mode: loss_side
+            rescue_frac: 0.10
+            rescue_target: 0.00
             hard_fdd: 45
-          - name: early_L8_fdd25_h25
-            rescue_mode: early_partial
-            early_layer: 8
-            early_fdd: 25
-            hedge_frac: 0.25
+          - name: loss_rescue_015
+            rescue_mode: loss_side
+            rescue_frac: 0.15
+            rescue_target: 0.00
             hard_fdd: 45
-          - name: early_L8_fdd25_h40
-            rescue_mode: early_partial
-            early_layer: 8
-            early_fdd: 25
-            hedge_frac: 0.40
+          - name: loss_rescue_020
+            rescue_mode: loss_side
+            rescue_frac: 0.20
+            rescue_target: 0.00
             hard_fdd: 45
-          - name: early_L8_fdd25_h60
-            rescue_mode: early_partial
-            early_layer: 8
-            early_fdd: 25
-            hedge_frac: 0.60
+          - name: loss_rescue_025
+            rescue_mode: loss_side
+            rescue_frac: 0.25
+            rescue_target: 0.00
             hard_fdd: 45
-          - name: early_L9_fdd20_h25
-            rescue_mode: early_partial
-            early_layer: 9
-            early_fdd: 20
-            hedge_frac: 0.25
+          - name: loss_rescue_015_t010
+            rescue_mode: loss_side
+            rescue_frac: 0.15
+            rescue_target: 0.10
             hard_fdd: 45
-          - name: early_L9_fdd25_h40
-            rescue_mode: early_partial
-            early_layer: 9
-            early_fdd: 25
-            hedge_frac: 0.40
-            hard_fdd: 45
-          - name: early_L9_fdd30_h60
-            rescue_mode: early_partial
-            early_layer: 9
-            early_fdd: 30
-            hedge_frac: 0.60
-            hard_fdd: 45
+          - name: loss_rescue_020_h40
+            rescue_mode: loss_side
+            rescue_frac: 0.20
+            rescue_target: 0.00
+            hard_fdd: 40
+          - name: loss_rescue_020_h50
+            rescue_mode: loss_side
+            rescue_frac: 0.20
+            rescue_target: 0.00
+            hard_fdd: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,7 +70,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode ${{ matrix.rescue_mode }} --early-start-layer ${{ matrix.early_layer }} --early-fdd-trigger ${{ matrix.early_fdd }} --early-hedge-fraction ${{ matrix.hedge_frac }} --zr-target-pnl 0 --zr-hard-fdd-pct ${{ matrix.hard_fdd }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode ${{ matrix.rescue_mode }} --loss-rescue-fraction ${{ matrix.rescue_frac }} --loss-rescue-target ${{ matrix.rescue_target }} --loss-rescue-hard-fdd ${{ matrix.hard_fdd }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

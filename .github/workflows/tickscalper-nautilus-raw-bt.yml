@@ -19,23 +19,25 @@ jobs:
         include:
           - name: proxy_exit080
             entry_mode: proxy
-            ticks_per_bar: 3
+            ticks_per_bar: 5
             fast: 3
             slow: 5
             conf1: 8
             conf2: 13
             cross_only: false
             use_macd: false
-          - name: ts_3t_cross
+            no_conf: false
+          - name: ts_4t_cross_mode9
             entry_mode: ticksmoother
-            ticks_per_bar: 3
+            ticks_per_bar: 4
             fast: 3
             slow: 5
             conf1: 8
             conf2: 13
             cross_only: true
             use_macd: false
-          - name: ts_5t_cross
+            no_conf: false
+          - name: ts_5t_cross_mode9
             entry_mode: ticksmoother
             ticks_per_bar: 5
             fast: 3
@@ -44,16 +46,18 @@ jobs:
             conf2: 13
             cross_only: true
             use_macd: false
-          - name: ts_3t_cross_macd
+            no_conf: false
+          - name: ts_6t_cross_mode9
             entry_mode: ticksmoother
-            ticks_per_bar: 3
+            ticks_per_bar: 6
             fast: 3
             slow: 5
             conf1: 8
             conf2: 13
             cross_only: true
-            use_macd: true
-          - name: ts_5t_cross_macd
+            use_macd: false
+            no_conf: false
+          - name: ts_5t_cross_mode8_macd
             entry_mode: ticksmoother
             ticks_per_bar: 5
             fast: 3
@@ -62,15 +66,17 @@ jobs:
             conf2: 13
             cross_only: true
             use_macd: true
-          - name: ts_5t_cross_macd_slow
+            no_conf: true
+          - name: ts_5t_cross_mode9_macd
             entry_mode: ticksmoother
             ticks_per_bar: 5
-            fast: 5
-            slow: 8
-            conf1: 13
-            conf2: 21
+            fast: 3
+            slow: 5
+            conf1: 8
+            conf2: 13
             cross_only: true
             use_macd: true
+            no_conf: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -84,7 +90,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.80 --max-layers 10 --entry-mode ${{ matrix.entry_mode }} --ts-ticks-per-bar ${{ matrix.ticks_per_bar }} --ts-fast ${{ matrix.fast }} --ts-slow ${{ matrix.slow }} --ts-conf1 ${{ matrix.conf1 }} --ts-conf2 ${{ matrix.conf2 }} ${{ matrix.cross_only && '--ts-cross-only' || '' }} ${{ matrix.use_macd && '--ts-use-macd' || '' }} --raw-bidask-only
+      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.80 --max-layers 10 --entry-mode ${{ matrix.entry_mode }} --ts-ticks-per-bar ${{ matrix.ticks_per_bar }} --ts-fast ${{ matrix.fast }} --ts-slow ${{ matrix.slow }} --ts-conf1 ${{ matrix.conf1 }} --ts-conf2 ${{ matrix.conf2 }} ${{ matrix.cross_only && '--ts-cross-only' || '' }} ${{ matrix.use_macd && '--ts-use-macd' || '' }} ${{ matrix.no_conf && '--ts-no-conf' || '' }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

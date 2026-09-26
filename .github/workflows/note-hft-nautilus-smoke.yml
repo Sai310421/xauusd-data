@@ -3,10 +3,11 @@ name: NOTE-HFT Nautilus Public Smoke
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/vra-bot01-xauusd-prebt-20260926]
     paths:
       - '.github/workflows/note-hft-nautilus-smoke.yml'
       - 'research/note_hft_nautilus_smoke.py'
+      - 'research/vra_bot01_xauusd_prebt.py'
 
 permissions:
   contents: read
@@ -26,6 +27,17 @@ jobs:
           python -m pip install 'nautilus_trader==1.230.0'
       - name: Run Nautilus + XAUUSD dataset smoke test
         run: python research/note_hft_nautilus_smoke.py
+      - name: Run VRA BOT-01 XAUUSD pre-BT on feature branch
+        if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
+        run: python research/vra_bot01_xauusd_prebt.py
+      - name: Upload VRA BOT-01 pre-BT
+        if: github.ref == 'refs/heads/feature/vra-bot01-xauusd-prebt-20260926'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vra-bot01-xauusd-prebt
+          path: results/vra-bot01-prebt/
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload smoke result
         if: always()
         uses: actions/upload-artifact@v4

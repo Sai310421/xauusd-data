@@ -2,7 +2,7 @@ name: TickScalper Sub10s Cached Raw Clock Lab
 on:
   push:
     branches: ['feature/tickscalper-sub10s-clock-lab-v1']
-    paths: ['.github/workflows/tickscalper-sub10s-cached-raw.yml']
+    paths:\n      - '.github/workflows/tickscalper-sub10s-cached-raw.yml'\n      - 'research/export_xau_raw_catalog_csv.py'\n      - 'research/tickscalper_sub10s_clock_lab.py'
 permissions:
   contents: read
 env:

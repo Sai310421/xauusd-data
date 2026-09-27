@@ -17,62 +17,48 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: baseline_core
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: none
-            ae_cap: 0.06
-            ae_k: 0.20
-            ae_rho: 0.08
-          - name: fast_rescue_006
-            elig_mode: conservative
+          - name: frozen4_f006_t085
             fast_frac: 0.06
-            ae_mode: none
-            ae_cap: 0.06
+            tail_max: 0.85
             ae_k: 0.20
             ae_rho: 0.08
-          - name: ae_v1_cap006
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: v1
-            ae_cap: 0.06
+            hard_fdd: 45
+          - name: frozen4_f006_t090
+            fast_frac: 0.06
+            tail_max: 0.90
             ae_k: 0.20
             ae_rho: 0.08
-          - name: ae_v2_cap006
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: v2
-            ae_cap: 0.06
+            hard_fdd: 45
+          - name: frozen4_f006_t095
+            fast_frac: 0.06
+            tail_max: 0.95
             ae_k: 0.20
             ae_rho: 0.08
-          - name: ae_v3_cap006
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: v3
-            ae_cap: 0.06
+            hard_fdd: 45
+          - name: frozen4_f004_t090
+            fast_frac: 0.04
+            tail_max: 0.90
             ae_k: 0.20
             ae_rho: 0.08
-          - name: ae_v3_cap004
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: v3
-            ae_cap: 0.04
-            ae_k: 0.20
-            ae_rho: 0.08
-          - name: ae_v3_k010
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: v3
-            ae_cap: 0.06
+            hard_fdd: 45
+          - name: frozen4_f006_k010
+            fast_frac: 0.06
+            tail_max: 0.90
             ae_k: 0.10
             ae_rho: 0.08
-          - name: ae_v3_rho012
-            elig_mode: none
-            fast_frac: 0.00
-            ae_mode: v3
-            ae_cap: 0.06
+            hard_fdd: 45
+          - name: frozen4_f006_rho012
+            fast_frac: 0.06
+            tail_max: 0.90
             ae_k: 0.20
             ae_rho: 0.12
+            hard_fdd: 45
+          - name: frozen4_f006_h40
+            fast_frac: 0.06
+            tail_max: 0.90
+            ae_k: 0.20
+            ae_rho: 0.08
+            hard_fdd: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -86,7 +72,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: python research/tickscalper_nautilus_raw_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 10 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode none --rescue-mode none --math-rescue-mode none --eligibility-mode ${{ matrix.elig_mode }} --eligibility-fast-frac ${{ matrix.fast_frac }} --eligibility-deep-frac 0 --eligibility-hard-fdd 45 --ae-stack-mode ${{ matrix.ae_mode }} --ae-rescue-cap ${{ matrix.ae_cap }} --ae-k ${{ matrix.ae_k }} --ae-rho ${{ matrix.ae_rho }} --ae-lambda 1.0 --ae-tail-distance 8.0 --ae-hard-fdd 45 --raw-bidask-only
+      - run: python research/tickscalper_frozen4_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --fast-frac ${{ matrix.fast_frac }} --tail-max ${{ matrix.tail_max }} --ae-k ${{ matrix.ae_k }} --ae-rho ${{ matrix.ae_rho }} --ae-hard-fdd ${{ matrix.hard_fdd }} --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

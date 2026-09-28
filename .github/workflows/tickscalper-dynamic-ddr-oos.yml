@@ -1,0 +1,56 @@
+name: TickScalper Dynamic DDR OOS Raw BidAsk
+on:
+  push:
+    branches: [research/tickscalper-original-lineage-v1]
+    paths:
+      - '.github/workflows/tickscalper-dynamic-ddr-oos.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-06-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-06-27-30d-tickscalper-oos-v1
+jobs:
+  oos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy
+      - uses: actions/cache/restore@v4
+        id: raw-cache
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Build OOS Raw BidAsk catalog if absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+      - name: Save OOS cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: OOS baseline FAST6 no DDR
+        run: PYTHONPATH=. python research/tickscalper_dynamic_ddr_bt.py --catalog "$RAW_CATALOG" --experiment-id "oos-${{ github.run_id }}-baseline-fast6" --ddr-cap 28 --ddr-lambda 3 --ddr-start-layer 99 --ddr-min-scale 1.0 --fast-frac 0.06 --raw-bidask-only
+      - name: OOS candidate cap28 lambda3.0
+        run: PYTHONPATH=. python research/tickscalper_dynamic_ddr_bt.py --catalog "$RAW_CATALOG" --experiment-id "oos-${{ github.run_id }}-c28-l30" --ddr-cap 28 --ddr-lambda 3.0 --ddr-start-layer 8 --ddr-min-scale 0.50 --fast-frac 0.06 --raw-bidask-only
+      - name: OOS candidate cap28 lambda3.5
+        run: PYTHONPATH=. python research/tickscalper_dynamic_ddr_bt.py --catalog "$RAW_CATALOG" --experiment-id "oos-${{ github.run_id }}-c28-l35" --ddr-cap 28 --ddr-lambda 3.5 --ddr-start-layer 8 --ddr-min-scale 0.50 --fast-frac 0.06 --raw-bidask-only
+      - name: OOS candidate cap25 lambda2.0
+        run: PYTHONPATH=. python research/tickscalper_dynamic_ddr_bt.py --catalog "$RAW_CATALOG" --experiment-id "oos-${{ github.run_id }}-c25-l20" --ddr-cap 25 --ddr-lambda 2.0 --ddr-start-layer 8 --ddr-min-scale 0.50 --fast-frac 0.06 --raw-bidask-only
+      - name: Print OOS KPIs
+        if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \;

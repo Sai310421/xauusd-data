@@ -79,7 +79,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: PYTHONPATH=. python research/tickscalper_frozen4_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --fast-frac ${{ matrix.fast_frac }} --tail-max ${{ matrix.tail_max }} --ae-k ${{ matrix.ae_k }} --ae-rho ${{ matrix.ae_rho }} --ae-hard-fdd ${{ matrix.hard_fdd }} --raw-bidask-only
+      - run: PYTHONPATH=. python research/tickscalper_ae_paperwatch_dd_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --dd-mode ${{ matrix.dd_mode }} --dd-max ${{ matrix.dd_max }} --gamma ${{ matrix.gamma }} --lam1 ${{ matrix.lam1 }} --lam2 ${{ matrix.lam2 }} --p-tail-max ${{ matrix.p_tail_max }} --fast-frac 0.06 --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

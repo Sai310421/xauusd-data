@@ -1,0 +1,36 @@
+name: TickScalper Dynamic DDR Grid
+on:
+  push:
+    branches: [research/tickscalper-original-lineage-v1]
+    paths: [.github/workflows/tickscalper-dynamic-ddr-grid.yml]
+permissions:
+  contents: read
+env:
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        cap: [22,25,28]
+        lam: [1.0,2.0,3.0]
+        start: [6,7,8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install 'nautilus_trader==1.230.0' numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - run: python research/tickscalper_dynamic_ddr.py --catalog "$RAW_CATALOG" --experiment-id "DDR-C${{ matrix.cap }}-L${{ matrix.lam }}-S${{ matrix.start }}" --base-lot 0.30 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 9 --emergency-distance 5.75 --emergency-cooldown 55 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ddr --ddr-dd-cap ${{ matrix.cap }} --ddr-lambda ${{ matrix.lam }} --ddr-min-scale 0.5 --ddr-start-layer ${{ matrix.start }} --raw-bidask-only
+      - name: Print KPI
+        if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

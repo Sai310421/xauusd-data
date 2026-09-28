@@ -18,114 +18,166 @@ jobs:
       max-parallel: 9
       matrix:
         include:
-          - name: ddr_c22_l1_s6
-            cap: 22
-            lam: 1
-            start_layer: 6
-          - name: ddr_c22_l1_s7
-            cap: 22
-            lam: 1
-            start_layer: 7
-          - name: ddr_c22_l1_s8
-            cap: 22
-            lam: 1
+          - name: refine_c26_l25_m045
+            cap: 26
+            lam: 2.5
             start_layer: 8
-          - name: ddr_c22_l2_s6
-            cap: 22
-            lam: 2
-            start_layer: 6
-          - name: ddr_c22_l2_s7
-            cap: 22
-            lam: 2
-            start_layer: 7
-          - name: ddr_c22_l2_s8
-            cap: 22
-            lam: 2
+            min_scale: 0.45
+          - name: refine_c26_l25_m05
+            cap: 26
+            lam: 2.5
             start_layer: 8
-          - name: ddr_c22_l3_s6
-            cap: 22
-            lam: 3
-            start_layer: 6
-          - name: ddr_c22_l3_s7
-            cap: 22
-            lam: 3
-            start_layer: 7
-          - name: ddr_c22_l3_s8
-            cap: 22
+            min_scale: 0.5
+          - name: refine_c26_l3_m045
+            cap: 26
             lam: 3
             start_layer: 8
-          - name: ddr_c25_l1_s6
-            cap: 25
-            lam: 1
-            start_layer: 6
-          - name: ddr_c25_l1_s7
-            cap: 25
-            lam: 1
-            start_layer: 7
-          - name: ddr_c25_l1_s8
-            cap: 25
-            lam: 1
-            start_layer: 8
-          - name: ddr_c25_l2_s6
-            cap: 25
-            lam: 2
-            start_layer: 6
-          - name: ddr_c25_l2_s7
-            cap: 25
-            lam: 2
-            start_layer: 7
-          - name: ddr_c25_l2_s8
-            cap: 25
-            lam: 2
-            start_layer: 8
-          - name: ddr_c25_l3_s6
-            cap: 25
-            lam: 3
-            start_layer: 6
-          - name: ddr_c25_l3_s7
-            cap: 25
-            lam: 3
-            start_layer: 7
-          - name: ddr_c25_l3_s8
-            cap: 25
+            min_scale: 0.45
+          - name: refine_c26_l3_m05
+            cap: 26
             lam: 3
             start_layer: 8
-          - name: ddr_c28_l1_s6
-            cap: 28
-            lam: 1
-            start_layer: 6
-          - name: ddr_c28_l1_s7
-            cap: 28
-            lam: 1
-            start_layer: 7
-          - name: ddr_c28_l1_s8
-            cap: 28
-            lam: 1
+            min_scale: 0.5
+          - name: refine_c26_l35_m045
+            cap: 26
+            lam: 3.5
             start_layer: 8
-          - name: ddr_c28_l2_s6
-            cap: 28
-            lam: 2
-            start_layer: 6
-          - name: ddr_c28_l2_s7
-            cap: 28
-            lam: 2
-            start_layer: 7
-          - name: ddr_c28_l2_s8
-            cap: 28
-            lam: 2
+            min_scale: 0.45
+          - name: refine_c26_l35_m05
+            cap: 26
+            lam: 3.5
             start_layer: 8
-          - name: ddr_c28_l3_s6
+            min_scale: 0.5
+          - name: refine_c26_l4_m045
+            cap: 26
+            lam: 4
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c26_l4_m05
+            cap: 26
+            lam: 4
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c28_l25_m045
             cap: 28
-            lam: 3
-            start_layer: 6
-          - name: ddr_c28_l3_s7
+            lam: 2.5
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c28_l25_m05
             cap: 28
-            lam: 3
-            start_layer: 7
-          - name: ddr_c28_l3_s8
+            lam: 2.5
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c28_l3_m045
             cap: 28
             lam: 3
             start_layer: 8
+            min_scale: 0.45
+          - name: refine_c28_l3_m05
+            cap: 28
+            lam: 3
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c28_l35_m045
+            cap: 28
+            lam: 3.5
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c28_l35_m05
+            cap: 28
+            lam: 3.5
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c28_l4_m045
+            cap: 28
+            lam: 4
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c28_l4_m05
+            cap: 28
+            lam: 4
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c30_l25_m045
+            cap: 30
+            lam: 2.5
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c30_l25_m05
+            cap: 30
+            lam: 2.5
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c30_l3_m045
+            cap: 30
+            lam: 3
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c30_l3_m05
+            cap: 30
+            lam: 3
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c30_l35_m045
+            cap: 30
+            lam: 3.5
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c30_l35_m05
+            cap: 30
+            lam: 3.5
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c30_l4_m045
+            cap: 30
+            lam: 4
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c30_l4_m05
+            cap: 30
+            lam: 4
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c32_l25_m045
+            cap: 32
+            lam: 2.5
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c32_l25_m05
+            cap: 32
+            lam: 2.5
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c32_l3_m045
+            cap: 32
+            lam: 3
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c32_l3_m05
+            cap: 32
+            lam: 3
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c32_l35_m045
+            cap: 32
+            lam: 3.5
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c32_l35_m05
+            cap: 32
+            lam: 3.5
+            start_layer: 8
+            min_scale: 0.5
+          - name: refine_c32_l4_m045
+            cap: 32
+            lam: 4
+            start_layer: 8
+            min_scale: 0.45
+          - name: refine_c32_l4_m05
+            cap: 32
+            lam: 4
+            start_layer: 8
+            min_scale: 0.5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -139,7 +191,7 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: PYTHONPATH=research python research/nautilus_catalog_compat_probe.py --catalog "$RAW_CATALOG" --symbol XAUUSD --output results/nautilus-compat/tickscalper.json
-      - run: PYTHONPATH=. python research/tickscalper_dynamic_ddr_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --ddr-cap ${{ matrix.cap }} --ddr-lambda ${{ matrix.lam }} --ddr-start-layer ${{ matrix.start_layer }} --ddr-min-scale 0.5 --fast-frac 0.06 --raw-bidask-only
+      - run: PYTHONPATH=. python research/tickscalper_dynamic_ddr_bt.py --catalog "$RAW_CATALOG" --experiment-id "tickscalper-${{ github.run_id }}-${{ matrix.name }}" --ddr-cap ${{ matrix.cap }} --ddr-lambda ${{ matrix.lam }} --ddr-start-layer ${{ matrix.start_layer }} --ddr-min-scale ${{ matrix.min_scale }} --fast-frac 0.06 --raw-bidask-only
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

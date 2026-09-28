@@ -17,48 +17,55 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: frozen4_f006_t085
-            fast_frac: 0.06
-            tail_max: 0.85
-            ae_k: 0.20
-            ae_rho: 0.08
-            hard_fdd: 45
-          - name: frozen4_f006_t090
-            fast_frac: 0.06
-            tail_max: 0.90
-            ae_k: 0.20
-            ae_rho: 0.08
-            hard_fdd: 45
-          - name: frozen4_f006_t095
-            fast_frac: 0.06
-            tail_max: 0.95
-            ae_k: 0.20
-            ae_rho: 0.08
-            hard_fdd: 45
-          - name: frozen4_f004_t090
-            fast_frac: 0.04
-            tail_max: 0.90
-            ae_k: 0.20
-            ae_rho: 0.08
-            hard_fdd: 45
-          - name: frozen4_f006_k010
-            fast_frac: 0.06
-            tail_max: 0.90
-            ae_k: 0.10
-            ae_rho: 0.08
-            hard_fdd: 45
-          - name: frozen4_f006_rho012
-            fast_frac: 0.06
-            tail_max: 0.90
-            ae_k: 0.20
-            ae_rho: 0.12
-            hard_fdd: 45
-          - name: frozen4_f006_h40
-            fast_frac: 0.06
-            tail_max: 0.90
-            ae_k: 0.20
-            ae_rho: 0.08
-            hard_fdd: 40
+          - name: paperwatch_none
+            dd_mode: none
+            dd_max: 45
+            gamma: 2
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.85
+          - name: paperwatch_reserve
+            dd_mode: reserve
+            dd_max: 45
+            gamma: 2
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.85
+          - name: paperwatch_velocity
+            dd_mode: velocity
+            dd_max: 45
+            gamma: 2
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.85
+          - name: paperwatch_chance
+            dd_mode: chance
+            dd_max: 45
+            gamma: 2
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.85
+          - name: paperwatch_full
+            dd_mode: full
+            dd_max: 45
+            gamma: 2
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.85
+          - name: paperwatch_full_g3
+            dd_mode: full
+            dd_max: 45
+            gamma: 3
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.85
+          - name: paperwatch_full_tail090
+            dd_mode: full
+            dd_max: 45
+            gamma: 2
+            lam1: 10
+            lam2: 5
+            p_tail_max: 0.90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

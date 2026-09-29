@@ -15,14 +15,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: FROZEN, lv: '0.0', la: '0.0', w: '32'}
-          - {name: V025, lv: '0.25', la: '0.0', w: '32'}
-          - {name: V050, lv: '0.50', la: '0.0', w: '32'}
-          - {name: V075, lv: '0.75', la: '0.0', w: '32'}
-          - {name: V050A025, lv: '0.50', la: '0.25', w: '32'}
-          - {name: V050A050, lv: '0.50', la: '0.50', w: '32'}
-          - {name: V050W16, lv: '0.50', la: '0.0', w: '16'}
-          - {name: V050W64, lv: '0.50', la: '0.0', w: '64'}
+          - {name: FROZEN, lv: 0.0, la: 0.0, w: 32}
+          - {name: V025, lv: 0.25, la: 0.0, w: 32}
+          - {name: V050, lv: 0.50, la: 0.0, w: 32}
+          - {name: V075, lv: 0.75, la: 0.0, w: 32}
+          - {name: V050A025, lv: 0.50, la: 0.25, w: 32}
+          - {name: V050A050, lv: 0.50, la: 0.50, w: 32}
+          - {name: V050W16, lv: 0.50, la: 0.0, w: 16}
+          - {name: V050W64, lv: 0.50, la: 0.0, w: 64}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

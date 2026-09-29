@@ -32,7 +32,7 @@ def main():
     start=datetime(2026,7,27,tzinfo=timezone.utc)
     end=start+timedelta(days=30)
     csv_path=out/'raw_xau_for_gate.csv'
-    n=0;prior_ns=None;bad=0
+    n=0;prior_ns=None;bad=0;missing_weekdays=[];daily_counts={}
     with csv_path.open('w',newline='',encoding='utf8') as f:
         writer=csv.writer(f);writer.writerow(['symbol','available_at','bid','ask'])
         day=start
@@ -49,7 +49,8 @@ def main():
                 if not (0<bid<=ask):bad+=1;continue
                 at=datetime.fromtimestamp(ns/1e9,timezone.utc).isoformat(timespec='microseconds')
                 writer.writerow(['XAUUSD',at,bid,ask]);n+=1;day_n+=1;prior_ns=ns
-            if day.weekday()<5 and day_n==0:raise SystemExit(f'RAW_WEEKDAY_MISSING:{day.date()}')
+            daily_counts[day.date().isoformat()]=day_n
+            if day.weekday()<5 and day_n==0:missing_weekdays.append(day.date().isoformat())
             day=stop
     if n<10000:raise SystemExit(f'RAW_TICK_COUNT_TOO_LOW:{n}')
     result=evaluate(csv_path,'2026-08-13T23:59:59Z','2026-08-15T00:00:00Z',
@@ -58,9 +59,13 @@ def main():
                     slippage_usd_per_side=.1,min_cal_trades=60,min_oos_trades=60)
     result['catalog_manifest_sha256']=source_hash
     result['raw_catalog_ticks']=n
+    result['raw_invalid_quotes']=bad
+    result['daily_tick_counts']=daily_counts
+    result['missing_weekdays']=missing_weekdays
     # Thirty calendar days cannot establish the user's 90-day profitability gate.
     result['original_30d_gate']=result.pop('gate')
-    result['gate']='PROVISIONAL_30D_REQUIRES_90D_AND_BROKER_PARITY'
+    result['gate']=('BLOCKED_RAW_WEEKDAY_GAPS' if missing_weekdays else
+                    'PROVISIONAL_30D_REQUIRES_90D_AND_BROKER_PARITY')
     with csv_path.open('rb') as stream:
         result['raw_csv_sha256']=hashlib.file_digest(stream,'sha256').hexdigest()
     (out/'summary.json').write_text(json.dumps(result,indent=2),encoding='utf8')

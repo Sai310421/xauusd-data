@@ -78,3 +78,5 @@ if __name__=="__main__":main()
 # trigger fixed workflow
 
 # trigger after yaml newline repair
+
+# trigger valid yaml

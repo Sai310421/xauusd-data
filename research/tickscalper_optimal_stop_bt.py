@@ -91,14 +91,14 @@ class OptimalStopStrategy(DynamicDDRStrategy):
 
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--experiment-id",required=True);ap.add_argument("--mode",choices=["none","fixed","fp","fdd_fp","fdd"],required=True)
- ap.add_argument("--loss-stop",type=float,default=0);ap.add_argument("--fp-thr",type=float,default=0);ap.add_argument("--fdd-thr",type=float,default=0);ap.add_argument("--min-layer",type=int,default=8);ap.add_argument("--raw-bidask-only",action="store_true");a=ap.parse_args()
+ ap.add_argument("--loss-stop",type=float,default=0);ap.add_argument("--fp-thr",type=float,default=0);ap.add_argument("--fdd-thr",type=float,default=0);ap.add_argument("--min-layer",type=int,default=8);ap.add_argument("--emergency-distance",type=float,default=3.80);ap.add_argument("--raw-bidask-only",action="store_true");a=ap.parse_args()
  if not a.raw_bidask_only:raise SystemExit("raw-bidask-only mandatory")
  cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD");ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]))
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"));eng.add_instrument(inst);eng.add_data(ticks)
- c=Cfg(instrument_id=inst.id,base_qty=Decimal(".30"),direction_sign=1,session_start_hour=7,session_end_hour=17,basket_offset=.8575,max_layers=10,entry_mode="ticksmoother",ts_ticks_per_bar=5,ts_fast=3,ts_slow=5,ts_conf1=8,ts_conf2=13,ts_cross_only=True,risk_mode="none",rescue_mode="none",math_rescue_mode="none",eligibility_mode="conservative",eligibility_fast_frac=.06,eligibility_deep_frac=0.0,eligibility_hard_fdd=45.0,ae_stack_mode="none")
+ c=Cfg(instrument_id=inst.id,base_qty=Decimal(".30"),direction_sign=1,session_start_hour=7,session_end_hour=17,basket_offset=.8575,max_layers=10,emergency_distance=a.emergency_distance,entry_mode="ticksmoother",ts_ticks_per_bar=5,ts_fast=3,ts_slow=5,ts_conf1=8,ts_conf2=13,ts_cross_only=True,risk_mode="none",rescue_mode="none",math_rescue_mode="none",eligibility_mode="conservative",eligibility_fast_frac=.06,eligibility_deep_frac=0.0,eligibility_hard_fdd=45.0,ae_stack_mode="none")
  st=OptimalStopStrategy(c,a.mode,a.loss_stop,a.fp_thr,a.fdd_thr,a.min_layer);eng.add_strategy(st);eng.run()
- out={"verification_level":"RAW_BIDASK_OPTIMAL_STOP_ABLATION","core_frozen":True,"raw_ticks":len(ticks),**st.summary()}
+ out={"verification_level":"RAW_BIDASK_OPTIMAL_STOP_ABLATION","core_frozen_except_emergency_distance":True,"emergency_distance":a.emergency_distance,"raw_ticks":len(ticks),**st.summary()}
  p=Path("results/tickscalper-nautilus")/a.experiment_id;p.mkdir(parents=True,exist_ok=True);(p/"kpi.json").write_text(json.dumps(out,indent=2),encoding="utf-8");print(json.dumps(out,indent=2));eng.dispose()
 if __name__=="__main__":main()
 

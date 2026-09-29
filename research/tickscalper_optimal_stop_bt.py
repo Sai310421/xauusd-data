@@ -29,6 +29,8 @@ class OptimalStopStrategy(DynamicDDRStrategy):
         if self.stop_mode=="fp":
             p=self._first_passage_adverse_prob(0.0);self.fp_last_prob=p
             return p>=self.stop_fp
+        if self.stop_mode=="fdd":
+            return self._floating_dd_pct()>=self.stop_fdd
         if self.stop_mode=="fdd_fp":
             p=self._first_passage_adverse_prob(0.0);self.fp_last_prob=p
             return self._floating_dd_pct()>=self.stop_fdd and p>=self.stop_fp
@@ -88,7 +90,7 @@ class OptimalStopStrategy(DynamicDDRStrategy):
         return o
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--experiment-id",required=True);ap.add_argument("--mode",choices=["none","fixed","fp","fdd_fp"],required=True)
+ ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--experiment-id",required=True);ap.add_argument("--mode",choices=["none","fixed","fp","fdd_fp","fdd"],required=True)
  ap.add_argument("--loss-stop",type=float,default=0);ap.add_argument("--fp-thr",type=float,default=0);ap.add_argument("--fdd-thr",type=float,default=0);ap.add_argument("--min-layer",type=int,default=8);ap.add_argument("--raw-bidask-only",action="store_true");a=ap.parse_args()
  if not a.raw_bidask_only:raise SystemExit("raw-bidask-only mandatory")
  cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD");ticks=fix_sizes(cat.query_quote_ticks(identifiers=[inst.id.value]))

@@ -70,3 +70,5 @@ def main():
  out={"verification_level":"RAW_BIDASK_DD_ONLY_GOVERNOR","raw_ticks":len(ticks),"core_frozen":True,"entry_exit_changed":False,**st.summary()}
  p=Path("results/tickscalper-nautilus")/a.experiment_id;p.mkdir(parents=True,exist_ok=True);(p/"kpi.json").write_text(json.dumps(out,indent=2),encoding="utf-8");print(json.dumps(out,indent=2));eng.dispose()
 if __name__=="__main__":main()
+
+# trigger DD-only governor sweep

@@ -4,7 +4,7 @@ on:
     branches: [research/tickscalper-original-lineage-v1]
     paths: ['research/tickscalper_dd_only_governor_bt.py','.github/workflows/tickscalper-dd-only-governor.yml']
   workflow_dispatch:
-permissions: {contents: read}
+permissions:\n  contents: read
 env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
@@ -17,15 +17,15 @@ jobs:
       max-parallel: 9
       matrix:
         include:
-          - {n: gentleA, lo: .70, hi: .90, floor: .90, cv: 4.0, cvfloor: .90}
-          - {n: gentleB, lo: .65, hi: .90, floor: .85, cv: 4.0, cvfloor: .90}
-          - {n: gentleC, lo: .70, hi: .95, floor: .85, cv: 3.5, cvfloor: .90}
-          - {n: midA, lo: .65, hi: .90, floor: .80, cv: 3.5, cvfloor: .85}
-          - {n: midB, lo: .60, hi: .90, floor: .80, cv: 3.0, cvfloor: .85}
-          - {n: midC, lo: .70, hi: .90, floor: .80, cv: 3.0, cvfloor: .80}
-          - {n: tailA, lo: .75, hi: .95, floor: .80, cv: 2.5, cvfloor: .85}
-          - {n: tailB, lo: .70, hi: .95, floor: .75, cv: 2.5, cvfloor: .80}
-          - {n: tailC, lo: .65, hi: .95, floor: .75, cv: 2.0, cvfloor: .80}
+          - {n: gentleA, lo: '0.70', hi: '0.90', floor: '0.90', cv: '4.0', cvfloor: '0.90'}
+          - {n: gentleB, lo: '0.65', hi: '0.90', floor: '0.85', cv: '4.0', cvfloor: '0.90'}
+          - {n: gentleC, lo: '0.70', hi: '0.95', floor: '0.85', cv: '3.5', cvfloor: '0.90'}
+          - {n: midA, lo: '0.65', hi: '0.90', floor: '0.80', cv: '3.5', cvfloor: '0.85'}
+          - {n: midB, lo: '0.60', hi: '0.90', floor: '0.80', cv: '3.0', cvfloor: '0.85'}
+          - {n: midC, lo: '0.70', hi: '0.90', floor: '0.80', cv: '3.0', cvfloor: '0.80'}
+          - {n: tailA, lo: '0.75', hi: '0.95', floor: '0.80', cv: '2.5', cvfloor: '0.85'}
+          - {n: tailB, lo: '0.70', hi: '0.95', floor: '0.75', cv: '2.5', cvfloor: '0.80'}
+          - {n: tailC, lo: '0.65', hi: '0.95', floor: '0.75', cv: '2.0', cvfloor: '0.80'}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

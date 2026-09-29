@@ -6,6 +6,7 @@ import struct
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from market_calendar import expected_trading_hour
 
 REC = struct.Struct(">3i2f")
 HEADERS = {
@@ -77,7 +78,10 @@ def fetch_hour(symbol: str, scale: float, t: dt.datetime):
             with urllib.request.urlopen(req, timeout=20) as r:
                 raw = r.read()
             if not raw:
-                continue
+                # HTTP 200 with an empty body is an observation, not a
+                # connection failure. The session calendar decides whether
+                # the empty hour is expected.
+                return [], "200_EMPTY"
             dec = lzma.decompress(raw)
             rows = []
             for i in range(0, len(dec) - REC.size + 1, REC.size):
@@ -96,19 +100,25 @@ def fetch_hour(symbol: str, scale: float, t: dt.datetime):
     return [], last
 
 
-def fetch_day(symbol: str, scale: float, day: dt.datetime, workers: int = 32):
+def fetch_day(symbol: str, scale: float, day: dt.datetime, workers: int = 32,
+              include_hour_status: bool = False):
     hours = [day.replace(hour=h, minute=0, second=0, microsecond=0) for h in range(24)]
     rows = []
     status_counts: dict[str, int] = {}
+    hour_results = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(fetch_hour, symbol, scale, h): h for h in hours}
         for fut in as_completed(futs):
             part, status = fut.result()
             rows.extend(part)
             status_counts[str(status)] = status_counts.get(str(status), 0) + 1
+            hour_results.append({'hour_utc':futs[fut].isoformat(),'http_status':status,
+                                 'quotes':len(part),'expected_open':expected_trading_hour(symbol,futs[fut])})
     rows.sort(key=lambda x: x[0])
     dedup = {}
     for row in rows:
         dedup[row[0]] = row
     cleaned = [dedup[k] for k in sorted(dedup)]
+    if include_hour_status:
+        return cleaned, status_counts, sorted(hour_results,key=lambda result:result['hour_utc'])
     return cleaned, status_counts

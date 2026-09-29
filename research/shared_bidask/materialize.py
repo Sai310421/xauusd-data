@@ -61,6 +61,7 @@ def main() -> None:
     stats = {}
     hour_store = {s: {} for s in selected}
     missing = []
+    unresolved_open_hours = []
 
     for symbol in selected:
         meta = SYMBOLS[symbol]
@@ -68,7 +69,9 @@ def main() -> None:
         written_days = 0
         http_counts = {}
         for day in iter_days(start, args.days):
-            rows, status_counts = fetch_day(symbol, meta["scale"], day, workers=args.workers)
+            rows, status_counts, hours = fetch_day(symbol, meta["scale"], day, workers=args.workers, include_hour_status=True)
+            unresolved_open_hours.extend({'symbol':symbol,**h} for h in hours
+                                         if h['expected_open'] and (h['http_status'] != 200 or not h['quotes']))
             for k, v in status_counts.items():
                 http_counts[k] = http_counts.get(k, 0) + v
             if not rows:
@@ -127,12 +130,12 @@ def main() -> None:
 
     if not write_lean:
         lean_status = "SKIPPED"
-    elif any(stats[s]["ticks"] <= 0 for s in selected):
+    elif unresolved_open_hours or any(stats[s]["ticks"] <= 0 for s in selected):
         lean_status = "INCOMPLETE"
     else:
         lean_status = "COMPLETE"
 
-    status = "COMPLETE" if not missing else "INCOMPLETE"
+    status = "COMPLETE" if not missing and not unresolved_open_hours else "INCOMPLETE"
     manifest = {
         "status": status,
         "data_kind": "RAW_BIDASK",
@@ -160,6 +163,7 @@ def main() -> None:
             "QC_CLOUD_BT": "QuantConnect official CFD, not this tree",
         },
         "stats": stats,
+        "unresolved_open_hours": unresolved_open_hours,
         "missing": missing,
     }
     out_dir = Path("results/shared-bidask")
@@ -169,8 +173,8 @@ def main() -> None:
     if write_lean:
         (lean_root / "shared_manifest.json").write_text(payload, encoding="utf-8")
     print(payload)
-    if missing:
-        raise SystemExit("SHARED_BIDASK_INCOMPLETE: " + ",".join(missing))
+    if missing or unresolved_open_hours:
+        raise SystemExit(f"SHARED_BIDASK_INCOMPLETE: missing={missing}, unresolved open hours={len(unresolved_open_hours)}")
 
 
 if __name__ == "__main__":

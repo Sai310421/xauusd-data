@@ -1,0 +1,44 @@
+name: TickScalper Emergency Stop Distance Raw BidAsk
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/tickscalper-original-lineage-v1
+    paths:
+      - research/tickscalper_optimal_stop_bt.py
+      - .github/workflows/tickscalper-emergency-stop-distance.yml
+permissions:
+  contents: read
+env:
+  RAW_CATALOG: catalog/raw_bidask
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "nautilus_trader==1.230.0" numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-2026-07-27-30d-v2
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Sweep existing emergency stop distance
+        shell: bash
+        run: |
+          set -euo pipefail
+          run(){ PYTHONPATH=. python research/tickscalper_optimal_stop_bt.py --catalog "$RAW_CATALOG" --raw-bidask-only --mode none "$@"; }
+          run --experiment-id ESD-2.8 --emergency-distance 2.8
+          run --experiment-id ESD-3.2 --emergency-distance 3.2
+          run --experiment-id ESD-3.5 --emergency-distance 3.5
+          run --experiment-id ESD-3.8 --emergency-distance 3.8
+          run --experiment-id ESD-4.1 --emergency-distance 4.1
+          run --experiment-id ESD-4.5 --emergency-distance 4.5
+          run --experiment-id ESD-5.0 --emergency-distance 5.0
+          run --experiment-id ESD-5.5 --emergency-distance 5.5
+      - if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \;

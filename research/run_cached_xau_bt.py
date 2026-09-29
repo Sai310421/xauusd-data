@@ -70,6 +70,8 @@ def main():
         result['raw_csv_sha256']=hashlib.file_digest(stream,'sha256').hexdigest()
     (out/'summary.json').write_text(json.dumps(result,indent=2),encoding='utf8')
     print(json.dumps({k:v for k,v in result.items() if k not in ('oos','cost_stress_oos','calibration_trials')},indent=2))
+    if result['gate'].startswith('BLOCKED'):
+        raise SystemExit(result['gate'])
 
 
 if __name__=='__main__':main()

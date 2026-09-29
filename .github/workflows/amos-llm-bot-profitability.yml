@@ -1,0 +1,42 @@
+name: AMOS LLM Bot frozen raw quote profitability diagnostic
+
+on:
+  push:
+    branches: [research/amos-llm-bot-raw-profitability]
+    paths:
+      - 'research/amos_llm_bot_raw_profitability.py'
+      - '.github/workflows/amos-llm-bot-profitability.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  raw-quote-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      RAW_CATALOG: catalog/raw_bidask
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'nautilus_trader==1.230.0'
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Replay frozen EA default parameters with executable quotes
+        run: python research/amos_llm_bot_raw_profitability.py --catalog "$RAW_CATALOG" --output results/amos-llm-bot-profitability.json
+      - name: Upload raw diagnostic with trade ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-llm-bot-profitability-${{ github.run_id }}
+          path: results/amos-llm-bot-profitability.json
+          if-no-files-found: warn
+          retention-days: 90

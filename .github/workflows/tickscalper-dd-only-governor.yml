@@ -1,9 +1,12 @@
-name: TickScalper DD-Only Governor Raw BidAsk
+name: TickScalper DD Only Governor Raw BidAsk
 on:
-  push:
-    branches: [research/tickscalper-original-lineage-v1]
-    paths: ['research/tickscalper_dd_only_governor_bt.py','.github/workflows/tickscalper-dd-only-governor.yml']
   workflow_dispatch:
+  push:
+    branches:
+      - research/tickscalper-original-lineage-v1
+    paths:
+      - research/tickscalper_dd_only_governor_bt.py
+      - .github/workflows/tickscalper-dd-only-governor.yml
 permissions:
   contents: read
 env:
@@ -12,35 +15,38 @@ env:
 jobs:
   bt:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      max-parallel: 9
-      matrix:
-        include:
-          - {n: gentleA, lo: '0.70', hi: '0.90', floor: '0.90', cv: '4.0', cvfloor: '0.90'}
-          - {n: gentleB, lo: '0.65', hi: '0.90', floor: '0.85', cv: '4.0', cvfloor: '0.90'}
-          - {n: gentleC, lo: '0.70', hi: '0.95', floor: '0.85', cv: '3.5', cvfloor: '0.90'}
-          - {n: midA, lo: '0.65', hi: '0.90', floor: '0.80', cv: '3.5', cvfloor: '0.85'}
-          - {n: midB, lo: '0.60', hi: '0.90', floor: '0.80', cv: '3.0', cvfloor: '0.85'}
-          - {n: midC, lo: '0.70', hi: '0.90', floor: '0.80', cv: '3.0', cvfloor: '0.80'}
-          - {n: tailA, lo: '0.75', hi: '0.95', floor: '0.80', cv: '2.5', cvfloor: '0.85'}
-          - {n: tailB, lo: '0.70', hi: '0.95', floor: '0.75', cv: '2.5', cvfloor: '0.80'}
-          - {n: tailC, lo: '0.65', hi: '0.95', floor: '0.75', cv: '2.0', cvfloor: '0.80'}
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: python -m pip install 'nautilus_trader==1.230.0' numpy
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "nautilus_trader==1.230.0" numpy
       - uses: actions/cache/restore@v4
-        with: {path: catalog/raw_bidask, key: ${{ env.RAW_CACHE_KEY }}, fail-on-cache-miss: true}
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-2026-07-27-30d-v2
+          fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - run: >
-          PYTHONPATH=. python research/tickscalper_dd_only_governor_bt.py
-          --catalog "$RAW_CATALOG" --experiment-id "DDG-${{ matrix.n }}"
-          --cap 28 --lam 3
-          --fp-lo ${{ matrix.lo }} --fp-hi ${{ matrix.hi }} --fp-floor ${{ matrix.floor }}
-          --cvar-budget ${{ matrix.cv }} --cvar-floor ${{ matrix.cvfloor }}
-          --raw-bidask-only
-      - if: always()
+      - name: Run nine DD governor cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cases=(
+            "gentleA 0.70 0.90 0.90 4.0 0.90"
+            "gentleB 0.65 0.90 0.85 4.0 0.90"
+            "gentleC 0.70 0.95 0.85 3.5 0.90"
+            "midA 0.65 0.90 0.80 3.5 0.85"
+            "midB 0.60 0.90 0.80 3.0 0.85"
+            "midC 0.70 0.90 0.80 3.0 0.80"
+            "tailA 0.75 0.95 0.80 2.5 0.85"
+            "tailB 0.70 0.95 0.75 2.5 0.80"
+            "tailC 0.65 0.95 0.75 2.0 0.80"
+          )
+          for row in "${cases[@]}"; do
+            read -r n lo hi fl cv cvfl <<< "$row"
+            PYTHONPATH=. python research/tickscalper_dd_only_governor_bt.py               --catalog "$RAW_CATALOG"               --experiment-id "DDG-$n"               --cap 28 --lam 3               --fp-lo "$lo" --fp-hi "$hi" --fp-floor "$fl"               --cvar-budget "$cv" --cvar-floor "$cvfl"               --raw-bidask-only
+          done
+      - name: Print KPI
+        if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \;

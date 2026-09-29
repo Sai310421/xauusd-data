@@ -99,3 +99,5 @@ def main():
  out={"verification_level":"RAW_BIDASK_OPTIMAL_STOP_ABLATION","core_frozen":True,"raw_ticks":len(ticks),**st.summary()}
  p=Path("results/tickscalper-nautilus")/a.experiment_id;p.mkdir(parents=True,exist_ok=True);(p/"kpi.json").write_text(json.dumps(out,indent=2),encoding="utf-8");print(json.dumps(out,indent=2));eng.dispose()
 if __name__=="__main__":main()
+
+# trigger optimal stop workflow

@@ -12,7 +12,7 @@ from pathlib import Path
 
 def replay(catalog_path, commission_roundturn=0.07, slippage_side=0.10):
     from nautilus_trader.persistence.catalog import ParquetDataCatalog
-    from research.nautilus_catalog_compat import select_instrument_compat, query_quote_ticks_compat
+    from nautilus_catalog_compat import select_instrument_compat, query_quote_ticks_compat
 
     root = Path(catalog_path)
     manifest_path = root / 'catalog_manifest.json'

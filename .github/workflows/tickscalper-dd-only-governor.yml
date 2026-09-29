@@ -4,7 +4,8 @@ on:
     branches: [research/tickscalper-original-lineage-v1]
     paths: ['research/tickscalper_dd_only_governor_bt.py','.github/workflows/tickscalper-dd-only-governor.yml']
   workflow_dispatch:
-permissions:\n  contents: read
+permissions:
+  contents: read
 env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2

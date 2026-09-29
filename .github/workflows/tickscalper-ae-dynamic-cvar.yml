@@ -1,0 +1,54 @@
+name: TickScalper AE Dynamic CVaR Ablation
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/tickscalper-original-lineage-v1]
+    paths: [.github/workflows/tickscalper-ae-dynamic-cvar.yml]
+permissions:
+  contents: read
+env:
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {name: FROZEN, budget: 99.0, alpha: 0.95}
+          - {name: CVAR050, budget: 0.50, alpha: 0.95}
+          - {name: CVAR075, budget: 0.75, alpha: 0.95}
+          - {name: CVAR100, budget: 1.00, alpha: 0.95}
+          - {name: CVAR125, budget: 1.25, alpha: 0.95}
+          - {name: CVAR150, budget: 1.50, alpha: 0.95}
+          - {name: CVAR100A90, budget: 1.00, alpha: 0.90}
+          - {name: CVAR100A99, budget: 1.00, alpha: 0.99}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "nautilus_trader==1.230.0"
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Dynamic CVaR
+        run: >
+          python research/tickscalper_ddr_fp_size.py
+          --catalog "$RAW_CATALOG" --experiment-id "AE-CVAR-${{ matrix.name }}"
+          --base-lot 0.29 --direction-sign 1 --session-start 7 --session-end 17
+          --basket-offset 0.8575 --max-layers 9 --emergency-distance 5.75 --emergency-cooldown 55
+          --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only
+          --risk-mode hybrid --risk-start-layer 8
+          --dd-soft-pct 99 --dd-barrier-k 0
+          --min-add-scale 0.25
+          --cvar-budget-pct ${{ matrix.budget }}
+          --raw-bidask-only
+      - if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

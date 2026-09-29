@@ -5,7 +5,7 @@ import math, statistics
 @dataclass
 class Frozen4Config:
     level:str="v3"; dd_cap:float=18.0; ddr_lambda:float=2.5; min_scale:float=0.5
-    fp_lo:float=0.60; fp_hi:float=0.80; rho:float=0.08; debt_lambda:float=1.0
+    fp_lo:float=0.60; fp_hi:float=0.80; fp_min_scale:float=0.25; rho:float=0.08; debt_lambda:float=1.0
     intervention_k:float=0.20; cvar_alpha:float=0.95; chance_eps_dd:float=0.10
     mpc_horizon:int=20; mpc_tail_lambda:float=2.0; mpc_cost_lambda:float=0.05
 
@@ -32,8 +32,8 @@ class AEFrozen4:
 
     def _fp_scale(self,p_tail):
         if p_tail<=self.c.fp_lo:return 1.0
-        if p_tail>=self.c.fp_hi:return self.c.min_scale
-        return 1-(1-self.c.min_scale)*(p_tail-self.c.fp_lo)/max(self.c.fp_hi-self.c.fp_lo,1e-9)
+        if p_tail>=self.c.fp_hi:return self.c.fp_min_scale
+        return 1-(1-self.c.fp_min_scale)*(p_tail-self.c.fp_lo)/max(self.c.fp_hi-self.c.fp_lo,1e-9)
 
     def v1(self,debt,sigma_d,p_nr):
         sig=max(sigma_d,1e-8);rho=max(self.c.rho,1e-9);lam=max(self.c.debt_lambda,1e-9)

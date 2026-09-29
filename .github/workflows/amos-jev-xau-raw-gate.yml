@@ -1,0 +1,50 @@
+name: AMOS Jev-inspired XAU Raw BidAsk 30d OOS
+
+on:
+  push:
+    branches: [research/jev-xau-raw-oos]
+    paths:
+      - 'research/xau_tick_research.py'
+      - 'research/xau_oos_gate.py'
+      - 'research/run_cached_xau_bt.py'
+      - 'research/test_xau_tick_research.py'
+      - '.github/workflows/amos-jev-xau-raw-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  raw-oos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+      RAW_CATALOG: catalog/raw_bidask
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'nautilus_trader==1.230.0'
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Raw catalog preflight
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Causal and execution tests
+        run: PYTHONPATH=research python -m unittest research/test_xau_tick_research.py -v
+      - name: Run pinned 30d calibration and OOS
+        run: |
+          PYTHONPATH=research python research/run_cached_xau_bt.py \
+            --catalog "$RAW_CATALOG" --out-dir results/jev-xau-raw
+      - name: Upload numeric evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jev-xau-raw-${{ github.run_id }}
+          path: results/jev-xau-raw/summary.json
+          if-no-files-found: warn
+          retention-days: 90

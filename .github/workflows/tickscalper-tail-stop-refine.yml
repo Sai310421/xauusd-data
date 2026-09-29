@@ -1,0 +1,45 @@
+name: TickScalper Tail Stop Refinement Raw BidAsk
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/tickscalper-original-lineage-v1
+    paths:
+      - research/tickscalper_optimal_stop_bt.py
+      - .github/workflows/tickscalper-tail-stop-refine.yml
+permissions:
+  contents: read
+env:
+  RAW_CATALOG: catalog/raw_bidask
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "nautilus_trader==1.230.0" numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-2026-07-27-30d-v2
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Depth10 tail-stop sweep
+        shell: bash
+        run: |
+          set -euo pipefail
+          run(){ PYTHONPATH=. python research/tickscalper_optimal_stop_bt.py --catalog "$RAW_CATALOG" --raw-bidask-only "$@"; }
+          run --experiment-id TAIL-none --mode none
+          run --experiment-id TAIL-fdd32 --mode fdd --fdd-thr 32 --min-layer 10
+          run --experiment-id TAIL-fdd34 --mode fdd --fdd-thr 34 --min-layer 10
+          run --experiment-id TAIL-fdd35 --mode fdd --fdd-thr 35 --min-layer 10
+          run --experiment-id TAIL-fdd36 --mode fdd --fdd-thr 36 --min-layer 10
+          run --experiment-id TAIL-fdd37 --mode fdd --fdd-thr 37 --min-layer 10
+          run --experiment-id TAIL-fdd38 --mode fdd --fdd-thr 38 --min-layer 10
+          run --experiment-id TAIL-fdd34fp88 --mode fdd_fp --fdd-thr 34 --fp-thr .88 --min-layer 10
+          run --experiment-id TAIL-fdd36fp88 --mode fdd_fp --fdd-thr 36 --fp-thr .88 --min-layer 10
+      - if: always()
+        run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \;

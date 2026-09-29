@@ -28,6 +28,14 @@ jobs:
         with: {path: catalog/raw_bidask, key: ${{ env.RAW_CACHE_KEY }}, fail-on-cache-miss: true}
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: python research/tickscalper_ddr_fp_size.py --catalog "$RAW_CATALOG" --experiment-id "DDRFP-L${{ matrix.lot }}-LO${{ matrix.fp_lo }}-HI${{ matrix.fp_hi }}" --base-lot ${{ matrix.lot }} --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 9 --emergency-distance 5.75 --emergency-cooldown 55 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ddr_fp_size --ddr-dd-cap 18 --ddr-lambda 2.5 --ddr-min-scale 0.5 --ddr-start-layer 8 --fp-threshold ${{ matrix.fp_lo }} --fp-block-threshold ${{ matrix.fp_hi }} --raw-bidask-only
+      - name: AE DD velocity extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          for row in "FROZEN 32 0.0 0.0" "V025 32 0.25 0.0" "V050 32 0.50 0.0" "V075 32 0.75 0.0" "V050A025 32 0.50 0.25" "V050A050 32 0.50 0.50" "V050W16 16 0.50 0.0" "V050W64 64 0.50 0.0"; do
+            read -r name w lv la <<< "$row"
+            python research/tickscalper_ddr_fp_ddvelocity.py --catalog "$RAW_CATALOG" --experiment-id "AE-DDV-$name" --base-lot 0.29 --direction-sign 1 --session-start 7 --session-end 17 --basket-offset 0.8575 --max-layers 9 --emergency-distance 5.75 --emergency-cooldown 55 --entry-mode ticksmoother --ts-ticks-per-bar 5 --ts-fast 3 --ts-slow 5 --ts-conf1 8 --ts-conf2 13 --ts-cross-only --risk-mode ddr_fp_ddv --ddr-dd-cap 18 --ddr-lambda 2.5 --ddr-min-scale 0.5 --ddr-start-layer 8 --fp-threshold 0.60 --fp-block-threshold 0.80 --ddv-window "$w" --ddv-lambda "$lv" --dda-lambda "$la" --raw-bidask-only
+          done
       - name: Print KPI
         if: always()
         run: find results/tickscalper-nautilus -name kpi.json -print -exec cat {} \; || true

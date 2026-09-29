@@ -77,3 +77,5 @@ def main():
     (p/"kpi.json").write_text(json.dumps(out,indent=2),encoding="utf-8")
     print(json.dumps(out,indent=2));eng.dispose()
 if __name__=="__main__":main()
+
+# workflow trigger: cashback KPI verification

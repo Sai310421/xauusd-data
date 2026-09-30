@@ -156,7 +156,7 @@ def sim_const(idx,bp,sp,br,sr,be,se,tb,ts):
         if max(ub,us)<=-1e8: k+=1; continue
         side="BUY" if ub>=us else "SELL"; r=float(br[i] if side=="BUY" else sr[i]); ex=int(be[i] if side=="BUY" else se[i])
         if not np.isfinite(r) or ex<=i: k+=1; continue
-        trades.append((i,ex,side,r,float(d[1]),float(d[2]),float(d[3]),float(d[4])))
+        trades.append((i,ex,side,r))
         while k<len(idx) and int(idx[k])<=ex: k+=1
     return metrics(trades)
 
@@ -228,7 +228,7 @@ def walk_forward(X,raw,horizon,kfeat):
         if not d or d[0] is None: p+=1; continue
         side=d[0]; r=float(br[i] if side=="BUY" else sr[i]); ex=int(be[i] if side=="BUY" else se[i])
         if not np.isfinite(r) or ex<=i: p+=1; continue
-        trades.append((i,ex,side,r))
+        trades.append((i,ex,side,r,float(d[1]),float(d[2]),float(d[3]),float(d[4])))
         while p<len(idx) and int(idx[p])<=ex:p+=1
     return metrics(trades),logs,trades
 

@@ -1,0 +1,1392 @@
+{
+  "status": "OOS_RESEARCH_ONLY_NOT_LIVE_APPROVED",
+  "target_pf": 1.2,
+  "method": "strict causal walk-forward + direction gate; BUY/SELL enabled for next chunk only when prior validation side PF>=1.20 with >=12 trades",
+  "data_file": "csv/XAUUSD/XAUUSD_M5_2026Q1Q2.csv",
+  "rows": 17371,
+  "configs": [
+    [
+      48,
+      66
+    ],
+    [
+      48,
+      40
+    ],
+    [
+      72,
+      40
+    ]
+  ],
+  "results": [
+    {
+      "horizon": 48,
+      "features": 66,
+      "oos_walkforward": {
+        "trades": 122,
+        "PF": 0.8179923879583473,
+        "sum_R": -14.701284919954169,
+        "WR": 0.319672131147541,
+        "mean_R": -0.1205023354094604,
+        "maxDD_R": 19.91717076949139,
+        "buy_trades": 47,
+        "sell_trades": 75
+      },
+      "chunks": [
+        {
+          "chunk_start": 13896,
+          "chunk_end": 14396,
+          "train": [
+            6748,
+            12699
+          ],
+          "validation": [
+            12748,
+            13847
+          ],
+          "features": 66,
+          "buy_thr": -0.05,
+          "sell_thr": 0.22500000000000003,
+          "enable_buy": true,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 51,
+            "PF": 1.5244222985998939,
+            "sum_R": 14.404295529709259,
+            "WR": 0.43137254901960786,
+            "mean_R": 0.28243716724920115,
+            "maxDD_R": 6.0,
+            "buy_trades": 51,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 34,
+            "PF": 1.123370961191514,
+            "sum_R": 2.5907901850217923,
+            "WR": 0.38235294117647056,
+            "mean_R": 0.07619971132417036,
+            "maxDD_R": 7.0,
+            "buy_trades": 0,
+            "sell_trades": 34
+          },
+          "validation_metrics": {
+            "trades": 72,
+            "PF": 1.3787473331817615,
+            "sum_R": 15.32675984873892,
+            "WR": 0.4166666666666667,
+            "mean_R": 0.21287166456581832,
+            "maxDD_R": 12.205774478936098,
+            "buy_trades": 47,
+            "sell_trades": 25
+          }
+        },
+        {
+          "chunk_start": 14396,
+          "chunk_end": 14896,
+          "train": [
+            7248,
+            13199
+          ],
+          "validation": [
+            13248,
+            14347
+          ],
+          "features": 66,
+          "buy_thr": 0.0,
+          "sell_thr": 0.0,
+          "enable_buy": false,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 0,
+            "PF": 0.0,
+            "sum_R": 0.0,
+            "WR": 0.0,
+            "mean_R": 0.0,
+            "maxDD_R": 999.0,
+            "buy_trades": 0,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 65,
+            "PF": 0.6336228827097153,
+            "sum_R": -17.952478747223946,
+            "WR": 0.24615384615384617,
+            "mean_R": -0.27619198072652223,
+            "maxDD_R": 24.952478747223946,
+            "buy_trades": 0,
+            "sell_trades": 65
+          },
+          "validation_metrics": {
+            "trades": 0,
+            "PF": 0.0
+          }
+        },
+        {
+          "chunk_start": 14896,
+          "chunk_end": 15396,
+          "train": [
+            7748,
+            13699
+          ],
+          "validation": [
+            13748,
+            14847
+          ],
+          "features": 66,
+          "buy_thr": 0.15000000000000002,
+          "sell_thr": 0.02500000000000001,
+          "enable_buy": true,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 22,
+            "PF": 1.6666666666666667,
+            "sum_R": 8.0,
+            "WR": 0.45454545454545453,
+            "mean_R": 0.36363636363636365,
+            "maxDD_R": 4.0,
+            "buy_trades": 22,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 10,
+            "PF": 1.8095042505552108,
+            "sum_R": 4.047521252776053,
+            "WR": 0.5,
+            "mean_R": 0.4047521252776053,
+            "maxDD_R": 2.0,
+            "buy_trades": 0,
+            "sell_trades": 10
+          },
+          "validation_metrics": {
+            "trades": 33,
+            "PF": 1.826324779575062,
+            "sum_R": 14.047521252776054,
+            "WR": 0.48484848484848486,
+            "mean_R": 0.42568246220533495,
+            "maxDD_R": 4.0,
+            "buy_trades": 22,
+            "sell_trades": 11
+          }
+        },
+        {
+          "chunk_start": 15396,
+          "chunk_end": 15896,
+          "train": [
+            8248,
+            14199
+          ],
+          "validation": [
+            14248,
+            15347
+          ],
+          "features": 66,
+          "buy_thr": -0.05,
+          "sell_thr": -0.05,
+          "enable_buy": true,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 19,
+            "PF": 1.4545454545454546,
+            "sum_R": 5.0,
+            "WR": 0.42105263157894735,
+            "mean_R": 0.2631578947368421,
+            "maxDD_R": 4.0,
+            "buy_trades": 19,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 68,
+            "PF": 1.040564533159265,
+            "sum_R": 1.7442749258483938,
+            "WR": 0.36764705882352944,
+            "mean_R": 0.025651101850711674,
+            "maxDD_R": 11.0,
+            "buy_trades": 0,
+            "sell_trades": 68
+          },
+          "validation_metrics": {
+            "trades": 72,
+            "PF": 1.1973580706475473,
+            "sum_R": 8.78887729628017,
+            "WR": 0.375,
+            "mean_R": 0.12206774022611347,
+            "maxDD_R": 10.53264701789578,
+            "buy_trades": 10,
+            "sell_trades": 62
+          }
+        },
+        {
+          "chunk_start": 15896,
+          "chunk_end": 16396,
+          "train": [
+            8748,
+            14699
+          ],
+          "validation": [
+            14748,
+            15847
+          ],
+          "features": 66,
+          "buy_thr": -0.05,
+          "sell_thr": -0.05,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 29,
+            "PF": 0.6363636363636364,
+            "sum_R": -8.0,
+            "WR": 0.2413793103448276,
+            "mean_R": -0.27586206896551724,
+            "maxDD_R": 13.0,
+            "buy_trades": 29,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 86,
+            "PF": 1.4072220262795707,
+            "sum_R": 19.95387928769896,
+            "WR": 0.43023255813953487,
+            "mean_R": 0.23202185218254606,
+            "maxDD_R": 10.0,
+            "buy_trades": 0,
+            "sell_trades": 86
+          },
+          "validation_metrics": {
+            "trades": 86,
+            "PF": 1.4072220262795707,
+            "sum_R": 19.95387928769896,
+            "WR": 0.43023255813953487,
+            "mean_R": 0.23202185218254606,
+            "maxDD_R": 10.0,
+            "buy_trades": 0,
+            "sell_trades": 86
+          }
+        },
+        {
+          "chunk_start": 16396,
+          "chunk_end": 16896,
+          "train": [
+            9248,
+            15199
+          ],
+          "validation": [
+            15248,
+            16347
+          ],
+          "features": 66,
+          "buy_thr": -0.05,
+          "sell_thr": -0.05,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 2,
+            "PF": 0.8703747539158168,
+            "sum_R": -0.12962524608418324,
+            "WR": 0.5,
+            "mean_R": -0.06481262304209162,
+            "maxDD_R": 1.0,
+            "buy_trades": 2,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 67,
+            "PF": 1.8020070828786072,
+            "sum_R": 25.812892568561146,
+            "WR": 0.5074626865671642,
+            "mean_R": 0.38526705326210664,
+            "maxDD_R": 9.598535124645526,
+            "buy_trades": 0,
+            "sell_trades": 67
+          },
+          "validation_metrics": {
+            "trades": 67,
+            "PF": 1.8020070828786072,
+            "sum_R": 25.812892568561146,
+            "WR": 0.5074626865671642,
+            "mean_R": 0.38526705326210664,
+            "maxDD_R": 9.598535124645526,
+            "buy_trades": 0,
+            "sell_trades": 67
+          }
+        },
+        {
+          "chunk_start": 16896,
+          "chunk_end": 17323,
+          "train": [
+            9748,
+            15699
+          ],
+          "validation": [
+            15748,
+            16847
+          ],
+          "features": 66,
+          "buy_thr": 0.125,
+          "sell_thr": 0.10000000000000002,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 0,
+            "PF": 0.0,
+            "sum_R": 0.0,
+            "WR": 0.0,
+            "mean_R": 0.0,
+            "maxDD_R": 999.0,
+            "buy_trades": 0,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 35,
+            "PF": 1.212735705000126,
+            "sum_R": 4.294148350920919,
+            "WR": 0.4,
+            "mean_R": 0.12268995288345483,
+            "maxDD_R": 9.0,
+            "buy_trades": 0,
+            "sell_trades": 35
+          },
+          "validation_metrics": {
+            "trades": 35,
+            "PF": 1.212735705000126,
+            "sum_R": 4.294148350920919,
+            "WR": 0.4,
+            "mean_R": 0.12268995288345483,
+            "maxDD_R": 9.0,
+            "buy_trades": 0,
+            "sell_trades": 35
+          }
+        }
+      ]
+    },
+    {
+      "horizon": 48,
+      "features": 40,
+      "oos_walkforward": {
+        "trades": 120,
+        "PF": 0.9248289462073763,
+        "sum_R": -5.842291516081292,
+        "WR": 0.3416666666666667,
+        "mean_R": -0.04868576263401077,
+        "maxDD_R": 20.0,
+        "buy_trades": 62,
+        "sell_trades": 58
+      },
+      "chunks": [
+        {
+          "chunk_start": 13896,
+          "chunk_end": 14396,
+          "train": [
+            6748,
+            12699
+          ],
+          "validation": [
+            12748,
+            13847
+          ],
+          "features": 40,
+          "buy_thr": -0.025,
+          "sell_thr": -0.05,
+          "enable_buy": true,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 26,
+            "PF": 1.2353149098125544,
+            "sum_R": 3.40429552970926,
+            "WR": 0.38461538461538464,
+            "mean_R": 0.13093444345035615,
+            "maxDD_R": 4.0,
+            "buy_trades": 26,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 64,
+            "PF": 0.9193451956476959,
+            "sum_R": -3.4682172015953414,
+            "WR": 0.3125,
+            "mean_R": -0.05419089377492721,
+            "maxDD_R": 17.0,
+            "buy_trades": 0,
+            "sell_trades": 64
+          },
+          "validation_metrics": {
+            "trades": 69,
+            "PF": 1.2618178853771593,
+            "sum_R": 10.734730064267897,
+            "WR": 0.391304347826087,
+            "mean_R": 0.15557579803286806,
+            "maxDD_R": 9.0,
+            "buy_trades": 19,
+            "sell_trades": 50
+          }
+        },
+        {
+          "chunk_start": 14396,
+          "chunk_end": 14896,
+          "train": [
+            7248,
+            13199
+          ],
+          "validation": [
+            13248,
+            14347
+          ],
+          "features": 40,
+          "buy_thr": -0.05,
+          "sell_thr": 0.175,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 0,
+            "PF": 0.0,
+            "sum_R": 0.0,
+            "WR": 0.0,
+            "mean_R": 0.0,
+            "maxDD_R": 999.0,
+            "buy_trades": 0,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 36,
+            "PF": 1.2294327842170933,
+            "sum_R": 5.047521252776053,
+            "WR": 0.3888888888888889,
+            "mean_R": 0.14020892368822369,
+            "maxDD_R": 6.952478747223947,
+            "buy_trades": 0,
+            "sell_trades": 36
+          },
+          "validation_metrics": {
+            "trades": 36,
+            "PF": 1.2294327842170933,
+            "sum_R": 5.047521252776053,
+            "WR": 0.3888888888888889,
+            "mean_R": 0.14020892368822369,
+            "maxDD_R": 6.952478747223947,
+            "buy_trades": 0,
+            "sell_trades": 36
+          }
+        },
+        {
+          "chunk_start": 14896,
+          "chunk_end": 15396,
+          "train": [
+            7748,
+            13699
+          ],
+          "validation": [
+            13748,
+            14847
+          ],
+          "features": 40,
+          "buy_thr": 0.2,
+          "sell_thr": 0.0,
+          "enable_buy": true,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 23,
+            "PF": 2.3873590449654123,
+            "sum_R": 13.94705046540341,
+            "WR": 0.5217391304347826,
+            "mean_R": 0.6063934984958005,
+            "maxDD_R": 3.0,
+            "buy_trades": 23,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 12,
+            "PF": 1.292503036110865,
+            "sum_R": 2.047521252776053,
+            "WR": 0.4166666666666667,
+            "mean_R": 0.17062677106467108,
+            "maxDD_R": 3.0,
+            "buy_trades": 0,
+            "sell_trades": 12
+          },
+          "validation_metrics": {
+            "trades": 35,
+            "PF": 1.9379357914435906,
+            "sum_R": 15.994571718179463,
+            "WR": 0.4857142857142857,
+            "mean_R": 0.4569877633765561,
+            "maxDD_R": 3.0,
+            "buy_trades": 23,
+            "sell_trades": 12
+          }
+        },
+        {
+          "chunk_start": 15396,
+          "chunk_end": 15896,
+          "train": [
+            8248,
+            14199
+          ],
+          "validation": [
+            14248,
+            15347
+          ],
+          "features": 40,
+          "buy_thr": 0.10000000000000002,
+          "sell_thr": -0.05,
+          "enable_buy": true,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 20,
+            "PF": 1.3333333333333333,
+            "sum_R": 4.0,
+            "WR": 0.4,
+            "mean_R": 0.2,
+            "maxDD_R": 4.0,
+            "buy_trades": 20,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 55,
+            "PF": 1.1236764084368907,
+            "sum_R": 4.146356656232017,
+            "WR": 0.36363636363636365,
+            "mean_R": 0.07538830284058214,
+            "maxDD_R": 8.064550705855568,
+            "buy_trades": 0,
+            "sell_trades": 55
+          },
+          "validation_metrics": {
+            "trades": 61,
+            "PF": 1.5308045903730507,
+            "sum_R": 17.795674811941893,
+            "WR": 0.4262295081967213,
+            "mean_R": 0.29173237396626056,
+            "maxDD_R": 7.0,
+            "buy_trades": 11,
+            "sell_trades": 50
+          }
+        },
+        {
+          "chunk_start": 15896,
+          "chunk_end": 16396,
+          "train": [
+            8748,
+            14699
+          ],
+          "validation": [
+            14748,
+            15847
+          ],
+          "features": 40,
+          "buy_thr": 0.05,
+          "sell_thr": -0.05,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 3,
+            "PF": 1.0,
+            "sum_R": 0.0,
+            "WR": 0.3333333333333333,
+            "mean_R": 0.0,
+            "maxDD_R": 1.0,
+            "buy_trades": 3,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 86,
+            "PF": 1.4072220262795707,
+            "sum_R": 19.95387928769896,
+            "WR": 0.43023255813953487,
+            "mean_R": 0.23202185218254606,
+            "maxDD_R": 10.0,
+            "buy_trades": 0,
+            "sell_trades": 86
+          },
+          "validation_metrics": {
+            "trades": 85,
+            "PF": 1.5044887908781348,
+            "sum_R": 23.74680559422827,
+            "WR": 0.43529411764705883,
+            "mean_R": 0.27937418346150905,
+            "maxDD_R": 10.0,
+            "buy_trades": 1,
+            "sell_trades": 84
+          }
+        },
+        {
+          "chunk_start": 16396,
+          "chunk_end": 16896,
+          "train": [
+            9248,
+            15199
+          ],
+          "validation": [
+            15248,
+            16347
+          ],
+          "features": 40,
+          "buy_thr": 0.075,
+          "sell_thr": 0.02500000000000001,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 3,
+            "PF": 2.870374753915817,
+            "sum_R": 1.8703747539158169,
+            "WR": 0.6666666666666666,
+            "mean_R": 0.6234582513052723,
+            "maxDD_R": 1.0,
+            "buy_trades": 3,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 30,
+            "PF": 1.8103527796542473,
+            "sum_R": 10.684799071529707,
+            "WR": 0.5333333333333333,
+            "mean_R": 0.35615996905099023,
+            "maxDD_R": 6.598535124645525,
+            "buy_trades": 0,
+            "sell_trades": 30
+          },
+          "validation_metrics": {
+            "trades": 32,
+            "PF": 2.028046733926431,
+            "sum_R": 13.555173825445522,
+            "WR": 0.5625,
+            "mean_R": 0.42359918204517255,
+            "maxDD_R": 6.598535124645525,
+            "buy_trades": 2,
+            "sell_trades": 30
+          }
+        },
+        {
+          "chunk_start": 16896,
+          "chunk_end": 17323,
+          "train": [
+            9748,
+            15699
+          ],
+          "validation": [
+            15748,
+            16847
+          ],
+          "features": 40,
+          "buy_thr": -0.025,
+          "sell_thr": 0.10000000000000002,
+          "enable_buy": true,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 13,
+            "PF": 1.3765010633038117,
+            "sum_R": 2.6355074431266834,
+            "WR": 0.46153846153846156,
+            "mean_R": 0.20273134177897564,
+            "maxDD_R": 3.0,
+            "buy_trades": 13,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 31,
+            "PF": 0.9609308082153613,
+            "sum_R": -0.7632637616402462,
+            "WR": 0.3548387096774194,
+            "mean_R": -0.024621411665814396,
+            "maxDD_R": 8.305109016519737,
+            "buy_trades": 0,
+            "sell_trades": 31
+          },
+          "validation_metrics": {
+            "trades": 39,
+            "PF": 1.2571059646790903,
+            "sum_R": 5.794192869870897,
+            "WR": 0.41025641025641024,
+            "mean_R": 0.14856904794540762,
+            "maxDD_R": 7.305109016519736,
+            "buy_trades": 12,
+            "sell_trades": 27
+          }
+        }
+      ]
+    },
+    {
+      "horizon": 72,
+      "features": 40,
+      "oos_walkforward": {
+        "trades": 92,
+        "PF": 1.247972928158677,
+        "sum_R": 13.909039675017981,
+        "WR": 0.3804347826086957,
+        "mean_R": 0.1511852138588911,
+        "maxDD_R": 14.090960324982019,
+        "buy_trades": 11,
+        "sell_trades": 81
+      },
+      "chunks": [
+        {
+          "chunk_start": 13896,
+          "chunk_end": 14396,
+          "train": [
+            6724,
+            12651
+          ],
+          "validation": [
+            12724,
+            13823
+          ],
+          "features": 40,
+          "buy_thr": 0.22500000000000003,
+          "sell_thr": 0.25000000000000006,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 1,
+            "PF": 99.0,
+            "sum_R": 2.0,
+            "WR": 1.0,
+            "mean_R": 2.0,
+            "maxDD_R": 0.0,
+            "buy_trades": 1,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 39,
+            "PF": 1.391304347826087,
+            "sum_R": 9.0,
+            "WR": 0.41025641025641024,
+            "mean_R": 0.23076923076923078,
+            "maxDD_R": 7.0,
+            "buy_trades": 0,
+            "sell_trades": 39
+          },
+          "validation_metrics": {
+            "trades": 40,
+            "PF": 1.4782608695652173,
+            "sum_R": 11.0,
+            "WR": 0.425,
+            "mean_R": 0.275,
+            "maxDD_R": 7.0,
+            "buy_trades": 1,
+            "sell_trades": 39
+          }
+        },
+        {
+          "chunk_start": 14396,
+          "chunk_end": 14896,
+          "train": [
+            7224,
+            13151
+          ],
+          "validation": [
+            13224,
+            14323
+          ],
+          "features": 40,
+          "buy_thr": 0.0,
+          "sell_thr": 0.0,
+          "enable_buy": false,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 0,
+            "PF": 0.0,
+            "sum_R": 0.0,
+            "WR": 0.0,
+            "mean_R": 0.0,
+            "maxDD_R": 999.0,
+            "buy_trades": 0,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 63,
+            "PF": 0.7239603884166488,
+            "sum_R": -12.421782521250803,
+            "WR": 0.2857142857142857,
+            "mean_R": -0.19717115113096512,
+            "maxDD_R": 26.80006527475556,
+            "buy_trades": 0,
+            "sell_trades": 63
+          },
+          "validation_metrics": {
+            "trades": 0,
+            "PF": 0.0
+          }
+        },
+        {
+          "chunk_start": 14896,
+          "chunk_end": 15396,
+          "train": [
+            7724,
+            13651
+          ],
+          "validation": [
+            13724,
+            14823
+          ],
+          "features": 40,
+          "buy_thr": 0.10000000000000002,
+          "sell_thr": 0.275,
+          "enable_buy": true,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 23,
+            "PF": 1.7984277781630673,
+            "sum_R": 9.581133337956805,
+            "WR": 0.4782608695652174,
+            "mean_R": 0.4165710146937741,
+            "maxDD_R": 5.0,
+            "buy_trades": 23,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 17,
+            "PF": 2.59999067503492,
+            "sum_R": 11.199934725244441,
+            "WR": 0.5882352941176471,
+            "mean_R": 0.6588196897202613,
+            "maxDD_R": 3.800065274755559,
+            "buy_trades": 0,
+            "sell_trades": 17
+          },
+          "validation_metrics": {
+            "trades": 36,
+            "PF": 2.1047687096000733,
+            "sum_R": 18.781068063201246,
+            "WR": 0.5277777777777778,
+            "mean_R": 0.5216963350889235,
+            "maxDD_R": 4.800065274755559,
+            "buy_trades": 20,
+            "sell_trades": 16
+          }
+        },
+        {
+          "chunk_start": 15396,
+          "chunk_end": 15896,
+          "train": [
+            8224,
+            14151
+          ],
+          "validation": [
+            14224,
+            15323
+          ],
+          "features": 40,
+          "buy_thr": -0.05,
+          "sell_thr": -0.05,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 4,
+            "PF": 6.0,
+            "sum_R": 5.0,
+            "WR": 0.75,
+            "mean_R": 1.25,
+            "maxDD_R": 1.0,
+            "buy_trades": 4,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 58,
+            "PF": 1.2626950297309525,
+            "sum_R": 9.194326040583338,
+            "WR": 0.39655172413793105,
+            "mean_R": 0.15852286276867825,
+            "maxDD_R": 8.0,
+            "buy_trades": 0,
+            "sell_trades": 58
+          },
+          "validation_metrics": {
+            "trades": 58,
+            "PF": 1.4604341224419193,
+            "sum_R": 15.194326040583338,
+            "WR": 0.43103448275862066,
+            "mean_R": 0.2619711386307472,
+            "maxDD_R": 8.0,
+            "buy_trades": 3,
+            "sell_trades": 55
+          }
+        },
+        {
+          "chunk_start": 15896,
+          "chunk_end": 16396,
+          "train": [
+            8724,
+            14651
+          ],
+          "validation": [
+            14724,
+            15823
+          ],
+          "features": 40,
+          "buy_thr": 0.075,
+          "sell_thr": -0.025,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 10,
+            "PF": 1.114143744213295,
+            "sum_R": 0.6848624652797699,
+            "WR": 0.4,
+            "mean_R": 0.068486246527977,
+            "maxDD_R": 4.31513753472023,
+            "buy_trades": 10,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 59,
+            "PF": 1.4447114507815513,
+            "sum_R": 15.120189326572742,
+            "WR": 0.423728813559322,
+            "mean_R": 0.2562743953656397,
+            "maxDD_R": 5.0,
+            "buy_trades": 0,
+            "sell_trades": 59
+          },
+          "validation_metrics": {
+            "trades": 60,
+            "PF": 1.6097027068658407,
+            "sum_R": 20.120189326572742,
+            "WR": 0.45,
+            "mean_R": 0.33533648877621236,
+            "maxDD_R": 5.0,
+            "buy_trades": 2,
+            "sell_trades": 58
+          }
+        },
+        {
+          "chunk_start": 16396,
+          "chunk_end": 16896,
+          "train": [
+            9224,
+            15151
+          ],
+          "validation": [
+            15224,
+            16323
+          ],
+          "features": 40,
+          "buy_thr": -0.05,
+          "sell_thr": -0.05,
+          "enable_buy": false,
+          "enable_sell": true,
+          "buy_validation": {
+            "trades": 0,
+            "PF": 0.0,
+            "sum_R": 0.0,
+            "WR": 0.0,
+            "mean_R": 0.0,
+            "maxDD_R": 999.0,
+            "buy_trades": 0,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 52,
+            "PF": 1.31987216410286,
+            "sum_R": 9.916037087188652,
+            "WR": 0.40384615384615385,
+            "mean_R": 0.1906930209074741,
+            "maxDD_R": 9.0,
+            "buy_trades": 0,
+            "sell_trades": 52
+          },
+          "validation_metrics": {
+            "trades": 52,
+            "PF": 1.31987216410286,
+            "sum_R": 9.916037087188652,
+            "WR": 0.40384615384615385,
+            "mean_R": 0.1906930209074741,
+            "maxDD_R": 9.0,
+            "buy_trades": 0,
+            "sell_trades": 52
+          }
+        },
+        {
+          "chunk_start": 16896,
+          "chunk_end": 17299,
+          "train": [
+            9724,
+            15651
+          ],
+          "validation": [
+            15724,
+            16823
+          ],
+          "features": 40,
+          "buy_thr": -0.05,
+          "sell_thr": 0.05,
+          "enable_buy": false,
+          "enable_sell": false,
+          "buy_validation": {
+            "trades": 0,
+            "PF": 0.0,
+            "sum_R": 0.0,
+            "WR": 0.0,
+            "mean_R": 0.0,
+            "maxDD_R": 999.0,
+            "buy_trades": 0,
+            "sell_trades": 0
+          },
+          "sell_validation": {
+            "trades": 47,
+            "PF": 1.097201236239622,
+            "sum_R": 2.9160370871886525,
+            "WR": 0.3617021276595745,
+            "mean_R": 0.06204334228060963,
+            "maxDD_R": 11.0,
+            "buy_trades": 0,
+            "sell_trades": 47
+          },
+          "validation_metrics": {
+            "trades": 47,
+            "PF": 1.097201236239622,
+            "sum_R": 2.9160370871886525,
+            "WR": 0.3617021276595745,
+            "mean_R": 0.06204334228060963,
+            "maxDD_R": 11.0,
+            "buy_trades": 0,
+            "sell_trades": 47
+          }
+        }
+      ]
+    }
+  ],
+  "best_observed": {
+    "horizon": 72,
+    "features": 40,
+    "oos_walkforward": {
+      "trades": 92,
+      "PF": 1.247972928158677,
+      "sum_R": 13.909039675017981,
+      "WR": 0.3804347826086957,
+      "mean_R": 0.1511852138588911,
+      "maxDD_R": 14.090960324982019,
+      "buy_trades": 11,
+      "sell_trades": 81
+    },
+    "chunks": [
+      {
+        "chunk_start": 13896,
+        "chunk_end": 14396,
+        "train": [
+          6724,
+          12651
+        ],
+        "validation": [
+          12724,
+          13823
+        ],
+        "features": 40,
+        "buy_thr": 0.22500000000000003,
+        "sell_thr": 0.25000000000000006,
+        "enable_buy": false,
+        "enable_sell": true,
+        "buy_validation": {
+          "trades": 1,
+          "PF": 99.0,
+          "sum_R": 2.0,
+          "WR": 1.0,
+          "mean_R": 2.0,
+          "maxDD_R": 0.0,
+          "buy_trades": 1,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 39,
+          "PF": 1.391304347826087,
+          "sum_R": 9.0,
+          "WR": 0.41025641025641024,
+          "mean_R": 0.23076923076923078,
+          "maxDD_R": 7.0,
+          "buy_trades": 0,
+          "sell_trades": 39
+        },
+        "validation_metrics": {
+          "trades": 40,
+          "PF": 1.4782608695652173,
+          "sum_R": 11.0,
+          "WR": 0.425,
+          "mean_R": 0.275,
+          "maxDD_R": 7.0,
+          "buy_trades": 1,
+          "sell_trades": 39
+        }
+      },
+      {
+        "chunk_start": 14396,
+        "chunk_end": 14896,
+        "train": [
+          7224,
+          13151
+        ],
+        "validation": [
+          13224,
+          14323
+        ],
+        "features": 40,
+        "buy_thr": 0.0,
+        "sell_thr": 0.0,
+        "enable_buy": false,
+        "enable_sell": false,
+        "buy_validation": {
+          "trades": 0,
+          "PF": 0.0,
+          "sum_R": 0.0,
+          "WR": 0.0,
+          "mean_R": 0.0,
+          "maxDD_R": 999.0,
+          "buy_trades": 0,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 63,
+          "PF": 0.7239603884166488,
+          "sum_R": -12.421782521250803,
+          "WR": 0.2857142857142857,
+          "mean_R": -0.19717115113096512,
+          "maxDD_R": 26.80006527475556,
+          "buy_trades": 0,
+          "sell_trades": 63
+        },
+        "validation_metrics": {
+          "trades": 0,
+          "PF": 0.0
+        }
+      },
+      {
+        "chunk_start": 14896,
+        "chunk_end": 15396,
+        "train": [
+          7724,
+          13651
+        ],
+        "validation": [
+          13724,
+          14823
+        ],
+        "features": 40,
+        "buy_thr": 0.10000000000000002,
+        "sell_thr": 0.275,
+        "enable_buy": true,
+        "enable_sell": true,
+        "buy_validation": {
+          "trades": 23,
+          "PF": 1.7984277781630673,
+          "sum_R": 9.581133337956805,
+          "WR": 0.4782608695652174,
+          "mean_R": 0.4165710146937741,
+          "maxDD_R": 5.0,
+          "buy_trades": 23,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 17,
+          "PF": 2.59999067503492,
+          "sum_R": 11.199934725244441,
+          "WR": 0.5882352941176471,
+          "mean_R": 0.6588196897202613,
+          "maxDD_R": 3.800065274755559,
+          "buy_trades": 0,
+          "sell_trades": 17
+        },
+        "validation_metrics": {
+          "trades": 36,
+          "PF": 2.1047687096000733,
+          "sum_R": 18.781068063201246,
+          "WR": 0.5277777777777778,
+          "mean_R": 0.5216963350889235,
+          "maxDD_R": 4.800065274755559,
+          "buy_trades": 20,
+          "sell_trades": 16
+        }
+      },
+      {
+        "chunk_start": 15396,
+        "chunk_end": 15896,
+        "train": [
+          8224,
+          14151
+        ],
+        "validation": [
+          14224,
+          15323
+        ],
+        "features": 40,
+        "buy_thr": -0.05,
+        "sell_thr": -0.05,
+        "enable_buy": false,
+        "enable_sell": true,
+        "buy_validation": {
+          "trades": 4,
+          "PF": 6.0,
+          "sum_R": 5.0,
+          "WR": 0.75,
+          "mean_R": 1.25,
+          "maxDD_R": 1.0,
+          "buy_trades": 4,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 58,
+          "PF": 1.2626950297309525,
+          "sum_R": 9.194326040583338,
+          "WR": 0.39655172413793105,
+          "mean_R": 0.15852286276867825,
+          "maxDD_R": 8.0,
+          "buy_trades": 0,
+          "sell_trades": 58
+        },
+        "validation_metrics": {
+          "trades": 58,
+          "PF": 1.4604341224419193,
+          "sum_R": 15.194326040583338,
+          "WR": 0.43103448275862066,
+          "mean_R": 0.2619711386307472,
+          "maxDD_R": 8.0,
+          "buy_trades": 3,
+          "sell_trades": 55
+        }
+      },
+      {
+        "chunk_start": 15896,
+        "chunk_end": 16396,
+        "train": [
+          8724,
+          14651
+        ],
+        "validation": [
+          14724,
+          15823
+        ],
+        "features": 40,
+        "buy_thr": 0.075,
+        "sell_thr": -0.025,
+        "enable_buy": false,
+        "enable_sell": true,
+        "buy_validation": {
+          "trades": 10,
+          "PF": 1.114143744213295,
+          "sum_R": 0.6848624652797699,
+          "WR": 0.4,
+          "mean_R": 0.068486246527977,
+          "maxDD_R": 4.31513753472023,
+          "buy_trades": 10,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 59,
+          "PF": 1.4447114507815513,
+          "sum_R": 15.120189326572742,
+          "WR": 0.423728813559322,
+          "mean_R": 0.2562743953656397,
+          "maxDD_R": 5.0,
+          "buy_trades": 0,
+          "sell_trades": 59
+        },
+        "validation_metrics": {
+          "trades": 60,
+          "PF": 1.6097027068658407,
+          "sum_R": 20.120189326572742,
+          "WR": 0.45,
+          "mean_R": 0.33533648877621236,
+          "maxDD_R": 5.0,
+          "buy_trades": 2,
+          "sell_trades": 58
+        }
+      },
+      {
+        "chunk_start": 16396,
+        "chunk_end": 16896,
+        "train": [
+          9224,
+          15151
+        ],
+        "validation": [
+          15224,
+          16323
+        ],
+        "features": 40,
+        "buy_thr": -0.05,
+        "sell_thr": -0.05,
+        "enable_buy": false,
+        "enable_sell": true,
+        "buy_validation": {
+          "trades": 0,
+          "PF": 0.0,
+          "sum_R": 0.0,
+          "WR": 0.0,
+          "mean_R": 0.0,
+          "maxDD_R": 999.0,
+          "buy_trades": 0,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 52,
+          "PF": 1.31987216410286,
+          "sum_R": 9.916037087188652,
+          "WR": 0.40384615384615385,
+          "mean_R": 0.1906930209074741,
+          "maxDD_R": 9.0,
+          "buy_trades": 0,
+          "sell_trades": 52
+        },
+        "validation_metrics": {
+          "trades": 52,
+          "PF": 1.31987216410286,
+          "sum_R": 9.916037087188652,
+          "WR": 0.40384615384615385,
+          "mean_R": 0.1906930209074741,
+          "maxDD_R": 9.0,
+          "buy_trades": 0,
+          "sell_trades": 52
+        }
+      },
+      {
+        "chunk_start": 16896,
+        "chunk_end": 17299,
+        "train": [
+          9724,
+          15651
+        ],
+        "validation": [
+          15724,
+          16823
+        ],
+        "features": 40,
+        "buy_thr": -0.05,
+        "sell_thr": 0.05,
+        "enable_buy": false,
+        "enable_sell": false,
+        "buy_validation": {
+          "trades": 0,
+          "PF": 0.0,
+          "sum_R": 0.0,
+          "WR": 0.0,
+          "mean_R": 0.0,
+          "maxDD_R": 999.0,
+          "buy_trades": 0,
+          "sell_trades": 0
+        },
+        "sell_validation": {
+          "trades": 47,
+          "PF": 1.097201236239622,
+          "sum_R": 2.9160370871886525,
+          "WR": 0.3617021276595745,
+          "mean_R": 0.06204334228060963,
+          "maxDD_R": 11.0,
+          "buy_trades": 0,
+          "sell_trades": 47
+        },
+        "validation_metrics": {
+          "trades": 47,
+          "PF": 1.097201236239622,
+          "sum_R": 2.9160370871886525,
+          "WR": 0.3617021276595745,
+          "mean_R": 0.06204334228060963,
+          "maxDD_R": 11.0,
+          "buy_trades": 0,
+          "sell_trades": 47
+        }
+      }
+    ]
+  },
+  "notes": [
+    "OOS starts at final 20% of sample.",
+    "Retrain chunk=500 bars; validation≈1100 bars; rolling train up to 6000 bars.",
+    "Direction gate is causal and uses only preceding validation side metrics.",
+    "Spread 0.80 USD/oz included; commission/slippage/swap excluded.",
+    "PF>=1.20 here is still not Raw Tick approval."
+  ]
+}

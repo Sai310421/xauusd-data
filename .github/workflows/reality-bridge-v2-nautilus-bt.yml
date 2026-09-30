@@ -1,0 +1,53 @@
+name: AMOS Reality Bridge v2 Nautilus Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      telemetry_path:
+        description: 'Reality Bridge v2 telemetry CSV path'
+        required: true
+        default: 'data/reality/AMOS_NOISE_XAUUSD.csv'
+      bt_driver:
+        description: 'Raw Bid/Ask BT driver'
+        required: true
+        default: 'research/minimumspike_reality_noise_bt_v1.py'
+
+permissions:
+  contents: read
+
+jobs:
+  reality-bridge-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      AMOS_REALITY_BRIDGE_V2: '1'
+      AMOS_REALITY_TELEMETRY: ${{ inputs.telemetry_path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Reality Bridge v2 input
+        shell: bash
+        run: |
+          test -f "${AMOS_REALITY_TELEMETRY}" || { echo 'BLOCKED_NO_REALITY_TELEMETRY'; exit 2; }
+          test -f "${{ inputs.bt_driver }}" || { echo 'BLOCKED_NO_BT_DRIVER'; exit 2; }
+      - name: Install Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0'
+      - name: Run Raw Bid/Ask BT with Reality Bridge v2 contract
+        run: python "${{ inputs.bt_driver }}"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-reality-bridge-v2-evidence
+          path: |
+            results/**
+            ${{ inputs.telemetry_path }}
+          if-no-files-found: warn
+          retention-days: 30
+
+# Truth boundary: this workflow never substitutes OHLC-resampled execution for Raw Bid/Ask data.
+# If live/demo telemetry is absent, the gate is BLOCKED rather than fabricating Reality Bridge evidence.

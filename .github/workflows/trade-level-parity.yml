@@ -1,0 +1,54 @@
+name: AMOS MT5 Nautilus Trade-Level Parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      mt5_csv:
+        description: 'MT5 trade export CSV'
+        required: true
+        default: 'data/parity/mt5_trades.csv'
+      nautilus_csv:
+        description: 'Nautilus trade export CSV'
+        required: true
+        default: 'data/parity/nautilus_trades.csv'
+      max_mismatch_pct:
+        description: 'Maximum allowed trade-level mismatch percent'
+        required: true
+        default: '3.0'
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install comparator deps
+        run: python -m pip install --upgrade pandas
+      - name: Validate inputs
+        shell: bash
+        run: |
+          test -f "${{ inputs.mt5_csv }}" || { echo 'COWORK_ACTION_REQUIRED: MT5 trade export missing'; exit 2; }
+          test -f "${{ inputs.nautilus_csv }}" || { echo 'BLOCKED_NO_NAUTILUS_TRADE_EXPORT'; exit 2; }
+      - name: Compare MT5 and Nautilus trades
+        run: |
+          python research/trade_level_parity.py \
+            --mt5 "${{ inputs.mt5_csv }}" \
+            --nautilus "${{ inputs.nautilus_csv }}" \
+            --max-mismatch-pct "${{ inputs.max_mismatch_pct }}"
+      - name: Upload parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt5-nautilus-trade-level-parity
+          path: results/parity/
+          if-no-files-found: warn
+          retention-days: 30
+
+# Gate 12 production target: <=3% Nautilus trade-level mismatch.
+# Missing MT5 export is explicitly delegated to Cowork; no synthetic trades are generated.

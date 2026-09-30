@@ -1,0 +1,1 @@
+{"schema":"amos.nautilus.port.registry.v1","strategies":{},"note":"Register reviewed source SHA256 -> strategy_path/hash, adapter_path/hash, port_review APPROVED, symbols. No arbitrary uploaded source is executed."}

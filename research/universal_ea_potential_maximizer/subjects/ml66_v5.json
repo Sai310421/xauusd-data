@@ -11,20 +11,64 @@
         "EV_per_trade": 0.1511852138588911,
         "N": 92,
         "MinMarginLevel": 9999,
-        "RuinProbability": 0.0,
-        "CVaR": 0.0,
-        "TotalCost": 0.0
+        "RuinProbability": 0,
+        "CVaR": 0,
+        "TotalCost": 0
       }
     },
     "PARAMETER_MAX": {
-      "evidence_label": "PREDICTED",
-      "kpi": {}
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 13.909039675017981,
+        "MaxFloatingDD": 14.090960324982019,
+        "PF": 1.247972928158677,
+        "WR": 0.3804347826086957,
+        "EV_per_trade": 0.1511852138588911,
+        "N": 92
+      }
     },
     "A17_ROBUST_MAX": {
       "evidence_label": "PREDICTED",
       "kpi": {}
     }
   },
-  "parameter_candidates": [],
+  "parameter_candidates": [
+    {
+      "name": "H48_F66",
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": -14.701284919954169,
+        "MaxFloatingDD": 19.91717076949139,
+        "PF": 0.8179923879583473,
+        "WR": 0.319672131147541,
+        "EV_per_trade": -0.1205023354094604,
+        "N": 122
+      }
+    },
+    {
+      "name": "H48_F40",
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": -5.842291516081292,
+        "MaxFloatingDD": 20,
+        "PF": 0.9248289462073763,
+        "WR": 0.3416666666666667,
+        "EV_per_trade": -0.04868576263401077,
+        "N": 120
+      }
+    },
+    {
+      "name": "H72_F40",
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 13.909039675017981,
+        "MaxFloatingDD": 14.090960324982019,
+        "PF": 1.247972928158677,
+        "WR": 0.3804347826086957,
+        "EV_per_trade": 0.1511852138588911,
+        "N": 92
+      }
+    }
+  ],
   "a17_singletons": []
 }

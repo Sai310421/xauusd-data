@@ -87,5 +87,21 @@
     "discuss_min_trades": 100,
     "discuss_dd_target_pct": 10,
     "purpose": "Complete a first-pass potential classification before official Nautilus promotion gates."
+  },
+  "potential_ceiling": {
+    "enabled": true,
+    "minimum_evidence_for_measured_range": "PROXY",
+    "stages": [
+      "CURRENT",
+      "PARAMETER_MAX",
+      "A17",
+      "ROBUST"
+    ],
+    "robust_shrinkage": {
+      "proxy": 0.75,
+      "nautilus_oos": 0.9,
+      "nautilus_stress": 1
+    },
+    "note": "Ranges are empirical envelopes from observed candidates. Missing stages stay UNMEASURED; never invent a ceiling."
   }
 }

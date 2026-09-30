@@ -1,0 +1,24 @@
+{
+  "entry_variants": {
+    "E00": ["ICT"],
+    "E01": ["ICT", "IFVG"],
+    "E02": ["ICT", "BPR"],
+    "E03": ["ICT", "IFVG", "BPR"],
+    "E04": ["ICT", "Liquidity"],
+    "E05": ["ICT", "MTF"],
+    "E06": ["ICT", "Liquidity", "MTF"],
+    "E07": ["ICT", "Liquidity", "Regime", "MTF"],
+    "E08": ["ICT", "Liquidity", "Regime", "AI", "MTF"],
+    "E09": ["ICT", "Liquidity", "Regime", "AI", "MTF", "Harmonic"]
+  },
+  "exit_variants": {
+    "X00": ["Structure"],
+    "X04": ["Structure", "EconomicBE", "ATR"],
+    "X06": ["Structure", "LiquidityTarget", "EconomicBE", "ATR", "TimeNoProgress"]
+  },
+  "first_raw_benchmark": {
+    "entry_variants": ["E00", "E01", "E02", "E03", "E04"],
+    "exit_variants": ["X00", "X04", "X06"],
+    "note": "MTF variants require synchronized M1/M5/M15 adapter and are intentionally deferred from the first independent-cell gate."
+  }
+}

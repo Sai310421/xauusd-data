@@ -1,0 +1,78 @@
+name: AMOS Dual Arena
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_root:
+        description: 'Result directory to scan'
+        required: true
+        default: 'results'
+        type: string
+      output_id:
+        description: 'Output folder ID'
+        required: true
+        default: 'manual'
+        type: string
+      top_n_feedback:
+        description: 'Winners per league sent to Math EDGE Diagnostic'
+        required: true
+        default: '5'
+        type: string
+  workflow_call:
+    inputs:
+      input_root:
+        required: false
+        default: 'results'
+        type: string
+      output_id:
+        required: false
+        default: 'called'
+        type: string
+      top_n_feedback:
+        required: false
+        default: '5'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amos-dual-arena-${{ inputs.output_id }}
+  cancel-in-progress: false
+
+jobs:
+  rank-and-feedback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ inputs.output_id }}" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'Invalid output_id'; exit 2; }
+          [[ "${{ inputs.top_n_feedback }}" =~ ^[0-9]+$ ]] || { echo 'Invalid top_n_feedback'; exit 2; }
+
+      - name: Unit tests
+        working-directory: research/amos_dual_arena
+        run: python -m unittest -v test_core.py
+
+      - name: Rank Arena A and Arena B
+        run: |
+          python research/amos_dual_arena/cli.py \
+            --input "${{ inputs.input_root }}" \
+            --output "results/amos-dual-arena/${{ inputs.output_id }}" \
+            --top-n-feedback "${{ inputs.top_n_feedback }}"
+
+      - name: Upload leaderboards and feedback queue
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-dual-arena-${{ inputs.output_id }}
+          path: results/amos-dual-arena/${{ inputs.output_id }}/
+          if-no-files-found: error
+          retention-days: 90

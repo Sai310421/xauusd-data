@@ -1,0 +1,63 @@
+name: AMOS FibCircle MTF PR Gate v1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'research/amos_fibcircle_mtf_raw_bt.py'
+      - '.github/workflows/amos-fibcircle-mtf-pr-gate-v1.yml'
+      - '.github/workflows/amos-fibcircle-mtf-raw-bt-v1.yml'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask_xau30
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  EXPERIMENT_ID: 'amos-fibcircle-mtf-pr-gate-v1'
+  RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-07-27-30d-v1
+
+jobs:
+  raw-pr-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - name: Restore XAUUSD 30D raw cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Build XAUUSD 30D raw BidAsk catalog
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        run: |
+          python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --symbols XAUUSD --workers 32 --fresh
+      - name: Raw Catalog Gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Save cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Nautilus synchronized MTF BT
+        run: python research/amos_fibcircle_mtf_raw_bt.py --catalog "$RAW_CATALOG" --symbol XAUUSD --experiment-id "$EXPERIMENT_ID" --raw-bidask-only
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-fibcircle-mtf-pr-gate-v1
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: warn
+          retention-days: 30

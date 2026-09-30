@@ -97,7 +97,7 @@
   },
   "initial_potential_screen": {
     "screen_status": "POTENTIAL_SCREEN_COMPLETE",
-    "potential_classification": "CONTROLLER_POTENTIAL",
+    "potential_classification": "ENTRY_POTENTIAL",
     "basis": {
       "PF": 1.2205829802169859,
       "EV_per_trade": 0.13260633296430752,
@@ -106,7 +106,7 @@
       "base_edge_positive": true,
       "parameter_headroom_observed": false,
       "controller_headroom_observed": true,
-      "a17_positive_singleton_observed": null
+      "a17_positive_singleton_observed": true
     },
     "discussion_baseline": {
       "PF_min": 1.2,
@@ -188,8 +188,44 @@
       "stage": "A17_CONFIRMED"
     },
     "A17_EXPERIMENTAL": {
-      "status": "UNMEASURED",
-      "stage": "A17_EXPERIMENTAL"
+      "status": "MEASURED",
+      "stage": "A17_EXPERIMENTAL",
+      "PF": {
+        "low": 1.2998094083307574,
+        "high": 1.2998094083307574,
+        "median": 1.2998094083307574,
+        "n": 1
+      },
+      "Return": {
+        "low": 51.086153207864555,
+        "high": 51.086153207864555,
+        "median": 51.086153207864555,
+        "n": 1
+      },
+      "MaxFloatingDD": {
+        "low": 12.0,
+        "high": 12.0,
+        "median": 12.0,
+        "n": 1
+      },
+      "EV_per_trade": {
+        "low": 0.1749525794789882,
+        "high": 0.1749525794789882,
+        "median": 0.1749525794789882,
+        "n": 1
+      },
+      "N": {
+        "low": 292.0,
+        "high": 292.0,
+        "median": 292.0,
+        "n": 1
+      },
+      "J": {
+        "low": 39.086153207864555,
+        "high": 39.086153207864555,
+        "median": 39.086153207864555,
+        "n": 1
+      }
     },
     "ROBUST": {
       "status": "UNMEASURED",
@@ -203,9 +239,9 @@
       "evidence_scope": "Observed stable/holdout-passing data only"
     },
     "best_experimental_ceiling_so_far": {
-      "PF": 1.2205829802169859,
-      "Return": 45.086153207864555,
-      "MaxFloatingDD_floor": 15.58662296129092,
+      "PF": 1.2998094083307574,
+      "Return": 51.086153207864555,
+      "MaxFloatingDD_floor": 12.0,
       "evidence_scope": "Includes development-selected singleton results; not promotion evidence"
     },
     "unmeasured_warning": "No numeric range is fabricated for stages without measured candidates."
@@ -241,10 +277,143 @@
       ]
     }
   ],
-  "a17_singletons": [],
+  "a17_singletons": [
+    {
+      "Return": 41.844759618024455,
+      "MaxFloatingDD": 13.827960665161825,
+      "MaxClosedDD": null,
+      "PF": 1.2150599433054723,
+      "RF": null,
+      "WR": 0.3911764705882353,
+      "EV_per_trade": 0.12307282240595428,
+      "N": 340,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "A10_DD_MODULATION_PROXY",
+      "J": 28.01679895286263,
+      "GatePass": false,
+      "GateReasons": [
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ],
+      "MarginalEDGE": {
+        "ME": -1.482731293711005,
+        "DeltaReturn": -3.2413935898401007,
+        "DDReduction": 0.11283151587721726,
+        "ReturnRetention": 0.9281066722437812
+      },
+      "HoldoutPass": false,
+      "HoldoutMetrics": {
+        "PF": 1.0865330492872334,
+        "Return": 7.1352282840993215,
+        "MaxFloatingDD": 11.8,
+        "EV_per_trade": 0.05246491385367148,
+        "N": 136
+      },
+      "SelectionScope": "first_60pct_of_long_OOS_trades"
+    },
+    {
+      "Return": 51.086153207864555,
+      "MaxFloatingDD": 12,
+      "MaxClosedDD": null,
+      "PF": 1.2998094083307574,
+      "RF": null,
+      "WR": 0.4075342465753425,
+      "EV_per_trade": 0.1749525794789882,
+      "N": 292,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "A16_HAZARD_GOVERNOR_PROXY",
+      "J": 39.086153207864555,
+      "GatePass": false,
+      "GateReasons": [
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ],
+      "MarginalEDGE": {
+        "ME": 9.58662296129092,
+        "DeltaReturn": 6.0,
+        "DDReduction": 0.2301090473669781,
+        "ReturnRetention": 1.1330785523514877
+      },
+      "HoldoutPass": false,
+      "HoldoutMetrics": {
+        "PF": 1.0258093331325275,
+        "Return": 1.7725739897550707,
+        "MaxFloatingDD": 12,
+        "EV_per_trade": 0.01626214669500065,
+        "N": 109
+      },
+      "SelectionScope": "first_60pct_of_long_OOS_trades"
+    },
+    {
+      "Return": 40.3537614589812,
+      "MaxFloatingDD": 15.58662296129092,
+      "MaxClosedDD": null,
+      "PF": 1.2003707897138163,
+      "RF": null,
+      "WR": 0.3855421686746988,
+      "EV_per_trade": 0.12154747427403975,
+      "N": 332,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "A17_ENTRY_SAFETY_GATE_PROXY",
+      "J": 24.767138497690276,
+      "GatePass": false,
+      "GateReasons": [
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ],
+      "MarginalEDGE": {
+        "ME": -4.732391748883359,
+        "DeltaReturn": -4.732391748883359,
+        "DDReduction": 0.0,
+        "ReturnRetention": 0.8950366928164128
+      },
+      "HoldoutPass": false,
+      "HoldoutMetrics": {
+        "PF": 1.0665119962617164,
+        "Return": 5.565695474385856,
+        "MaxFloatingDD": 14,
+        "EV_per_trade": 0.04184733439387862,
+        "N": 133
+      },
+      "SelectionScope": "first_60pct_of_long_OOS_trades"
+    }
+  ],
   "a17_passing_singletons": [],
   "pair_triple_search_allowed": false,
-  "potential_classification": "CONTROLLER_POTENTIAL",
+  "potential_classification": "ENTRY_POTENTIAL",
   "deep_classification": "PARAMETER_POTENTIAL",
   "final_status": "NOT_VALIDATED",
   "audit": {

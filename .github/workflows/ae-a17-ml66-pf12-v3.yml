@@ -1,0 +1,39 @@
+name: AE A17 ML66 PF12 v3
+on:
+  push:
+    branches: ["amos/a17-ml66-oos-v1"]
+    paths:
+      - "scripts/ae_a17_ml66_pf12_v3.py"
+      - ".github/workflows/ae-a17-ml66-pf12-v3.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  robust-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: amos/a17-ml66-oos-v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas lightgbm scikit-learn joblib
+      - name: Run robust PF12 search
+        run: python scripts/ae_a17_ml66_pf12_v3.py
+      - name: Show report
+        run: cat bt_results/ae_a17_ml66_pf12_v3/report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ae-a17-ml66-pf12-v3
+          path: bt_results/ae_a17_ml66_pf12_v3/
+          retention-days: 30
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f bt_results/ae_a17_ml66_pf12_v3/report.json
+          if ! git diff --cached --quiet; then git commit -m "Add ML66 PF12 v3 robust results"; git push; fi

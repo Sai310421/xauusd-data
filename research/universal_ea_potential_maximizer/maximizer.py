@@ -106,7 +106,7 @@ def initial_potential_screen(original:Dict[str,Any],parameter_candidates:List[Di
     s=cfg.get("initial_potential_screen",{})
     pf=num(original,"PF",-999); ev=num(original,"EV_per_trade",-999); n=int(num(original,"N",0)); dd=num(original,"MaxFloatingDD",999)
     best_param=max(parameter_candidates,key=lambda r:num(r,"J",-1e99)) if parameter_candidates else None
-    positive_singletons=[x for x in singleton_results if x.get("MarginalEDGE",{}).get("ME",0)>0]
+    positive_singletons=[x for x in singleton_results if x.get("MarginalEDGE",{}).get("ME",0)>0 and x.get("HoldoutPass") is not False]
     base_edge=(pf>s.get("proxy_pf_floor",1.0) and ev>s.get("proxy_ev_floor",0.0))
     parameter_headroom=bool(best_param and (num(best_param,"PF",0)>pf or num(best_param,"J",-1e99)>num(original,"J",-1e99)))
     controller_headroom=(dd>s.get("discuss_dd_target_pct",10.0))

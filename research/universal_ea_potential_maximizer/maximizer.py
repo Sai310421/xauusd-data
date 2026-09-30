@@ -185,7 +185,8 @@ def main():
       "a17_singletons":singleton_results,
       "a17_passing_singletons":[x["Variant"] for x in passing_singletons],
       "pair_triple_search_allowed":combos_allowed,
-      "potential_classification":cls,
+      "potential_classification":screen["potential_classification"],
+      "deep_classification":cls,
       "final_status":"VALIDATED" if outrows["A17_ROBUST_MAX"]["GatePass"] and outrows["A17_ROBUST_MAX"]["EvidenceLabel"]=="VALIDATED" else "NOT_VALIDATED",
       "audit":{
         "failed_or_invalid_runs_retained":True,

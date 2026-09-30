@@ -164,7 +164,8 @@ def _metric_range(rows:List[Dict[str,Any]], key:str):
 def potential_ceiling_estimate(original:Dict[str,Any], parameter_candidates:List[Dict[str,Any]], singleton_results:List[Dict[str,Any]], stable:List[Dict[str,Any]], cfg:Dict[str,Any])->Dict[str,Any]:
     current={k:original.get(k) for k in ("Return","PF","WR","EV_per_trade","N","MaxFloatingDD","RF","CVaR","RuinProbability")}
     param_pool=stable if stable else parameter_candidates
-    a17_pool=[x for x in singleton_results if x.get("MarginalEDGE",{}).get("ME",0)>0]
+    experimental_a17_pool=[x for x in singleton_results if x.get("MarginalEDGE",{}).get("ME",0)>0]
+    a17_pool=[x for x in experimental_a17_pool if x.get("HoldoutPass") is not False]
     def stage(rows,name):
         if not rows:
             return {"status":"UNMEASURED","stage":name}
@@ -178,7 +179,8 @@ def potential_ceiling_estimate(original:Dict[str,Any], parameter_candidates:List
           "J":_metric_range(rows,"J")
         }
     p=stage(param_pool,"PARAMETER_MAX")
-    a=stage(a17_pool,"A17")
+    a=stage(a17_pool,"A17_CONFIRMED")
+    a_exp=stage(experimental_a17_pool,"A17_EXPERIMENTAL")
     evidence=original.get("EvidenceLabel","PROXY")
     robust_status="UNMEASURED"
     robust={}
@@ -191,20 +193,31 @@ def potential_ceiling_estimate(original:Dict[str,Any], parameter_candidates:List
     else:
         robust={"status":"UNMEASURED","stage":"ROBUST","reason":"Requires Nautilus Raw Tick OOS + cost/regime stress evidence."}
     measured=[x for x in (p,a) if x.get("status")=="MEASURED"]
+    experimental_measured=[x for x in (p,a_exp) if x.get("status")=="MEASURED"]
     pf_ceiling=max([num(original,"PF",0)]+[x["PF"]["high"] for x in measured if x.get("PF")])
     ret_ceiling=max([num(original,"Return",0)]+[x["Return"]["high"] for x in measured if x.get("Return")])
     dd_floor=min([num(original,"MaxFloatingDD",999)]+[x["MaxFloatingDD"]["low"] for x in measured if x.get("MaxFloatingDD")])
+    exp_pf=max([num(original,"PF",0)]+[x["PF"]["high"] for x in experimental_measured if x.get("PF")])
+    exp_ret=max([num(original,"Return",0)]+[x["Return"]["high"] for x in experimental_measured if x.get("Return")])
+    exp_dd=min([num(original,"MaxFloatingDD",999)]+[x["MaxFloatingDD"]["low"] for x in experimental_measured if x.get("MaxFloatingDD")])
     return {
       "definition":"Empirical performance envelope, not a future guarantee.",
       "CURRENT":{"status":"MEASURED","metrics":current},
       "PARAMETER_MAX":p,
       "A17":a,
+      "A17_EXPERIMENTAL":a_exp,
       "ROBUST":robust,
-      "best_empirical_ceiling_so_far":{
+      "best_confirmed_ceiling_so_far":{
         "PF":pf_ceiling,
         "Return":ret_ceiling,
         "MaxFloatingDD_floor":None if dd_floor>=999 else dd_floor,
-        "evidence_scope":"Observed data only"
+        "evidence_scope":"Observed stable/holdout-passing data only"
+      },
+      "best_experimental_ceiling_so_far":{
+        "PF":exp_pf,
+        "Return":exp_ret,
+        "MaxFloatingDD_floor":None if exp_dd>=999 else exp_dd,
+        "evidence_scope":"Includes development-selected singleton results; not promotion evidence"
       },
       "unmeasured_warning":"No numeric range is fabricated for stages without measured candidates."
     }
@@ -222,8 +235,11 @@ def main():
     for x in sub.get("a17_singletons",[]):
         row=enrich(x.get("name","A?"),x.get("kpi",x),cfg,x.get("evidence_label","PROXY"))
         row["MarginalEDGE"]=marginal(outrows["PARAMETER_MAX"],row)
+        row["HoldoutPass"]=x.get("holdout_pass")
+        row["HoldoutMetrics"]=x.get("holdout_metrics")
+        row["SelectionScope"]=x.get("selection_scope")
         singleton_results.append(row)
-    passing_singletons=[x for x in singleton_results if x["MarginalEDGE"]["ME"]>0 and num(x,"EV_per_trade",-999)>0]
+    passing_singletons=[x for x in singleton_results if x["MarginalEDGE"]["ME"]>0 and num(x,"EV_per_trade",-999)>0 and x.get("HoldoutPass") is not False]
     combos_allowed=len(passing_singletons)>0
     parameter_candidates=[]
     for x in sub.get("parameter_candidates",[]):

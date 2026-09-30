@@ -1,0 +1,58 @@
+{
+  "name": "ML66_WalkForward_DirectionGate_v6_80pct_OOS",
+  "variants": {
+    "ORIGINAL": {
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 45.086153207864555,
+        "MaxFloatingDD": 15.58662296129092,
+        "PF": 1.2205829802169859,
+        "WR": 0.3911764705882353,
+        "EV_per_trade": 0.13260633296430752,
+        "N": 340
+      }
+    },
+    "PARAMETER_MAX": {
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 45.086153207864555,
+        "MaxFloatingDD": 15.58662296129092,
+        "PF": 1.2205829802169859,
+        "WR": 0.3911764705882353,
+        "EV_per_trade": 0.13260633296430752,
+        "N": 340
+      }
+    },
+    "A17_ROBUST_MAX": {
+      "evidence_label": "PREDICTED",
+      "kpi": {}
+    }
+  },
+  "parameter_candidates": [
+    {
+      "name": "H48_F40_LONG_OOS",
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 45.086153207864555,
+        "MaxFloatingDD": 15.58662296129092,
+        "PF": 1.2205829802169859,
+        "WR": 0.3911764705882353,
+        "EV_per_trade": 0.13260633296430752,
+        "N": 340
+      }
+    },
+    {
+      "name": "H72_F40_LONG_OOS",
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 47.97918507087395,
+        "MaxFloatingDD": 28.66252392378224,
+        "PF": 1.1760144673156867,
+        "WR": 0.37272727272727274,
+        "EV_per_trade": 0.10904360243380444,
+        "N": 440
+      }
+    }
+  ],
+  "a17_singletons": []
+}

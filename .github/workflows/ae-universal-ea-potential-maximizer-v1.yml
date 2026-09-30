@@ -24,15 +24,20 @@ jobs:
         run: |
           python research/universal_ea_potential_maximizer/maximizer.py             --config research/universal_ea_potential_maximizer/config_v1.json             --subject research/universal_ea_potential_maximizer/subjects/ml66_v5.json             --out bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
       - name: Show reports
+        if: always()
         run: |
-          cat bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
-          cat bt_results/universal_ea_potential_maximizer/ml66_v6_long_oos_report.json
+          for f in bt_results/universal_ea_potential_maximizer/*.json; do
+            echo "===== $f ====="
+            cat "$f"
+          done
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ae-universal-ea-potential-maximizer-v1
           path: bt_results/universal_ea_potential_maximizer/
           retention-days: 30
       - name: Commit report
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

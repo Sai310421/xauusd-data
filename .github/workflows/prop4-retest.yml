@@ -1,0 +1,68 @@
+name: TickScalper Prop4 Native Retest
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/tickscalper-prop4-retest-20260930]
+    paths:
+      - research/research_prop4_native.py
+      - research/prop4_native_smoke.py
+      - research/tickscalper_prop4_base.py
+      - .github/workflows/prop4-retest.yml
+permissions:
+  contents: read
+jobs:
+  accounting-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'nautilus_trader==1.230.0'
+      - run: python -m py_compile research/research_prop4_native.py research/tickscalper_prop4_base.py research/ae_frozen4_controller.py
+      - run: python research/prop4_native_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prop4-native-smoke
+          path: results/prop4/
+  raw-bt:
+    needs: accounting-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - {name: SMALL_A, initial: 1000, lot: 0.01, mode: off, budget: '', fee: 6}
+          - {name: SMALL_B, initial: 1000, lot: 0.01, mode: v2, budget: '', fee: 6}
+          - {name: SMALL_C, initial: 1000, lot: 0.01, mode: v3, budget: '--budget-add', fee: 6}
+          - {name: PROP_A, initial: 100000, lot: 0.04, mode: off, budget: '', fee: 6}
+          - {name: PROP_B, initial: 100000, lot: 0.04, mode: v2, budget: '', fee: 6}
+          - {name: PROP_C, initial: 100000, lot: 0.04, mode: v3, budget: '--budget-add', fee: 6}
+          - {name: PROP_D, initial: 100000, lot: 0.03, mode: off, budget: '', fee: 6}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'nautilus_trader==1.230.0'
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: raw-bidask-duka-6sym-2026-07-27-30d-v2
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog catalog/raw_bidask --symbols XAUUSD
+      - name: Native Raw BidAsk candidate
+        run: >-
+          python research/research_prop4_native.py --catalog catalog/raw_bidask
+          --id ${{ matrix.profile.name }} --initial ${{ matrix.profile.initial }}
+          --lot ${{ matrix.profile.lot }} --mode ${{ matrix.profile.mode }}
+          --fee ${{ matrix.profile.fee }} ${{ matrix.profile.budget }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prop4-${{ matrix.profile.name }}
+          path: results/prop4/
+          if-no-files-found: warn

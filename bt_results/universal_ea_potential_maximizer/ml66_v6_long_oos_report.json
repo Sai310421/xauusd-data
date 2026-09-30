@@ -185,18 +185,28 @@
     },
     "A17": {
       "status": "UNMEASURED",
-      "stage": "A17"
+      "stage": "A17_CONFIRMED"
+    },
+    "A17_EXPERIMENTAL": {
+      "status": "UNMEASURED",
+      "stage": "A17_EXPERIMENTAL"
     },
     "ROBUST": {
       "status": "UNMEASURED",
       "stage": "ROBUST",
       "reason": "Requires Nautilus Raw Tick OOS + cost/regime stress evidence."
     },
-    "best_empirical_ceiling_so_far": {
+    "best_confirmed_ceiling_so_far": {
       "PF": 1.2205829802169859,
       "Return": 45.086153207864555,
       "MaxFloatingDD_floor": 15.58662296129092,
-      "evidence_scope": "Observed data only"
+      "evidence_scope": "Observed stable/holdout-passing data only"
+    },
+    "best_experimental_ceiling_so_far": {
+      "PF": 1.2205829802169859,
+      "Return": 45.086153207864555,
+      "MaxFloatingDD_floor": 15.58662296129092,
+      "evidence_scope": "Includes development-selected singleton results; not promotion evidence"
     },
     "unmeasured_warning": "No numeric range is fabricated for stages without measured candidates."
   },

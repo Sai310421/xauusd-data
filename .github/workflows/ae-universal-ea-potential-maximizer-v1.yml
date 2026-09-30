@@ -23,8 +23,10 @@ jobs:
       - name: Run ML66 subject diagnostic
         run: |
           python research/universal_ea_potential_maximizer/maximizer.py             --config research/universal_ea_potential_maximizer/config_v1.json             --subject research/universal_ea_potential_maximizer/subjects/ml66_v5.json             --out bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
-      - name: Show report
-        run: cat bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
+      - name: Show reports
+        run: |
+          cat bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
+          cat bt_results/universal_ea_potential_maximizer/ml66_v6_long_oos_report.json
       - uses: actions/upload-artifact@v4
         with:
           name: ae-universal-ea-potential-maximizer-v1
@@ -34,7 +36,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
+          git add -f bt_results/universal_ea_potential_maximizer/ml66_v5_report.json bt_results/universal_ea_potential_maximizer/ml66_v6_long_oos_report.json
           if ! git diff --cached --quiet; then
             git commit -m "Add Universal EA Potential Maximizer ML66 report"
             git push

@@ -1,0 +1,30 @@
+{
+  "name": "ML66_WalkForward_DirectionGate_v5",
+  "variants": {
+    "ORIGINAL": {
+      "evidence_label": "PROXY",
+      "kpi": {
+        "Return": 13.909039675017981,
+        "MaxFloatingDD": 14.090960324982019,
+        "PF": 1.247972928158677,
+        "WR": 0.3804347826086957,
+        "EV_per_trade": 0.1511852138588911,
+        "N": 92,
+        "MinMarginLevel": 9999,
+        "RuinProbability": 0.0,
+        "CVaR": 0.0,
+        "TotalCost": 0.0
+      }
+    },
+    "PARAMETER_MAX": {
+      "evidence_label": "PREDICTED",
+      "kpi": {}
+    },
+    "A17_ROBUST_MAX": {
+      "evidence_label": "PREDICTED",
+      "kpi": {}
+    }
+  },
+  "parameter_candidates": [],
+  "a17_singletons": []
+}

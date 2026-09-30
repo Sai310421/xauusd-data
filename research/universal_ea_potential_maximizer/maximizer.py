@@ -101,6 +101,56 @@ def enrich(name:str,raw:Dict[str,Any],cfg,label)->Dict[str,Any]:
     k["J"]=objective(k,cfg); gate=gates(k,cfg,label); k["GatePass"]=gate["pass"]; k["GateReasons"]=gate["reasons"]
     return k
 
+
+def initial_potential_screen(original:Dict[str,Any],parameter_candidates:List[Dict[str,Any]],singleton_results:List[Dict[str,Any]],cfg:Dict[str,Any])->Dict[str,Any]:
+    s=cfg.get("initial_potential_screen",{})
+    pf=num(original,"PF",-999); ev=num(original,"EV_per_trade",-999); n=int(num(original,"N",0)); dd=num(original,"MaxFloatingDD",999)
+    best_param=max(parameter_candidates,key=lambda r:num(r,"J",-1e99)) if parameter_candidates else None
+    positive_singletons=[x for x in singleton_results if x.get("MarginalEDGE",{}).get("ME",0)>0]
+    base_edge=(pf>s.get("proxy_pf_floor",1.0) and ev>s.get("proxy_ev_floor",0.0))
+    parameter_headroom=bool(best_param and (num(best_param,"PF",0)>pf or num(best_param,"J",-1e99)>num(original,"J",-1e99)))
+    controller_headroom=(dd>s.get("discuss_dd_target_pct",10.0))
+    a17_headroom=(len(positive_singletons)>0) if singleton_results else None
+    if not base_edge:
+        cls="NO_RECOVERABLE_EDGE"
+    elif parameter_headroom:
+        cls="PARAMETER_POTENTIAL"
+    elif a17_headroom:
+        cls="ENTRY_POTENTIAL"
+    elif controller_headroom:
+        cls="CONTROLLER_POTENTIAL"
+    else:
+        cls="ROBUST_MAX_CANDIDATE"
+    return {
+      "screen_status":"POTENTIAL_SCREEN_COMPLETE",
+      "potential_classification":cls,
+      "basis":{
+        "PF":pf,"EV_per_trade":ev,"N":n,"MaxFloatingDD":dd,
+        "base_edge_positive":base_edge,
+        "parameter_headroom_observed":parameter_headroom,
+        "controller_headroom_observed":controller_headroom,
+        "a17_positive_singleton_observed":a17_headroom
+      },
+      "discussion_baseline":{
+        "PF_min":s.get("discuss_pf_target",1.20),
+        "PF_stretch":s.get("discuss_pf_stretch",1.30),
+        "N_min":s.get("discuss_min_trades",100),
+        "DD_target_pct":s.get("discuss_dd_target_pct",10.0)
+      },
+      "headroom":{
+        "PF_to_min":None if pf<-900 else max(0.0,s.get("discuss_pf_target",1.20)-pf),
+        "PF_to_stretch":None if pf<-900 else max(0.0,s.get("discuss_pf_stretch",1.30)-pf),
+        "N_to_min":max(0,s.get("discuss_min_trades",100)-n),
+        "DD_excess_vs_target":None if dd>900 else max(0.0,dd-s.get("discuss_dd_target_pct",10.0))
+      },
+      "next_required_evidence":[
+        "PARAMETER_MAX stable-region search",
+        "Nautilus Raw Tick baseline",
+        "A17 singleton marginal EDGE",
+        "OOS + cost + stress"
+      ]
+    }
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--config",required=True); ap.add_argument("--subject",required=True); ap.add_argument("--out",required=True)
@@ -123,13 +173,14 @@ def main():
         parameter_candidates.append(row)
     stable=stable_region(parameter_candidates,cfg["gates"]["stable_region_epsilon"])
     margin_evidence=any(x["MarginalEDGE"]["ME"]>0 for x in singleton_results)
+    screen=initial_potential_screen(outrows["ORIGINAL"],parameter_candidates,singleton_results,cfg)
     cls=classify(outrows["ORIGINAL"],outrows["PARAMETER_MAX"],outrows["A17_ROBUST_MAX"],margin_evidence)
     final={
       "framework":"AE Universal EA Potential Maximizer Nautilus v1.0",
       "subject":sub.get("name","UNKNOWN"),
       "official_kpi_policy":"Only Nautilus Raw Tick can become official KPI.",
       "variants":outrows,
-      "parameter_stable_region":stable,
+      "initial_potential_screen":screen,\n      "parameter_stable_region":stable,
       "a17_singletons":singleton_results,
       "a17_passing_singletons":[x["Variant"] for x in passing_singletons],
       "pair_triple_search_allowed":combos_allowed,

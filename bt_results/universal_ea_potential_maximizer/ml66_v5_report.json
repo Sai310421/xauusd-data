@@ -16,12 +16,12 @@
       "MaxConsecutiveLoss": null,
       "MinMarginLevel": 9999,
       "MaxConcurrentLot": null,
-      "RuinProbability": 0.0,
-      "CVaR": 0.0,
+      "RuinProbability": 0,
+      "CVaR": 0,
       "SpreadCost": null,
       "SlippageCost": null,
       "Commission": null,
-      "TotalCost": 0.0,
+      "TotalCost": 0,
       "EvidenceLabel": "PROXY",
       "Variant": "ORIGINAL",
       "J": -0.181920649964038,
@@ -32,14 +32,14 @@
       ]
     },
     "PARAMETER_MAX": {
-      "Return": null,
-      "MaxFloatingDD": null,
+      "Return": 13.909039675017981,
+      "MaxFloatingDD": 14.090960324982019,
       "MaxClosedDD": null,
-      "PF": null,
+      "PF": 1.247972928158677,
       "RF": null,
-      "WR": null,
-      "EV_per_trade": null,
-      "N": null,
+      "WR": 0.3804347826086957,
+      "EV_per_trade": 0.1511852138588911,
+      "N": 92,
       "PayoffRatio": null,
       "MaxConsecutiveLoss": null,
       "MinMarginLevel": null,
@@ -50,15 +50,12 @@
       "SlippageCost": null,
       "Commission": null,
       "TotalCost": null,
-      "EvidenceLabel": "PREDICTED",
+      "EvidenceLabel": "PROXY",
       "Variant": "PARAMETER_MAX",
-      "J": 0.0,
+      "J": -0.181920649964038,
       "GatePass": false,
       "GateReasons": [
-        "PF<1.2",
-        "EV<=0",
         "N<100",
-        "DD>20",
         "Ruin>0.01",
         "MinMarginLevel<500",
         "Evidence<NAUTILUS_OOS"
@@ -142,13 +139,49 @@
         "N": 92,
         "MaxFloatingDD": 14.090960324982019,
         "RF": null,
-        "CVaR": 0.0,
-        "RuinProbability": 0.0
+        "CVaR": 0,
+        "RuinProbability": 0
       }
     },
     "PARAMETER_MAX": {
-      "status": "UNMEASURED",
-      "stage": "PARAMETER_MAX"
+      "status": "MEASURED",
+      "stage": "PARAMETER_MAX",
+      "PF": {
+        "low": 1.247972928158677,
+        "high": 1.247972928158677,
+        "median": 1.247972928158677,
+        "n": 1
+      },
+      "Return": {
+        "low": 13.909039675017981,
+        "high": 13.909039675017981,
+        "median": 13.909039675017981,
+        "n": 1
+      },
+      "MaxFloatingDD": {
+        "low": 14.090960324982019,
+        "high": 14.090960324982019,
+        "median": 14.090960324982019,
+        "n": 1
+      },
+      "EV_per_trade": {
+        "low": 0.1511852138588911,
+        "high": 0.1511852138588911,
+        "median": 0.1511852138588911,
+        "n": 1
+      },
+      "N": {
+        "low": 92.0,
+        "high": 92.0,
+        "median": 92.0,
+        "n": 1
+      },
+      "J": {
+        "low": -0.181920649964038,
+        "high": -0.181920649964038,
+        "median": -0.181920649964038,
+        "n": 1
+      }
     },
     "A17": {
       "status": "UNMEASURED",
@@ -167,7 +200,38 @@
     },
     "unmeasured_warning": "No numeric range is fabricated for stages without measured candidates."
   },
-  "parameter_stable_region": [],
+  "parameter_stable_region": [
+    {
+      "Return": 13.909039675017981,
+      "MaxFloatingDD": 14.090960324982019,
+      "MaxClosedDD": null,
+      "PF": 1.247972928158677,
+      "RF": null,
+      "WR": 0.3804347826086957,
+      "EV_per_trade": 0.1511852138588911,
+      "N": 92,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "H72_F40",
+      "J": -0.181920649964038,
+      "GatePass": false,
+      "GateReasons": [
+        "N<100",
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ]
+    }
+  ],
   "a17_singletons": [],
   "a17_passing_singletons": [],
   "pair_triple_search_allowed": false,

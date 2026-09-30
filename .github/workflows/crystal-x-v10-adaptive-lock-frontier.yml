@@ -1,0 +1,157 @@
+name: CRYSTAL-X v10 Adaptive Lock Frontier Raw BidAsk
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: 'Unique experiment id'
+        required: true
+        default: 'crystal-x-v10-manual'
+      raw_start:
+        description: 'Dukascopy UTC start date'
+        required: true
+        default: '2026-07-27'
+      raw_days:
+        description: 'Raw days'
+        required: true
+        default: '30'
+  push:
+    paths:
+      - '.github/workflows/crystal-x-v10-adaptive-lock-frontier.yml'
+      - 'research/crystal_x_v10_lock_frontier.py'
+      - 'research/crystal_x_v10_aggregate.py'
+      - 'research/build_raw_bidask_catalog_duka.py'
+      - 'research/raw_bidask_catalog_guard.py'
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || 'crystal-x-v10-ci' }}
+  RAW_START: ${{ github.event_name == 'workflow_dispatch' && inputs.raw_start || '2026-07-27' }}
+  RAW_DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.raw_days || '30' }}
+
+concurrency:
+  group: crystal-x-v10-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-raw-catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      cache-key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - id: key
+        shell: bash
+        run: echo "key=crystal-v10-usdjpy-${RAW_START}-${RAW_DAYS}-rawbidask-v2" >> "$GITHUB_OUTPUT"
+      - name: Restore exact raw catalog cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ steps.key.outputs.key }}
+      - name: Self-healing USDJPY Raw BidAsk bootstrap
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --symbols USDJPY --workers 32; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            rm -rf "$RAW_CATALOG"; mkdir -p "$RAW_CATALOG"; sleep $((attempt*10))
+          done
+      - name: Fail-closed Raw BidAsk quality gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols USDJPY
+      - name: Save verified immutable catalog cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ steps.key.outputs.key }}
+      - name: Publish preflight evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: crystal-v10-preflight-${{ env.EXPERIMENT_ID }}
+          path: catalog/raw_bidask/catalog_manifest.json
+          retention-days: 90
+
+  frontier-matrix:
+    needs: prepare-raw-catalog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        policy: [absolute, per_position, adaptive]
+        threshold: [600, 750, 850, 900, 950, 1050, 1200, 1500]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned runtime
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - name: Restore verified Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ needs.prepare-raw-catalog.outputs.cache-key }}
+          fail-on-cache-miss: true
+      - name: Re-run fail-closed Raw Gate inside each cell
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols USDJPY
+      - name: Run CRYSTAL-X lock frontier cell
+        run: |
+          python research/crystal_x_v10_lock_frontier.py \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "$EXPERIMENT_ID" \
+            --policy "${{ matrix.policy }}" \
+            --threshold "${{ matrix.threshold }}"
+      - name: Upload isolated cell evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crystal-v10-${{ env.EXPERIMENT_ID }}-${{ matrix.policy }}-${{ matrix.threshold }}
+          path: results/crystal-x-v10/${{ env.EXPERIMENT_ID }}/${{ matrix.policy }}-${{ matrix.threshold }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate-frontier:
+    needs: frontier-matrix
+    if: always() && needs.frontier-matrix.result != 'cancelled'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas
+      - name: Download all matrix evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: crystal-v10-${{ env.EXPERIMENT_ID }}-*
+          path: gathered
+          merge-multiple: false
+      - name: Aggregate and rank Recovery-Preservation frontier
+        run: python research/crystal_x_v10_aggregate.py --root gathered --out results/crystal-x-v10/${EXPERIMENT_ID}/aggregate
+      - name: Upload ranked frontier
+        uses: actions/upload-artifact@v4
+        with:
+          name: crystal-v10-frontier-${{ env.EXPERIMENT_ID }}
+          path: results/crystal-x-v10/${EXPERIMENT_ID}/aggregate/
+          if-no-files-found: error
+          retention-days: 90

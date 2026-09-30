@@ -1,0 +1,58 @@
+name: AE HighN 2Edge Math Parallel Raw BT
+
+on:
+  push:
+    branches:
+      - ae-highn-2edge-math-bt
+    paths:
+      - '.github/workflows/ae-highn-2edge-math-parallel.yml'
+      - 'research/ae_highn_2edge_math_raw6x3_bt.py'
+  workflow_dispatch:
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+
+jobs:
+  tf:
+    strategy:
+      fail-fast: false
+      matrix:
+        tf: [M1, M5, M15]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas
+      - id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Raw gate
+        run: |
+          test "${{ steps.raw-cache.outputs.cache-hit }}" = 'true'
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Compatibility
+        run: |
+          sed -i 's/cat.query_quote_ticks(identifiers=\[inst.id.value\])/cat.quote_ticks(instrument_ids=[inst.id.value])/g' research/ae_highn_2edge_math_raw6x3_bt.py
+          sed -i 's/self.portfolio.is_net_flat(self.config.instrument_id)/self.cache.positions_open_count(instrument_id=self.config.instrument_id) == 0/g' research/ae_highn_2edge_math_raw6x3_bt.py
+          sed -i '/from nautilus_trader.trading.strategy import Strategy/a from nautilus_trader.analysis import ReportProvider' research/ae_highn_2edge_math_raw6x3_bt.py
+          sed -i 's/e.generate_positions_report()/ReportProvider.generate_positions_report(positions=e.cache.positions(), snapshots=e.cache.position_snapshots())/g' research/ae_highn_2edge_math_raw6x3_bt.py
+      - name: Run cell group
+        env:
+          TF: ${{ matrix.tf }}
+          EXP: ae-highn-par-${{ github.run_id }}-${{ matrix.tf }}
+        run: |
+          python research/ae_highn_2edge_math_raw6x3_bt.py --catalog "$RAW_CATALOG" --symbols XAUUSD --timeframes "$TF" --experiment-id "$EXP" --raw-bidask-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ae-highn-${{ github.run_id }}-${{ matrix.tf }}
+          path: results/ae-bt/ae-highn-par-${{ github.run_id }}-${{ matrix.tf }}/
+          if-no-files-found: error

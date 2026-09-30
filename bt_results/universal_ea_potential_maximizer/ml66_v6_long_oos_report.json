@@ -97,7 +97,7 @@
   },
   "initial_potential_screen": {
     "screen_status": "POTENTIAL_SCREEN_COMPLETE",
-    "potential_classification": "ENTRY_POTENTIAL",
+    "potential_classification": "CONTROLLER_POTENTIAL",
     "basis": {
       "PF": 1.2205829802169859,
       "EV_per_trade": 0.13260633296430752,
@@ -106,7 +106,7 @@
       "base_edge_positive": true,
       "parameter_headroom_observed": false,
       "controller_headroom_observed": true,
-      "a17_positive_singleton_observed": true
+      "a17_positive_singleton_observed": false
     },
     "discussion_baseline": {
       "PF_min": 1.2,
@@ -413,7 +413,7 @@
   ],
   "a17_passing_singletons": [],
   "pair_triple_search_allowed": false,
-  "potential_classification": "ENTRY_POTENTIAL",
+  "potential_classification": "CONTROLLER_POTENTIAL",
   "deep_classification": "PARAMETER_POTENTIAL",
   "final_status": "NOT_VALIDATED",
   "audit": {

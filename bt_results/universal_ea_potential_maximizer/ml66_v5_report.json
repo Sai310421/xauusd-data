@@ -130,6 +130,43 @@
       "OOS + cost + stress"
     ]
   },
+  "potential_ceiling_estimate": {
+    "definition": "Empirical performance envelope, not a future guarantee.",
+    "CURRENT": {
+      "status": "MEASURED",
+      "metrics": {
+        "Return": 13.909039675017981,
+        "PF": 1.247972928158677,
+        "WR": 0.3804347826086957,
+        "EV_per_trade": 0.1511852138588911,
+        "N": 92,
+        "MaxFloatingDD": 14.090960324982019,
+        "RF": null,
+        "CVaR": 0.0,
+        "RuinProbability": 0.0
+      }
+    },
+    "PARAMETER_MAX": {
+      "status": "UNMEASURED",
+      "stage": "PARAMETER_MAX"
+    },
+    "A17": {
+      "status": "UNMEASURED",
+      "stage": "A17"
+    },
+    "ROBUST": {
+      "status": "UNMEASURED",
+      "stage": "ROBUST",
+      "reason": "Requires Nautilus Raw Tick OOS + cost/regime stress evidence."
+    },
+    "best_empirical_ceiling_so_far": {
+      "PF": 1.247972928158677,
+      "Return": 13.909039675017981,
+      "MaxFloatingDD_floor": 14.090960324982019,
+      "evidence_scope": "Observed data only"
+    },
+    "unmeasured_warning": "No numeric range is fabricated for stages without measured candidates."
+  },
   "parameter_stable_region": [],
   "a17_singletons": [],
   "a17_passing_singletons": [],

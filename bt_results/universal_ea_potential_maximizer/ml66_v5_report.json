@@ -134,7 +134,8 @@
   "a17_singletons": [],
   "a17_passing_singletons": [],
   "pair_triple_search_allowed": false,
-  "potential_classification": "PARAMETER_POTENTIAL",
+  "potential_classification": "CONTROLLER_POTENTIAL",
+  "deep_classification": "PARAMETER_POTENTIAL",
   "final_status": "NOT_VALIDATED",
   "audit": {
     "failed_or_invalid_runs_retained": true,

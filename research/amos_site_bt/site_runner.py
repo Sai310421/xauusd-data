@@ -51,6 +51,8 @@ def main():
         for key,value in [('source_sha256',req['source_sha256']),('strategy_sha256',entry['strategy_sha256']),('config_sha256',req['config_sha256']),('status','COMPLETED'),('port_review','APPROVED'),('data_kind','RAW_BIDASK'),('synthetic',False)]:
             if m.get(key)!=value: raise ValueError('ADAPTER_EVIDENCE_MISMATCH_'+key)
         if result.get('schema')!='amos.nautilus.kpi.v1' or not result.get('trades') or not result.get('equity'): raise ValueError('ADAPTER_RESULT_INCOMPLETE')
+        import nautilus_trader
+        if m.get('nautilus_version')!=nautilus_trader.__version__ or m.get('dataset_sha256')!=data.get('catalog_sha256') or m.get('ended_flat') is not True: raise ValueError('NATIVE_DATASET_OR_LIQUIDATION_EVIDENCE_MISMATCH')
         # Pin transport evidence to the actual Actions run. UI independently recomputes all KPI.
         m.update({'run_id':os.environ['GITHUB_RUN_ID'],'git_sha':os.environ['GITHUB_SHA'],'workflow':'amos-site-nautilus.yml','artifact_ref':'amos-bt-'+req['request_id']})
         result['request_id']=req['request_id'];result['status']='COMPLETED'

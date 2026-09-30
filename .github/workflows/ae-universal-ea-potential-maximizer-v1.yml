@@ -1,0 +1,41 @@
+name: AE Universal EA Potential Maximizer v1
+on:
+  push:
+    branches: ["amos/universal-ea-potential-maximizer-v1"]
+    paths:
+      - "research/universal_ea_potential_maximizer/**"
+      - ".github/workflows/ae-universal-ea-potential-maximizer-v1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: amos/universal-ea-potential-maximizer-v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run ML66 subject diagnostic
+        run: |
+          python research/universal_ea_potential_maximizer/maximizer.py             --config research/universal_ea_potential_maximizer/config_v1.json             --subject research/universal_ea_potential_maximizer/subjects/ml66_v5.json             --out bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
+      - name: Show report
+        run: cat bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ae-universal-ea-potential-maximizer-v1
+          path: bt_results/universal_ea_potential_maximizer/
+          retention-days: 30
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f bt_results/universal_ea_potential_maximizer/ml66_v5_report.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Add Universal EA Potential Maximizer ML66 report"
+            git push
+          fi

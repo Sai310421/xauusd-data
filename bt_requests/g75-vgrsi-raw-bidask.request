@@ -1,0 +1,5 @@
+run_id: 2026-08-31T03:10+09:00
+branch: vgrsi-universal-nautilus-bt-v1
+purpose: trigger G75 VGRSI Raw BidAsk BT v1
+catalog_gate: raw_bidask_only
+modes: [BASE, A0, A1]

@@ -1,0 +1,59 @@
+name: AMOS Site Nautilus BT
+run-name: AMOS BT ${{ fromJSON(inputs.request_json).request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      request_json:
+        description: 'AMOS source-bound request JSON (no source body or credentials)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: amos-site-${{ fromJSON(inputs.request_json).request_id }}
+  cancel-in-progress: false
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      BT_REQUEST_JSON: ${{ inputs.request_json }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate reviewed source binding before dependencies and data
+        run: |
+          python - <<'PY'
+          import json, os
+          from research.amos_site_bt.site_runner import validate
+          validate(json.loads(os.environ['BT_REQUEST_JSON']), json.load(open('research/amos_site_bt/registry.json')))
+          PY
+      - name: Install pinned native engine
+        run: python -m pip install nautilus_trader==1.230.0
+      - name: Restore exact-window Raw catalog
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: amos-site-raw-v1-${{ fromJSON(fromJSON(inputs.request_json).config_json).start }}-${{ fromJSON(fromJSON(inputs.request_json).config_json).end }}
+      - name: Source-bound Raw BidAsk BT
+        run: python research/amos_site_bt/site_runner.py
+      - name: Save validated exact-window catalog
+        if: success() && steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/raw_bidask
+          key: amos-site-raw-v1-${{ fromJSON(fromJSON(inputs.request_json).config_json).start }}-${{ fromJSON(fromJSON(inputs.request_json).config_json).end }}
+      - name: Upload source-bound result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-bt-${{ fromJSON(inputs.request_json).request_id }}
+          path: site-bt-output/result.json
+          if-no-files-found: warn
+          retention-days: 30

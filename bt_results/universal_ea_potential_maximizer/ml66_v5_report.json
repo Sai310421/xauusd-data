@@ -56,11 +56,11 @@
       "GatePass": false,
       "GateReasons": [
         "PF<1.2",
-        "EV<=0.0",
+        "EV<=0",
         "N<100",
-        "DD>20.0",
+        "DD>20",
         "Ruin>0.01",
-        "MinMarginLevel<500.0",
+        "MinMarginLevel<500",
         "Evidence<NAUTILUS_OOS"
       ]
     },
@@ -89,14 +89,46 @@
       "GatePass": false,
       "GateReasons": [
         "PF<1.2",
-        "EV<=0.0",
+        "EV<=0",
         "N<100",
-        "DD>20.0",
+        "DD>20",
         "Ruin>0.01",
-        "MinMarginLevel<500.0",
+        "MinMarginLevel<500",
         "Evidence<NAUTILUS_OOS"
       ]
     }
+  },
+  "initial_potential_screen": {
+    "screen_status": "POTENTIAL_SCREEN_COMPLETE",
+    "potential_classification": "CONTROLLER_POTENTIAL",
+    "basis": {
+      "PF": 1.247972928158677,
+      "EV_per_trade": 0.1511852138588911,
+      "N": 92,
+      "MaxFloatingDD": 14.090960324982019,
+      "base_edge_positive": true,
+      "parameter_headroom_observed": false,
+      "controller_headroom_observed": true,
+      "a17_positive_singleton_observed": null
+    },
+    "discussion_baseline": {
+      "PF_min": 1.2,
+      "PF_stretch": 1.3,
+      "N_min": 100,
+      "DD_target_pct": 10
+    },
+    "headroom": {
+      "PF_to_min": 0.0,
+      "PF_to_stretch": 0.052027071841322936,
+      "N_to_min": 8,
+      "DD_excess_vs_target": 4.090960324982019
+    },
+    "next_required_evidence": [
+      "PARAMETER_MAX stable-region search",
+      "Nautilus Raw Tick baseline",
+      "A17 singleton marginal EDGE",
+      "OOS + cost + stress"
+    ]
   },
   "parameter_stable_region": [],
   "a17_singletons": [],

@@ -54,5 +54,69 @@
       }
     }
   ],
-  "a17_singletons": []
+  "a17_singletons": [
+    {
+      "name": "A10_DD_MODULATION_PROXY",
+      "evidence_label": "PROXY",
+      "holdout_pass": false,
+      "selection_scope": "first_60pct_of_long_OOS_trades",
+      "holdout_metrics": {
+        "PF": 1.0865330492872334,
+        "Return": 7.1352282840993215,
+        "MaxFloatingDD": 11.8,
+        "EV_per_trade": 0.05246491385367148,
+        "N": 136
+      },
+      "kpi": {
+        "Return": 41.844759618024455,
+        "MaxFloatingDD": 13.827960665161825,
+        "PF": 1.2150599433054723,
+        "WR": 0.3911764705882353,
+        "EV_per_trade": 0.12307282240595428,
+        "N": 340
+      }
+    },
+    {
+      "name": "A16_HAZARD_GOVERNOR_PROXY",
+      "evidence_label": "PROXY",
+      "holdout_pass": false,
+      "selection_scope": "first_60pct_of_long_OOS_trades",
+      "holdout_metrics": {
+        "PF": 1.0258093331325275,
+        "Return": 1.7725739897550707,
+        "MaxFloatingDD": 12,
+        "EV_per_trade": 0.01626214669500065,
+        "N": 109
+      },
+      "kpi": {
+        "Return": 51.086153207864555,
+        "MaxFloatingDD": 12,
+        "PF": 1.2998094083307574,
+        "WR": 0.4075342465753425,
+        "EV_per_trade": 0.1749525794789882,
+        "N": 292
+      }
+    },
+    {
+      "name": "A17_ENTRY_SAFETY_GATE_PROXY",
+      "evidence_label": "PROXY",
+      "holdout_pass": false,
+      "selection_scope": "first_60pct_of_long_OOS_trades",
+      "holdout_metrics": {
+        "PF": 1.0665119962617164,
+        "Return": 5.565695474385856,
+        "MaxFloatingDD": 14,
+        "EV_per_trade": 0.04184733439387862,
+        "N": 133
+      },
+      "kpi": {
+        "Return": 40.3537614589812,
+        "MaxFloatingDD": 15.58662296129092,
+        "PF": 1.2003707897138163,
+        "WR": 0.3855421686746988,
+        "EV_per_trade": 0.12154747427403975,
+        "N": 332
+      }
+    }
+  ]
 }

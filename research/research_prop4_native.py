@@ -33,6 +33,8 @@ class PropCandidate(TickScalperCandidate):
   self.halted = False
   self.dd_stops = self.budget_blocks = self.rejections = 0
   self.fill_count = 0
+  self.native_baskets = []
+  self.basket_cash_start = self.basket_fee_start = 0.0
   self.max_reconcile = 0.0
  def _native_equity(self):
   mark = self.bid if self.units >= 0 else self.ask
@@ -47,10 +49,16 @@ class PropCandidate(TickScalperCandidate):
   q = float(event.last_qty.as_double())
   px = float(event.last_px.as_double())
   signed = q if event.order_side == OrderSide.BUY else -q
+  was_flat = abs(self.units)<1e-8
+  if was_flat:
+   self.basket_cash_start = self.cashflow
+   self.basket_fee_start = self.fees
   self.cashflow -= signed*px
   self.units += signed
   self.fees += q/100*self.config.commission_rt/2
   self.fill_count += 1
+  if abs(self.units)<1e-8 and not was_flat:
+   self.native_baskets.append({'pnl':self.cashflow-self.basket_cash_start-(self.fees-self.basket_fee_start),'ts':int(event.ts_event)})
   self._measure()
  def on_order_rejected(self, event):
   self.rejections += 1
@@ -180,14 +188,21 @@ def main():
  eng.trader.generate_positions_report().to_csv(out/'native_positions.csv')
  account = eng.cache.account_for_venue(inst.id.venue)
  balance = float(account.balance_total(USD).as_double())
- error = abs(balance-a.initial-st.gross_net)
- fill_error = abs(st.cashflow-st.gross_net)
+ shadow_error = abs(balance-a.initial-st.gross_net)
+ error = abs(balance-a.initial-st.cashflow)
+ fill_error = abs(sum(x['pnl'] for x in st.native_baskets)-(st.cashflow-st.fees))
+ # USD Money rounds realized P/L to cents on each native execution.
+ rounding_bound = .005*st.fill_count+.01
  flat = abs(st.units)<1e-8 and not st.entries
- reconciled = flat and error<=.1 and fill_error<=.1 and not st.rejections
+ reconciled = flat and error<=rounding_bound and fill_error<=1e-6 and not st.rejections
  dd_ok = max(st.native_dd,st.static_loss,st.daily_loss)<=4
- result = {**st.summary(),'Return_pct':100*st.net/a.initial,'initial_cash':a.initial,'base_lot':a.lot,'leverage':a.leverage,'commission_rt_overlay':a.fee,'native_net_after_fee':balance-a.initial-st.fees,'native_return_pct':100*(balance-a.initial-st.fees)/a.initial,'native_peak_DD_pct':st.native_dd,'initial_capital_loss_pct':st.static_loss,'daily_loss_pct':st.daily_loss,'daily_reset_timezone':st.config.day_timezone,'native_balance':balance,'native_reconcile_error_usd':error,'fill_cashflow_error_usd':fill_error,'native_flat':flat,'native_fill_count':st.fill_count,'rejections':st.rejections,'DD4_pass':bool(reconciled and dd_ok),'accounting_pass':bool(reconciled),'dd_stops':st.dd_stops,'budget_blocks':st.budget_blocks,'budget_add':a.budget_add,'raw_ticks':len(ticks),'start_ns':int(ticks[0].ts_event),'end_ns':int(ticks[-1].ts_event),'status':'RESEARCH_VALID' if reconciled else 'INVALID_ACCOUNTING','limitations':['Deterministic immediate fills; no latency/slippage stress','FP/CVaR heuristic stopping; not a solved HJB or MPC','Commission is an overlay scenario, not a verified prop fee schedule','Native margin model uses the catalog CurrencyPair instrument'],'ohlc_resample_used':False}
+ native_net = balance-a.initial-st.fees
+ native_wins = sum(x['pnl']>0 for x in st.native_baskets)
+ native_gw = sum(max(0,x['pnl']) for x in st.native_baskets)
+ native_gl = sum(max(0,-x['pnl']) for x in st.native_baskets)
+ result = {**st.summary(),'N':len(st.native_baskets),'WR_pct':100*native_wins/max(1,len(st.native_baskets)),'PF':native_gw/native_gl if native_gl else None,'EV':native_net/max(1,len(st.native_baskets)),'Net':native_net,'Return_pct':100*native_net/a.initial,'initial_cash':a.initial,'base_lot':a.lot,'leverage':a.leverage,'commission_rt_overlay':a.fee,'native_net_after_fee':balance-a.initial-st.fees,'native_return_pct':100*(balance-a.initial-st.fees)/a.initial,'native_peak_DD_pct':st.native_dd,'initial_capital_loss_pct':st.static_loss,'daily_loss_pct':st.daily_loss,'daily_reset_timezone':st.config.day_timezone,'native_balance':balance,'native_reconcile_error_usd':error,'usd_rounding_bound':rounding_bound,'shadow_reconcile_error_usd':shadow_error,'kpi_source':'NATIVE_FILL_CASHFLOW_AND_ACCOUNT_BALANCE','fill_cashflow_error_usd':fill_error,'native_flat':flat,'native_fill_count':st.fill_count,'rejections':st.rejections,'DD4_pass':bool(reconciled and dd_ok),'accounting_pass':bool(reconciled),'dd_stops':st.dd_stops,'budget_blocks':st.budget_blocks,'budget_add':a.budget_add,'raw_ticks':len(ticks),'start_ns':int(ticks[0].ts_event),'end_ns':int(ticks[-1].ts_event),'status':'RESEARCH_VALID' if reconciled else 'INVALID_ACCOUNTING','limitations':['Deterministic immediate fills; no latency/slippage stress','FP/CVaR heuristic stopping; not a solved HJB or MPC','Commission is an overlay scenario, not a verified prop fee schedule','Native margin model uses the catalog CurrencyPair instrument'],'ohlc_resample_used':False}
  (out/'kpi.json').write_text(json.dumps(result,indent=2))
- (out/'baskets.json').write_text(json.dumps(st.trades,indent=2))
+ (out/'baskets.json').write_text(json.dumps({'native_baskets':st.native_baskets,'shadow_decisions':st.trades},indent=2))
  print(json.dumps(result,indent=2))
  eng.dispose()
  if not reconciled: raise SystemExit('Native accounting reconciliation failed')

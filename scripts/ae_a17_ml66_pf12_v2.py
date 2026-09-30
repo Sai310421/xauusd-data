@@ -254,7 +254,8 @@ report={
  "label":{"spread_usd":SPREAD_USD,"horizon_bars":HORIZON,"sl_atr":SL_ATR,"rr":RR,"same_bar_rule":"SL_first"},
  "split":{"train":int(len(tr)),"validation":int(len(va)),"oos":int(len(te)),"purge":PURGE},
  "BUY_model":{"threshold":b["threshold"],"test_MAE":b["mae"],"test_AUC":b["auc"],"test_Brier":b["brier"]},
- "SELL_model":{"threshold":s["threshold"],"test_MAE":s["mae"],"test_AUC":s["auc"],"test_Brier":s["brier"]},\n "validation_er_threshold_search":{"target_PF":1.20,"buy_threshold":tb,"sell_threshold":ts,"validation_metrics":best_t[3]},
+ "SELL_model":{"threshold":s["threshold"],"test_MAE":s["mae"],"test_AUC":s["auc"],"test_Brier":s["brier"]},
+ "validation_er_threshold_search":{"target_PF":1.20,"buy_threshold":tb,"sell_threshold":ts,"validation_metrics":best_t[3]},
  "variants":variants,
  "notes":["All thresholds chosen before OOS using validation only.","OOS simulation is sequential/non-overlapping: next signal allowed only after prior trade exit.","Return% proxy assumes fixed 1% of initial equity risk per trade; final portfolio return requires Nautilus/raw-tick execution validation.","Spread proxy included in labels; commission/slippage/swap are not included."]
 }

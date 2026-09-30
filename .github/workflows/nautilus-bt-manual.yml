@@ -1,0 +1,91 @@
+name: Nautilus BT Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Backtest target"
+        required: true
+        default: "minimumspike-reality-noise"
+        type: choice
+        options:
+          - minimumspike-reality-noise
+      python_version:
+        description: "Python version"
+        required: true
+        default: "3.12"
+        type: choice
+        options:
+          - "3.12"
+      nautilus_version:
+        description: "Pinned NautilusTrader version"
+        required: true
+        default: "1.230.0"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+          cache: pip
+
+      - name: Install Nautilus runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${{ inputs.nautilus_version }}"
+
+      - name: Environment manifest
+        run: |
+          mkdir -p results/nautilus-manual
+          python --version | tee results/nautilus-manual/python-version.txt
+          python - <<'PY' | tee results/nautilus-manual/nautilus-version.txt
+          import nautilus_trader
+          print(getattr(nautilus_trader, "__version__", "unknown"))
+          PY
+          git rev-parse HEAD | tee results/nautilus-manual/git-sha.txt
+
+      - name: Run selected BT
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.target }}" in
+            minimumspike-reality-noise)
+              python research/minimumspike_reality_noise_bt_v1.py
+              ;;
+            *)
+              echo "Unsupported target: ${{ inputs.target }}" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Collect results
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p results/nautilus-manual
+          if [ -d results/note-hft-reality-v1 ]; then
+            cp -a results/note-hft-reality-v1 results/nautilus-manual/minimumspike-reality-noise || true
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nautilus-bt-${{ inputs.target }}-${{ github.run_id }}
+          path: results/nautilus-manual/
+          if-no-files-found: warn
+          retention-days: 30

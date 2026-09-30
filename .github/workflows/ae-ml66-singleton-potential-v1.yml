@@ -25,20 +25,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install numpy pandas lightgbm scikit-learn joblib
       - name: Run singleton potential screen
-        run: python scripts/ae_a17_ml66_singletons_v1.py
+        id: singleton
+        shell: bash
+        run: |
+          set +e
+          mkdir -p bt_results/ae_a17_ml66_singletons_v1
+          python scripts/ae_a17_ml66_singletons_v1.py > bt_results/ae_a17_ml66_singletons_v1/run.log 2>&1
+          code=$?
+          cat bt_results/ae_a17_ml66_singletons_v1/run.log
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
       - name: Show report
-        run: cat bt_results/ae_a17_ml66_singletons_v1/report.json
+        if: always()
+        run: |
+          if [ -f bt_results/ae_a17_ml66_singletons_v1/report.json ]; then
+            cat bt_results/ae_a17_ml66_singletons_v1/report.json
+          fi
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ae-ml66-singleton-potential-v1
           path: bt_results/ae_a17_ml66_singletons_v1/
           retention-days: 30
       - name: Commit report
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f bt_results/ae_a17_ml66_singletons_v1/report.json
+          git add -f bt_results/ae_a17_ml66_singletons_v1/report.json bt_results/ae_a17_ml66_singletons_v1/run.log 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "Add ML66 singleton potential report"
             git push
           fi
+
+      - name: Fail if singleton failed
+        if: steps.singleton.outputs.exit_code != '0'
+        run: exit 1

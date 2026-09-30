@@ -151,6 +151,64 @@ def initial_potential_screen(original:Dict[str,Any],parameter_candidates:List[Di
       ]
     }
 
+
+def _metric_range(rows:List[Dict[str,Any]], key:str):
+    vals=[]
+    for r in rows:
+        v=r.get(key)
+        if isinstance(v,(int,float)) and math.isfinite(float(v)):
+            vals.append(float(v))
+    if not vals: return None
+    return {"low":min(vals),"high":max(vals),"median":sorted(vals)[len(vals)//2],"n":len(vals)}
+
+def potential_ceiling_estimate(original:Dict[str,Any], parameter_candidates:List[Dict[str,Any]], singleton_results:List[Dict[str,Any]], stable:List[Dict[str,Any]], cfg:Dict[str,Any])->Dict[str,Any]:
+    current={k:original.get(k) for k in ("Return","PF","WR","EV_per_trade","N","MaxFloatingDD","RF","CVaR","RuinProbability")}
+    param_pool=stable if stable else parameter_candidates
+    a17_pool=[x for x in singleton_results if x.get("MarginalEDGE",{}).get("ME",0)>0]
+    def stage(rows,name):
+        if not rows:
+            return {"status":"UNMEASURED","stage":name}
+        return {
+          "status":"MEASURED","stage":name,
+          "PF":_metric_range(rows,"PF"),
+          "Return":_metric_range(rows,"Return"),
+          "MaxFloatingDD":_metric_range(rows,"MaxFloatingDD"),
+          "EV_per_trade":_metric_range(rows,"EV_per_trade"),
+          "N":_metric_range(rows,"N"),
+          "J":_metric_range(rows,"J")
+        }
+    p=stage(param_pool,"PARAMETER_MAX")
+    a=stage(a17_pool,"A17")
+    evidence=original.get("EvidenceLabel","PROXY")
+    robust_status="UNMEASURED"
+    robust={}
+    if evidence in ("NAUTILUS_STRESS","VALIDATED"):
+        robust_status="MEASURED"
+        robust={"status":"MEASURED","stage":"ROBUST","basis":"current official stress/validated evidence",
+                "PF":{"low":num(original,"PF",0),"high":num(original,"PF",0),"median":num(original,"PF",0),"n":1},
+                "Return":{"low":num(original,"Return",0),"high":num(original,"Return",0),"median":num(original,"Return",0),"n":1},
+                "MaxFloatingDD":{"low":num(original,"MaxFloatingDD",0),"high":num(original,"MaxFloatingDD",0),"median":num(original,"MaxFloatingDD",0),"n":1}}
+    else:
+        robust={"status":"UNMEASURED","stage":"ROBUST","reason":"Requires Nautilus Raw Tick OOS + cost/regime stress evidence."}
+    measured=[x for x in (p,a) if x.get("status")=="MEASURED"]
+    pf_ceiling=max([num(original,"PF",0)]+[x["PF"]["high"] for x in measured if x.get("PF")])
+    ret_ceiling=max([num(original,"Return",0)]+[x["Return"]["high"] for x in measured if x.get("Return")])
+    dd_floor=min([num(original,"MaxFloatingDD",999)]+[x["MaxFloatingDD"]["low"] for x in measured if x.get("MaxFloatingDD")])
+    return {
+      "definition":"Empirical performance envelope, not a future guarantee.",
+      "CURRENT":{"status":"MEASURED","metrics":current},
+      "PARAMETER_MAX":p,
+      "A17":a,
+      "ROBUST":robust,
+      "best_empirical_ceiling_so_far":{
+        "PF":pf_ceiling,
+        "Return":ret_ceiling,
+        "MaxFloatingDD_floor":None if dd_floor>=999 else dd_floor,
+        "evidence_scope":"Observed data only"
+      },
+      "unmeasured_warning":"No numeric range is fabricated for stages without measured candidates."
+    }
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--config",required=True); ap.add_argument("--subject",required=True); ap.add_argument("--out",required=True)
@@ -174,6 +232,7 @@ def main():
     stable=stable_region(parameter_candidates,cfg["gates"]["stable_region_epsilon"])
     margin_evidence=any(x["MarginalEDGE"]["ME"]>0 for x in singleton_results)
     screen=initial_potential_screen(outrows["ORIGINAL"],parameter_candidates,singleton_results,cfg)
+    ceiling=potential_ceiling_estimate(outrows["ORIGINAL"],parameter_candidates,singleton_results,stable,cfg)
     cls=classify(outrows["ORIGINAL"],outrows["PARAMETER_MAX"],outrows["A17_ROBUST_MAX"],margin_evidence)
     final={
       "framework":"AE Universal EA Potential Maximizer Nautilus v1.0",
@@ -181,6 +240,7 @@ def main():
       "official_kpi_policy":"Only Nautilus Raw Tick can become official KPI.",
       "variants":outrows,
       "initial_potential_screen":screen,
+      "potential_ceiling_estimate":ceiling,
       "parameter_stable_region":stable,
       "a17_singletons":singleton_results,
       "a17_passing_singletons":[x["Variant"] for x in passing_singletons],

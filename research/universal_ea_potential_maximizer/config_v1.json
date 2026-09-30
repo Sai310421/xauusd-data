@@ -3,41 +3,89 @@
   "name": "AE Universal EA Potential Maximizer",
   "canonical_rule": {
     "official_kpi_source": "NAUTILUS_RAW_TICK_ONLY",
-    "proxy_sources": ["PYTHON_BT","STATIC_ESTIMATE","MT5_STRATEGY_TESTER","OPTIMIZER_SCORE"],
-    "variants": ["ORIGINAL","PARAMETER_MAX","A17_ROBUST_MAX"]
+    "proxy_sources": [
+      "PYTHON_BT",
+      "STATIC_ESTIMATE",
+      "MT5_STRATEGY_TESTER",
+      "OPTIMIZER_SCORE"
+    ],
+    "variants": [
+      "ORIGINAL",
+      "PARAMETER_MAX",
+      "A17_ROBUST_MAX"
+    ]
   },
   "objective": {
-    "lambda_D": 1.0,
+    "lambda_D": 1,
     "lambda_T": 0.5,
-    "lambda_R": 1.0,
+    "lambda_R": 1,
     "lambda_C": 0.25,
     "lambda_U": 0.5,
     "formula": "J=Growth-lambda_D*MaxFloatingDD-lambda_T*CVaR-lambda_R*Ruin-lambda_C*TotalCost-lambda_U*Instability"
   },
   "gates": {
-    "pf_oos_min": 1.20,
-    "ev_oos_min": 0.0,
-    "dd_limit_pct": 20.0,
+    "pf_oos_min": 1.2,
+    "ev_oos_min": 0,
+    "dd_limit_pct": 20,
     "ruin_limit": 0.01,
-    "min_margin_level_pct": 500.0,
+    "min_margin_level_pct": 500,
     "min_trades": 100,
     "stable_region_epsilon": 0.05
   },
-  "evidence_labels": ["PREDICTED","PROXY","NAUTILUS_IS","NAUTILUS_OOS","NAUTILUS_STRESS","VALIDATED"],
+  "evidence_labels": [
+    "PREDICTED",
+    "PROXY",
+    "NAUTILUS_IS",
+    "NAUTILUS_OOS",
+    "NAUTILUS_STRESS",
+    "VALIDATED"
+  ],
   "pipeline": [
-    "SOURCE_INGEST","PARSE","STRATEGY_GENOME","NAUTILUS_BASELINE","ABLATION",
-    "PARAMETER_SEARCH","NAUTILUS_PARAMETER_MAX","A17_SINGLETONS","A17_PAIRS_TRIPLES",
-    "OOS","STRESS","ROBUST_MAX","REPORT"
+    "SOURCE_INGEST",
+    "PARSE",
+    "STRATEGY_GENOME",
+    "NAUTILUS_BASELINE",
+    "ABLATION",
+    "PARAMETER_SEARCH",
+    "NAUTILUS_PARAMETER_MAX",
+    "A17_SINGLETONS",
+    "A17_PAIRS_TRIPLES",
+    "OOS",
+    "STRESS",
+    "ROBUST_MAX",
+    "REPORT"
   ],
   "a17": {
     "singleton_first": true,
     "pair_triple_only_after_singleton_pass": true,
     "components": [
-      "A01_AZEMA_YOR_DD","A02_WASSERSTEIN_EVAR","A03_HAWKES_SHOCK_HJB","A04_ALMGREN_CHRISS",
-      "A05_EXECUTION_MPC","A06_CONFORMAL_DRO","A07_LIQUIDITY_SINGULAR","A08_MULTI_AGENT_LQG",
-      "A09_RISK_SENSITIVE_JUMP","A10_DD_INVARIANT","A11_SINGULAR_REFLECTION_STOP",
-      "A12_SIGNAL_AWARE_LIQUIDITY","A13_EXCURSION_RANGE","A14_KELLY_SIZING","A15_WASSERSTEIN_DRMPC",
-      "A16_OCCUPATION_DD_GOVERNOR","A17_LARGE_DEVIATION_SAFETY"
+      "A01_AZEMA_YOR_DD",
+      "A02_WASSERSTEIN_EVAR",
+      "A03_HAWKES_SHOCK_HJB",
+      "A04_ALMGREN_CHRISS",
+      "A05_EXECUTION_MPC",
+      "A06_CONFORMAL_DRO",
+      "A07_LIQUIDITY_SINGULAR",
+      "A08_MULTI_AGENT_LQG",
+      "A09_RISK_SENSITIVE_JUMP",
+      "A10_DD_INVARIANT",
+      "A11_SINGULAR_REFLECTION_STOP",
+      "A12_SIGNAL_AWARE_LIQUIDITY",
+      "A13_EXCURSION_RANGE",
+      "A14_KELLY_SIZING",
+      "A15_WASSERSTEIN_DRMPC",
+      "A16_OCCUPATION_DD_GOVERNOR",
+      "A17_LARGE_DEVIATION_SAFETY"
     ]
+  },
+  "initial_potential_screen": {
+    "always_run": true,
+    "proxy_pf_floor": 1,
+    "proxy_ev_floor": 0,
+    "discuss_pf_target": 1.2,
+    "discuss_pf_stretch": 1.3,
+    "discuss_min_trades": 100,
+    "discuss_dd_target_pct": 10,
+    "purpose": "Complete a first-pass potential classification before official Nautilus promotion gates."
   }
 }

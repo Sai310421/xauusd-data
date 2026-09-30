@@ -206,9 +206,9 @@ b=fit(X,BUY_R,tr,va,te,"BUY"); s=fit(X,SELL_R,tr,va,te,"SELL")
 assert np.array_equal(b["te"],s["te"])
 idx=b["te"]
 variants={
- "ML66_only":evaluate("ML66_only",idx,b["pred"],s["pred"],b["prob"],s["prob"],b["threshold"],s["threshold"],BUY_R,SELL_R,BUY_EXIT,SELL_EXIT,"ml"),
- "ML66_Meta":evaluate("ML66_Meta",idx,b["pred"],s["pred"],b["prob"],s["prob"],b["threshold"],s["threshold"],BUY_R,SELL_R,BUY_EXIT,SELL_EXIT,"meta"),
- "ML66_Meta_A17":evaluate("ML66_Meta_A17",idx,b["pred"],s["pred"],b["prob"],s["prob"],b["threshold"],s["threshold"],BUY_R,SELL_R,BUY_EXIT,SELL_EXIT,"a17")
+ "ML66_only":evaluate("ML66_only",idx,b["pred"],s["pred"],b["prob"],s["prob"],b["threshold"],s["threshold"],BUY_EXIT,SELL_EXIT,"ml"),
+ "ML66_Meta":evaluate("ML66_Meta",idx,b["pred"],s["pred"],b["prob"],s["prob"],b["threshold"],s["threshold"],BUY_EXIT,SELL_EXIT,"meta"),
+ "ML66_Meta_A17":evaluate("ML66_Meta_A17",idx,b["pred"],s["pred"],b["prob"],s["prob"],b["threshold"],s["threshold"],BUY_EXIT,SELL_EXIT,"a17")
 }
 pred=pd.DataFrame({"idx":idx,"datetime":raw.DateTime.iloc[idx].astype(str).to_numpy(),"buy_er":b["pred"],"buy_p":b["prob"],"sell_er":s["pred"],"sell_p":s["prob"]})
 pred.to_csv(OUT/"oos_predictions.csv",index=False)

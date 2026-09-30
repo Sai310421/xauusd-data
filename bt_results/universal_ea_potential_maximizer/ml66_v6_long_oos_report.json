@@ -1,0 +1,245 @@
+{
+  "framework": "AE Universal EA Potential Maximizer Nautilus v1.0",
+  "subject": "ML66_WalkForward_DirectionGate_v6_80pct_OOS",
+  "official_kpi_policy": "Only Nautilus Raw Tick can become official KPI.",
+  "variants": {
+    "ORIGINAL": {
+      "Return": 45.086153207864555,
+      "MaxFloatingDD": 15.58662296129092,
+      "MaxClosedDD": null,
+      "PF": 1.2205829802169859,
+      "RF": null,
+      "WR": 0.3911764705882353,
+      "EV_per_trade": 0.13260633296430752,
+      "N": 340,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "ORIGINAL",
+      "J": 29.499530246573634,
+      "GatePass": false,
+      "GateReasons": [
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ]
+    },
+    "PARAMETER_MAX": {
+      "Return": 45.086153207864555,
+      "MaxFloatingDD": 15.58662296129092,
+      "MaxClosedDD": null,
+      "PF": 1.2205829802169859,
+      "RF": null,
+      "WR": 0.3911764705882353,
+      "EV_per_trade": 0.13260633296430752,
+      "N": 340,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "PARAMETER_MAX",
+      "J": 29.499530246573634,
+      "GatePass": false,
+      "GateReasons": [
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ]
+    },
+    "A17_ROBUST_MAX": {
+      "Return": null,
+      "MaxFloatingDD": null,
+      "MaxClosedDD": null,
+      "PF": null,
+      "RF": null,
+      "WR": null,
+      "EV_per_trade": null,
+      "N": null,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PREDICTED",
+      "Variant": "A17_ROBUST_MAX",
+      "J": 0.0,
+      "GatePass": false,
+      "GateReasons": [
+        "PF<1.2",
+        "EV<=0",
+        "N<100",
+        "DD>20",
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ]
+    }
+  },
+  "initial_potential_screen": {
+    "screen_status": "POTENTIAL_SCREEN_COMPLETE",
+    "potential_classification": "CONTROLLER_POTENTIAL",
+    "basis": {
+      "PF": 1.2205829802169859,
+      "EV_per_trade": 0.13260633296430752,
+      "N": 340,
+      "MaxFloatingDD": 15.58662296129092,
+      "base_edge_positive": true,
+      "parameter_headroom_observed": false,
+      "controller_headroom_observed": true,
+      "a17_positive_singleton_observed": null
+    },
+    "discussion_baseline": {
+      "PF_min": 1.2,
+      "PF_stretch": 1.3,
+      "N_min": 100,
+      "DD_target_pct": 10
+    },
+    "headroom": {
+      "PF_to_min": 0.0,
+      "PF_to_stretch": 0.07941701978301419,
+      "N_to_min": 0,
+      "DD_excess_vs_target": 5.586622961290921
+    },
+    "next_required_evidence": [
+      "PARAMETER_MAX stable-region search",
+      "Nautilus Raw Tick baseline",
+      "A17 singleton marginal EDGE",
+      "OOS + cost + stress"
+    ]
+  },
+  "potential_ceiling_estimate": {
+    "definition": "Empirical performance envelope, not a future guarantee.",
+    "CURRENT": {
+      "status": "MEASURED",
+      "metrics": {
+        "Return": 45.086153207864555,
+        "PF": 1.2205829802169859,
+        "WR": 0.3911764705882353,
+        "EV_per_trade": 0.13260633296430752,
+        "N": 340,
+        "MaxFloatingDD": 15.58662296129092,
+        "RF": null,
+        "CVaR": null,
+        "RuinProbability": null
+      }
+    },
+    "PARAMETER_MAX": {
+      "status": "MEASURED",
+      "stage": "PARAMETER_MAX",
+      "PF": {
+        "low": 1.2205829802169859,
+        "high": 1.2205829802169859,
+        "median": 1.2205829802169859,
+        "n": 1
+      },
+      "Return": {
+        "low": 45.086153207864555,
+        "high": 45.086153207864555,
+        "median": 45.086153207864555,
+        "n": 1
+      },
+      "MaxFloatingDD": {
+        "low": 15.58662296129092,
+        "high": 15.58662296129092,
+        "median": 15.58662296129092,
+        "n": 1
+      },
+      "EV_per_trade": {
+        "low": 0.13260633296430752,
+        "high": 0.13260633296430752,
+        "median": 0.13260633296430752,
+        "n": 1
+      },
+      "N": {
+        "low": 340.0,
+        "high": 340.0,
+        "median": 340.0,
+        "n": 1
+      },
+      "J": {
+        "low": 29.499530246573634,
+        "high": 29.499530246573634,
+        "median": 29.499530246573634,
+        "n": 1
+      }
+    },
+    "A17": {
+      "status": "UNMEASURED",
+      "stage": "A17"
+    },
+    "ROBUST": {
+      "status": "UNMEASURED",
+      "stage": "ROBUST",
+      "reason": "Requires Nautilus Raw Tick OOS + cost/regime stress evidence."
+    },
+    "best_empirical_ceiling_so_far": {
+      "PF": 1.2205829802169859,
+      "Return": 45.086153207864555,
+      "MaxFloatingDD_floor": 15.58662296129092,
+      "evidence_scope": "Observed data only"
+    },
+    "unmeasured_warning": "No numeric range is fabricated for stages without measured candidates."
+  },
+  "parameter_stable_region": [
+    {
+      "Return": 45.086153207864555,
+      "MaxFloatingDD": 15.58662296129092,
+      "MaxClosedDD": null,
+      "PF": 1.2205829802169859,
+      "RF": null,
+      "WR": 0.3911764705882353,
+      "EV_per_trade": 0.13260633296430752,
+      "N": 340,
+      "PayoffRatio": null,
+      "MaxConsecutiveLoss": null,
+      "MinMarginLevel": null,
+      "MaxConcurrentLot": null,
+      "RuinProbability": null,
+      "CVaR": null,
+      "SpreadCost": null,
+      "SlippageCost": null,
+      "Commission": null,
+      "TotalCost": null,
+      "EvidenceLabel": "PROXY",
+      "Variant": "H48_F40_LONG_OOS",
+      "J": 29.499530246573634,
+      "GatePass": false,
+      "GateReasons": [
+        "Ruin>0.01",
+        "MinMarginLevel<500",
+        "Evidence<NAUTILUS_OOS"
+      ]
+    }
+  ],
+  "a17_singletons": [],
+  "a17_passing_singletons": [],
+  "pair_triple_search_allowed": false,
+  "potential_classification": "CONTROLLER_POTENTIAL",
+  "deep_classification": "PARAMETER_POTENTIAL",
+  "final_status": "NOT_VALIDATED",
+  "audit": {
+    "failed_or_invalid_runs_retained": true,
+    "final_oos_used_for_selection": false,
+    "raw_tick_required_for_final": true
+  }
+}

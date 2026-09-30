@@ -1,0 +1,50 @@
+name: AE A17 ML66 OOS v1
+on:
+  push:
+    branches: ["amos/a17-ml66-oos-v1"]
+    paths:
+      - "scripts/ae_a17_ml66_oos_v1.py"
+      - ".github/workflows/ae-a17-ml66-oos-v1.yml"
+      - "csv/XAUUSD/XAUUSD_M5_2026Q1Q2.csv"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  train-oos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: amos/a17-ml66-oos-v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas lightgbm scikit-learn joblib
+      - name: Train and evaluate OOS
+        run: python scripts/ae_a17_ml66_oos_v1.py
+      - name: Show report
+        run: cat bt_results/ae_a17_ml66_oos_v1/report.json
+      - name: Upload models and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ae-a17-ml66-oos-v1
+          path: bt_results/ae_a17_ml66_oos_v1/
+          retention-days: 30
+      - name: Commit report to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bt_results/ae_a17_ml66_oos_v1/report.json bt_results/ae_a17_ml66_oos_v1/oos_predictions.csv
+          if git diff --cached --quiet; then
+            echo "No report changes"
+          else
+            git commit -m "Add AE A17 ML66 OOS v1 results"
+            git push
+          fi

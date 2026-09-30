@@ -13,6 +13,7 @@ RESEARCH = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RESEARCH))
 sys.path.insert(0, str(RESEARCH / 'shared_bidask'))
 import build_raw_bidask_catalog_duka as builder
+from verify_builder66_catalog import audit as verify_catalog
 import source
 from market_calendar import expected_trading_hour
 
@@ -47,16 +48,19 @@ class CoverageTests(unittest.TestCase):
                 else:
                     with self.assertRaises(SystemExit):
                         builder.main()
-            return json.loads((path/'catalog_manifest.json').read_text())
+            return json.loads((path/'catalog_manifest.json').read_text()), verify_catalog(path,'2026-05-26',1)
 
     def test_daily_pause_complete_and_missing_open_hour_incomplete(self):
-        complete=self.generate()
+        complete, verified=self.generate()
         self.assertEqual(complete['status'],'COMPLETE')
+        self.assertEqual(verified['status'],'SHARD_HOURLY_COVERAGE_VERIFIED')
+        self.assertEqual(verified['quote_count'],23)
         self.assertEqual(complete['coverage_schema_version'],2)
         self.assertEqual(complete['stats']['XAUUSD']['http_status_counts']['200_EMPTY'],1)
         self.assertEqual(complete['unresolved_open_hours'],[])
-        incomplete=self.generate(failed_hour=19)
+        incomplete, blocked=self.generate(failed_hour=19)
         self.assertEqual(incomplete['status'],'INCOMPLETE')
+        self.assertEqual(blocked['status'],'BLOCKED')
         self.assertEqual(incomplete['unresolved_open_hours'][0]['hour_utc'],'2026-05-26T19:00:00+00:00')
 
     def test_shared_fetch_keeps_hour_provenance(self):

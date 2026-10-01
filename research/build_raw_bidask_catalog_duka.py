@@ -20,6 +20,7 @@ from nautilus_trader.model.instruments import CurrencyPair
 from nautilus_trader.model.objects import Currency, Price, Quantity
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.persistence.wranglers import QuoteTickDataWrangler
+from shared_bidask.market_calendar import expected_trading_hour, SCHEDULE_SOURCE
 
 REC = struct.Struct('>3i2f')
 HEADERS = {'User-Agent': 'raw6x3-nautilus/1.2', 'Accept': '*/*', 'Connection': 'close'}
@@ -73,8 +74,7 @@ def fetch_hour(symbol: str, scale: float, t: dt.datetime):
                 with urllib.request.urlopen(req, timeout=25) as r:
                     raw = r.read()
                 if not raw:
-                    last = 204
-                    continue
+                    return [], '200_EMPTY'
                 dec = lzma.decompress(raw)
                 rows = []
                 for i in range(0, len(dec) - REC.size + 1, REC.size):
@@ -146,6 +146,8 @@ def main() -> None:
         m = json.loads(manifest_path.read_text(encoding='utf-8'))
         if (
             m.get('status') == 'COMPLETE'
+            and m.get('coverage_schema_version') == 2
+            and not m.get('unresolved_open_hours')
             and m.get('start') == args.start
             and m.get('days') == args.days
             and set(m.get('symbols', [])) == set(selected)
@@ -158,6 +160,8 @@ def main() -> None:
     catalog.write_data(list(instruments.values()))
 
     stats = {}
+    unresolved_open_hours = []
+    verified_closed_hours = []
     for symbol in selected:
         meta = SYMBOLS[symbol]
         instrument = instruments[symbol]
@@ -174,8 +178,16 @@ def main() -> None:
                 futs = {ex.submit(fetch_hour, symbol, meta['scale'], h): h for h in hours}
                 for fut in as_completed(futs):
                     r, status = fut.result()
+                    hour = futs[fut]
                     rows.extend(r)
                     status_counts[str(status)] = status_counts.get(str(status), 0) + 1
+                    if expected_trading_hour(symbol, hour):
+                        if status != 200 or not r:
+                            unresolved_open_hours.append({'symbol':symbol,'hour_utc':hour.isoformat(),
+                                                          'http_status':status,'quotes':len(r)})
+                    elif status == '200_EMPTY':
+                        verified_closed_hours.append({'symbol':symbol,'hour_utc':hour.isoformat(),
+                                                      'http_status':status})
             if not rows:
                 empty_days += 1
                 continue
@@ -198,7 +210,11 @@ def main() -> None:
 
     missing = [s for s, v in stats.items() if v['ticks'] <= 0]
     manifest = {
-        'status': 'COMPLETE' if not missing else 'INCOMPLETE',
+        'status': 'COMPLETE' if not missing and not unresolved_open_hours else 'INCOMPLETE',
+        'coverage_schema_version': 2,
+        'calendar_source_url': SCHEDULE_SOURCE,
+        'unresolved_open_hours': unresolved_open_hours,
+        'verified_closed_hours': verified_closed_hours,
         'data_kind': 'RAW_BIDASK',
         'source': 'Dukascopy BI5 QuoteTick Bid/Ask',
         'venue': 'SIM',
@@ -211,7 +227,7 @@ def main() -> None:
         'bar_policy': 'Nautilus INTERNAL bars built directly from raw QuoteTick stream; execution remains QuoteTick based',
         'instrument_provider': 'public-model CurrencyPair constructor; no nautilus_trader.testkit dependency',
         'catalog_write_api': 'ParquetDataCatalog.write_data',
-        'fetch_policy': '404 empty-hour skip; 429/5xx backoff; workers default 12',
+        'fetch_policy': 'HTTP200 empty preserved as 200_EMPTY; any unresolved scheduled open hour makes catalog INCOMPLETE; 429/5xx backoff',
         'stats': stats,
         'missing_symbols': missing,
     }
@@ -219,8 +235,8 @@ def main() -> None:
     manifest['catalog_sha256'] = sha256_tree(catalog_path)
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding='utf-8')
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
-    if missing:
-        raise SystemExit('RAW CATALOG INCOMPLETE: ' + ','.join(missing))
+    if missing or unresolved_open_hours:
+        raise SystemExit(f'RAW CATALOG INCOMPLETE: missing symbols={missing}; unresolved open hours={len(unresolved_open_hours)}')
 
 
 if __name__ == '__main__':

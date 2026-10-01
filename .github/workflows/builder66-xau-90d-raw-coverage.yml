@@ -1,0 +1,113 @@
+name: Builder66 XAUUSD Raw BidAsk Coverage
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/builder66-xau-90d-raw-coverage.yml'
+      - 'research/build_raw_bidask_catalog_duka.py'
+      - 'research/shared_bidask/market_calendar.py'
+      - 'research/verify_builder66_catalog.py'
+      - 'research/tests/test_duka_coverage.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: builder66-xau-raw-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: python -m pip install 'nautilus_trader==1.231.0' 'pyarrow>=16,<27'
+      - name: Coverage regression tests
+        run: python -m unittest discover -s research/tests -q
+      - name: Acquire three days of raw XAUUSD quotes
+        run: |
+          python research/build_raw_bidask_catalog_duka.py \
+            --start 2026-05-26 --days 3 --symbols XAUUSD --workers 8 \
+            --catalog catalog/builder66_xau_smoke --fresh
+      - name: Nautilus readback and hourly coverage
+        run: |
+          python research/verify_builder66_catalog.py \
+            --catalog catalog/builder66_xau_smoke \
+            --start 2026-05-26 --days 3 \
+            --out results/builder66_xau_smoke/quality.json
+      - name: Preserve smoke evidence even on failure
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p results/builder66_xau_smoke
+          if test -f catalog/builder66_xau_smoke/catalog_manifest.json; then
+            cp catalog/builder66_xau_smoke/catalog_manifest.json results/builder66_xau_smoke/catalog_manifest.json
+          fi
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > results/builder66_xau_smoke/run.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: builder66-xau-smoke-${{ github.run_id }}
+          path: results/builder66_xau_smoke/
+          retention-days: 30
+
+  raw-30d-shards:
+    needs: smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - start: '2026-05-26'
+            shard: '01'
+          - start: '2026-06-25'
+            shard: '02'
+          - start: '2026-07-25'
+            shard: '03'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: python -m pip install 'nautilus_trader==1.231.0' 'pyarrow>=16,<27'
+      - name: Acquire 30 calendar days of raw quotes
+        run: |
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "${{ matrix.start }}" --days 30 --symbols XAUUSD --workers 8 \
+            --catalog "catalog/builder66_xau_${{ matrix.shard }}" --fresh
+      - name: Nautilus readback and hourly coverage
+        run: |
+          python research/verify_builder66_catalog.py \
+            --catalog "catalog/builder66_xau_${{ matrix.shard }}" \
+            --start "${{ matrix.start }}" --days 30 \
+            --out "results/builder66_xau_${{ matrix.shard }}/quality.json"
+      - name: Preserve shard evidence even on failure
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "results/builder66_xau_${{ matrix.shard }}"
+          if test -f "catalog/builder66_xau_${{ matrix.shard }}/catalog_manifest.json"; then
+            cp "catalog/builder66_xau_${{ matrix.shard }}/catalog_manifest.json" "results/builder66_xau_${{ matrix.shard }}/catalog_manifest.json"
+          fi
+          printf 'commit=%s\nrun=%s\nstart=%s\ndays=30\n' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" "${{ matrix.start }}" > "results/builder66_xau_${{ matrix.shard }}/run.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: builder66-xau-shard-${{ matrix.shard }}-${{ github.run_id }}
+          path: |
+            catalog/builder66_xau_${{ matrix.shard }}/
+            results/builder66_xau_${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 0

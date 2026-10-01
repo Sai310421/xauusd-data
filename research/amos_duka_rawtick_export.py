@@ -18,9 +18,10 @@ def main():
     a=ap.parse_args(); s=a.symbol.upper()
     if s not in SYMBOLS: raise SystemExit(f'unsupported symbol {s}')
     start=dt.datetime.fromisoformat(a.start).replace(tzinfo=dt.timezone.utc)
-    rows=[]; counts={}; written=0
+    rows=[]; counts={}; written=0; unresolved=[]
     for day in iter_days(start,a.days):
-        part,st=fetch_day(s,SYMBOLS[s]['scale'],day,workers=a.workers)
+        part,st,hours=fetch_day(s,SYMBOLS[s]['scale'],day,workers=a.workers,include_hour_status=True)
+        unresolved.extend(h for h in hours if h['expected_open'] and (h['http_status']!=200 or not h['quotes']))
         for k,v in st.items(): counts[k]=counts.get(k,0)+v
         if part: rows.extend(part); written+=1
     if not rows: raise SystemExit('NO_RAW_TICKS_FETCHED')
@@ -28,7 +29,8 @@ def main():
     df=df.drop_duplicates('datetime',keep='last').sort_values('datetime')
     df['volume']=df['bid_size']+df['ask_size']
     out=Path(a.out); out.parent.mkdir(parents=True,exist_ok=True); df.to_parquet(out,index=False)
-    m={'status':'COMPLETE','source':'Dukascopy BI5 QuoteTick Bid/Ask','ohlc_resample_used':False,'symbol':s,'start':a.start,'days':a.days,'rows':len(df),'written_days':written,'http_status_counts':counts,'path':str(out)}
+    m={'status':'INCOMPLETE' if unresolved else 'COMPLETE','source':'Dukascopy BI5 QuoteTick Bid/Ask','ohlc_resample_used':False,'symbol':s,'start':a.start,'days':a.days,'rows':len(df),'written_days':written,'http_status_counts':counts,'unresolved_open_hours':unresolved,'path':str(out)}
     out.with_suffix('.manifest.json').write_text(json.dumps(m,indent=2),encoding='utf-8')
     print(json.dumps(m,indent=2))
+    if unresolved: raise SystemExit(f'RAW_EXPORT_INCOMPLETE: unresolved open hours={len(unresolved)}')
 if __name__=='__main__': main()

@@ -1,0 +1,101 @@
+name: MSS v1.5 Cloud-Only Raw Signal Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/mss-v15-cloud-only-v1
+    paths:
+      - 'research/mss_v15_nautilus_raw_signal_port.py'
+      - 'docs/MSS_V15_CLOUD_ONLY_CONTRACT.md'
+      - 'bt_requests/mss_v15_cloud_only.request'
+      - '.github/workflows/mss-v15-cloud-only.yml'
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/mss_v15_raw
+  RAW_CACHE_KEY: mss-v15-xauusd-raw-bidask-20260225-91d-v1
+  START: '2026-02-25'
+  DAYS: '91'
+  EVIDENCE: results/mss-v15-cloud/${{ github.run_id }}
+
+jobs:
+  raw-signal-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned research runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" numpy pandas pyarrow
+
+      - name: Static compile
+        run: python -m py_compile research/mss_v15_nautilus_raw_signal_port.py
+
+      - name: Restore MSS Raw BidAsk cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+          restore-keys: |
+            amos-complete-raw-bidask-xau-eur-20260225-91d-v1
+
+      - name: Build 91-day XAUUSD Raw BidAsk catalog when missing
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        run: |
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "${START}" --days "${DAYS}" \
+            --catalog "${RAW_CATALOG}" --workers 12 \
+            --symbols XAUUSD --fresh
+
+      - name: Guard canonical raw data
+        run: |
+          python research/raw_bidask_catalog_guard.py --catalog "${RAW_CATALOG}" --symbols XAUUSD
+
+      - name: Run recovered S01-S15 signal port
+        run: |
+          mkdir -p "${EVIDENCE}"
+          python research/mss_v15_nautilus_raw_signal_port.py \
+            --catalog "${RAW_CATALOG}" --symbol XAUUSD \
+            --out "${EVIDENCE}/xauusd_signal_gate.json"
+
+      - name: Fail closed on evidence contract
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ["EVIDENCE"])/"xauusd_signal_gate.json"
+          x=json.loads(p.read_text())
+          assert x["raw_ticks"]>0
+          assert x["m15_bars"]>0
+          assert x["source_sha256"]=="7fb3065e4a9a3110c4aaaa594705893c3f96b47bf8df3b441bdcab396c0caa2d"
+          assert x["wr5_status"]=="INVALID"
+          assert len(x["strategy_counts"])==15
+          print("PASS: raw signal port evidence complete; WR5 intentionally INVALID")
+          PY
+
+      - name: Save XAUUSD Raw BidAsk cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mss-v15-cloud-signal-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 90

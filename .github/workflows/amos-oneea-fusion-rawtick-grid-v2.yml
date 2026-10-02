@@ -5,6 +5,10 @@ on:
       - 'research/amos_oneea_fusion_rawtick_grid_v2.py'
       - '.github/workflows/amos-oneea-fusion-rawtick-grid-v2.yml'
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   bt:
     runs-on: ubuntu-24.04
@@ -24,6 +28,15 @@ jobs:
           fail-on-cache-miss: true
       - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - run: python research/amos_oneea_fusion_rawtick_grid_v2.py --catalog "$RAW_CATALOG" --out results/amos_oneea_fusion_rawtick_grid_v2/result.json
+      - name: Persist canonical result
+        run: |
+          mkdir -p bt_results/amos_oneea_fusion_rawtick_grid_v2
+          cp results/amos_oneea_fusion_rawtick_grid_v2/result.json bt_results/amos_oneea_fusion_rawtick_grid_v2/latest.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bt_results/amos_oneea_fusion_rawtick_grid_v2/latest.json
+          git diff --cached --quiet || git commit -m "BT: AMOS OneEA Fusion RawTick Grid v2 result"
+          git push
       - if: always()
         uses: actions/upload-artifact@v4
         with:

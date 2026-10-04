@@ -65,7 +65,7 @@ class Fusion(Strategy):
         self.entry = None
         self.side = 0
         self.initial_risk = None
-        self.stop = None
+        self.stop_price = None
         self.remaining_qty = 0.0
         self.entry_bar_count = 0
         self.bar_count = 0
@@ -288,7 +288,7 @@ class Fusion(Strategy):
             self.submit_order(order)
             px=ask if side>0 else bid
             risk=P["sl_atr"]*atr
-            self.entry=px; self.side=side; self.initial_risk=risk; self.stop=px-side*risk
+            self.entry=px; self.side=side; self.initial_risk=risk; self.stop_price=px-side*risk
             self.remaining_qty=float(P["fixed_qty_oz"]); self.entry_bar_count=self.bar_count
             self.runner_done=False; self.exit_pending=False; self.entries+=1; self.armed=None
             return
@@ -302,10 +302,10 @@ class Fusion(Strategy):
 
         if P["be_rr"]>0 and rr>=P["be_rr"]:
             be=self.entry + self.side*0.02
-            self.stop=max(self.stop,be) if self.side>0 else min(self.stop,be)
+            self.stop_price=max(self.stop_price,be) if self.side>0 else min(self.stop_price,be)
         if P["trail_atr"]>0 and rr>=P["trail_start_rr"]:
             tr=px-self.side*atr*P["trail_atr"]
-            self.stop=max(self.stop,tr) if self.side>0 else min(self.stop,tr)
+            self.stop_price=max(self.stop_price,tr) if self.side>0 else min(self.stop_price,tr)
 
         if (not self.runner_done) and rr>=P["runner_trigger_rr"]:
             q=self.remaining_qty*P["runner_partial"]
@@ -317,7 +317,7 @@ class Fusion(Strategy):
             return
 
         held=self.bar_count-self.entry_bar_count
-        stop_hit=px<=self.stop if self.side>0 else px>=self.stop
+        stop_hit=px<=self.stop_price if self.side>0 else px>=self.stop_price
         max_hold=held>=P["max_hold_bars"]
         if stop_hit or max_hold:
             self._close_manual(px,"STOP" if stop_hit else "MAX_HOLD")
@@ -330,7 +330,7 @@ class Fusion(Strategy):
         self.entry=None
         self.side=0
         self.initial_risk=None
-        self.stop=None
+        self.stop_price=None
         self.exit_pending=False
         self.runner_done=False
 

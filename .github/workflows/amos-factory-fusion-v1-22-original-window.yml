@@ -1,0 +1,64 @@
+name: AMOS Factory Fusion v1.22 Original Window 180D RawTick
+
+on:
+  push:
+    branches:
+      - 'bt/amos-factory-fusion-v1'
+    paths:
+      - '.github/workflows/amos-factory-fusion-v1-22-original-window.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask_180d_xau
+  RAW_CACHE_KEY: raw-bidask-duka-xauusd-2026-01-04-180d-v1
+  RAW_START: '2026-01-04'
+  RAW_DAYS: '180'
+
+jobs:
+  original-window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - name: Restore 180d XAUUSD Raw BidAsk
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Build or verify 180d XAUUSD Raw BidAsk
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD; then
+            rm -rf "$RAW_CATALOG"
+            python research/build_raw_bidask_catalog_duka.py               --start "$RAW_START" --days "$RAW_DAYS"               --catalog "$RAW_CATALOG" --workers 12 --symbols XAUUSD --fresh
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Save 180d catalog cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Run RECONSTRUCTED_PY
+        run: |
+          python research/amos_factory_fusion_v1_1_phase3_source_aligned_raw_bt.py             --catalog "$RAW_CATALOG" --experiment-id "v122-180d-reconstructed-${GITHUB_RUN_ID}"             --mode RECONSTRUCTED_PY --raw-bidask-only
+      - name: Run SET_CANDIDATE
+        run: |
+          python research/amos_factory_fusion_v1_1_phase3_source_aligned_raw_bt.py             --catalog "$RAW_CATALOG" --experiment-id "v122-180d-set-${GITHUB_RUN_ID}"             --mode SET_CANDIDATE --raw-bidask-only
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-fusion-v122-original-window-${{ github.run_id }}
+          path: results/amos_factory_fusion_v1_1/
+          if-no-files-found: warn
+          retention-days: 90

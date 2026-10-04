@@ -36,9 +36,20 @@ jobs:
         with:
           path: ${{ env.RAW_CATALOG }}
           key: ${{ env.RAW_CACHE_KEY }}
-          fail-on-cache-miss: true
-      - name: Guard
-        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Build or verify 60d XAUUSD Raw BidAsk
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD; then
+            rm -rf "$RAW_CATALOG"
+            python research/build_raw_bidask_catalog_duka.py               --start "2026-06-27" --days 60               --catalog "$RAW_CATALOG" --workers 12 --symbols XAUUSD --fresh
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Save 60d XAUUSD cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
       - name: Run bridge
         run: |
           python research/amos_factory_fusion_v1_1_phase3_source_aligned_raw_bt.py             --catalog "$RAW_CATALOG"             --experiment-id "v122-60d-${{ matrix.mode }}-${GITHUB_RUN_ID}"             --mode "${{ matrix.mode }}"             --raw-bidask-only

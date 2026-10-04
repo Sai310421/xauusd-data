@@ -157,8 +157,23 @@ def cycle_met(xs):
  if not xs:return dict(N_cycles=0,WR_cycle_pct=0.,PF_cycle=0.,NetCycle=0.,MaxCycleDD_pct=0.,TailLoss=0.)
  a=np.array([x['pnl'] for x in xs],float);w=a[a>0].sum();l=abs(a[a<0].sum());pf=w/l if l else (math.inf if w else 0.)
  return dict(N_cycles=int(len(a)),WR_cycle_pct=float((a>0).mean()*100),PF_cycle=float(pf),NetCycle=float(a.sum()),MaxCycleDD_pct=float(max([x['dd_pct'] for x in xs] or [0.])),TailLoss=float(a.min() if len(a) else 0.))
+def stability_stats(legs):
+ if not legs:return dict(monthly={},first_half={},second_half={},by_entry_hour={},by_weekday={})
+ df=pd.DataFrame(legs)
+ if 'entry_ts' not in df.columns:return dict(monthly={},first_half={},second_half={},by_entry_hour={},by_weekday={})
+ df['entry_dt']=pd.to_datetime(df['entry_ts'],utc=True,errors='coerce')
+ def agg(g):
+  if len(g)==0:return dict(N=0,PF=0.,WR_pct=0.,Net=0.)
+  a=g['pnl'].astype(float).to_numpy();w=a[a>0].sum();l=abs(a[a<0].sum())
+  return dict(N=int(len(a)),PF=float(w/l if l else (math.inf if w else 0.)),WR_pct=float((a>0).mean()*100),Net=float(a.sum()))
+ monthly={str(k):agg(g) for k,g in df.groupby(df['entry_dt'].dt.to_period('M'))}
+ mid=df['entry_dt'].min()+(df['entry_dt'].max()-df['entry_dt'].min())/2
+ first=agg(df[df['entry_dt']<=mid]);second=agg(df[df['entry_dt']>mid])
+ hours={str(int(k)):agg(g) for k,g in df.groupby(df['entry_dt'].dt.hour)}
+ wds={str(int(k)):agg(g) for k,g in df.groupby(df['entry_dt'].dt.weekday)}
+ return dict(monthly=monthly,first_half=first,second_half=second,by_entry_hour=hours,by_weekday=wds)
 def run(cat,inst,ticks,man,mode,out):
- e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)));e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));e.add_instrument(inst);e.add_data(ticks);bt=BarType.from_str(f'{inst.id.value}-5-MINUTE-BID-INTERNAL');s=S(Cfg(instrument_id=inst.id,bar_type=bt,mode=mode));e.add_strategy(s);e.run();r=dict(entries=s.entries,signals=s.signals,metrics=met(s.legs,int(man['days'])),cycle_metrics=cycle_met(s.cycles),max_floating_dd_pct=float(s.mdd/max(s.peak,1e-9)*100),max_daily_loss_pct=float(s.dday*100),blocks=s.blocks,realized=float(s.real));pd.DataFrame(s.legs).to_csv(out/f'{mode.lower()}_trade_legs.csv',index=False);e.dispose();return r
+ e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)));e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));e.add_instrument(inst);e.add_data(ticks);bt=BarType.from_str(f'{inst.id.value}-5-MINUTE-BID-INTERNAL');s=S(Cfg(instrument_id=inst.id,bar_type=bt,mode=mode));e.add_strategy(s);e.run();r=dict(entries=s.entries,signals=s.signals,metrics=met(s.legs,int(man['days'])),stability=stability_stats(s.legs),cycle_metrics=cycle_met(s.cycles),max_floating_dd_pct=float(s.mdd/max(s.peak,1e-9)*100),max_daily_loss_pct=float(s.dday*100),blocks=s.blocks,realized=float(s.real));pd.DataFrame(s.legs).to_csv(out/f'{mode.lower()}_trade_legs.csv',index=False);e.dispose();return r
 def main():
  a=argparse.ArgumentParser();a.add_argument('--catalog',required=True);a.add_argument('--experiment-id',required=True);a.add_argument('--raw-bidask-only',action='store_true');a.add_argument('--mode',choices=MODES,required=True);x=a.parse_args()
  if not x.raw_bidask_only:raise SystemExit('raw-bidask-only mandatory')

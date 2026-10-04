@@ -22,6 +22,12 @@ from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
 
+# Nautilus 1.230 catalog compatibility.
+if not hasattr(ParquetDataCatalog, "query_quote_ticks"):
+    def _query_quote_ticks(self, identifiers=None, start=None, end=None):
+        return self.query(data_cls=QuoteTick, identifiers=identifiers, start=start, end=end)
+    ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
+
 SIM = Venue("SIM")
 
 P = {

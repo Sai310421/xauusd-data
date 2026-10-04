@@ -22,7 +22,7 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
 
 SIM=Venue('SIM'); CONTRACT=100.0
 P=dict(risk=.007,max_hold=72,min_session_bars=12,max_adx=30.,edge=.08,eq_zone=.06,sigma_mult=2.,sl_atr=.7,rr=1.8,partial_eq=.0055,partial_frac=.5,day_dd=.03,hours=(1,13),weekdays=(0,1,2),commission=7.,slip=.04,tokyo_start_min=15,tokyo_end_min=1185)
-MODES=('REFERENCE','EQ_SESSION','SET_REVERSE')
+MODES=('REFERENCE','EQ_SESSION','ER020','ER030','ER040','SET_REVERSE')
 
 class Cfg(StrategyConfig,frozen=True):
  instrument_id:InstrumentId; bar_type:BarType; mode:str
@@ -39,6 +39,12 @@ class S(Strategy):
   a=tr[0]
   for z in tr[1:]:a=z/n+(1-1/n)*a
   return a
+ def er(self,n=250):
+  if len(self.b)<n+1:return None
+  x=np.asarray([z['c'] for z in self.b],float)
+  seg=x[-n-1:]
+  den=np.abs(np.diff(seg)).sum()
+  return float(abs(seg[-1]-seg[0])/den) if den>0 else 1.0
  def adx(self,n=14):
   if len(self.b)<n+2:return None
   xs=list(self.b);tr=[];pl=[];mi=[]
@@ -80,7 +86,7 @@ class S(Strategy):
   except:v=1.
   self.b.append(dict(o=o,h=h,l=l,c=c))
   skey=ts.date()
-  if self.config.mode=='EQ_SESSION' and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
+  if (self.config.mode=='EQ_SESSION' or self.config.mode.startswith('ER')) and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
   if skey!=self.sd:self.sd=skey;self.s=[];self.sb=0
   self.sb+=1;tp=(h+l+c)/3;pv=sum(x['tp']*x['v'] for x in self.s)+tp*v;vv=sum(x['v'] for x in self.s)+v;vw=pv/vv;self.s.append(dict(tp=tp,v=v,c=c,vwap=vw))
   if self.entry is not None:return
@@ -91,6 +97,11 @@ class S(Strategy):
   atr=self.atr();adx=self.adx();vw,sd=self.vs()
   if atr is None or adx is None or sd is None:self.blocks['warmup']+=1;return
   if adx>=P['max_adx']:self.blocks['adx']+=1;return
+  if self.config.mode.startswith('ER'):
+   erv=self.er(250)
+   if erv is None:self.blocks['warmup']+=1;return
+   thr={'ER020':.20,'ER030':.30,'ER040':.40}[self.config.mode]
+   if erv>thr:self.blocks['adx']+=1;return
   band=P['sigma_mult']*sd;edge=P['edge']*band;z=c-vw;d=-1 if z>=band-edge else (1 if z<=-band+edge else 0)
   if d==0:self.blocks['edge']+=1;return
   if self.config.mode=='SET_REVERSE':d=-d
@@ -104,7 +115,7 @@ class S(Strategy):
    d=self.arm['side'];risk=P['sl_atr']*self.arm['atr'];lots=max(.01,round(e*P['risk']/(risk*CONTRACT),2));q=max(1,int(round(lots*CONTRACT)));ins=self.cache.instrument(self.config.instrument_id);od=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if d>0 else OrderSide.SELL,quantity=ins.make_qty(Decimal(q)));self.submit_order(od);px=(ask+P['slip']) if d>0 else (bid-P['slip']);self.entry=px;self.side=d;self.sl=px-d*risk;self.tp=px+d*P['rr']*risk;self.qty=float(q);self.eb=self.bc;self.partial=False;self.pending=False;self.entries+=1;self.real-=P['commission']*(q/CONTRACT)/2;self.arm=None;return
   if self.entry is None or self.pending:return
   px=bid if self.side>0 else ask
-  if self.config.mode=='EQ_SESSION':
+  if self.config.mode=='EQ_SESSION' or self.config.mode.startswith('ER'):
    vw,sd=self.vs()
    if vw is not None and sd is not None:
     eqw=P['eq_zone']*P['sigma_mult']*sd

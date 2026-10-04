@@ -22,7 +22,7 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
 
 SIM=Venue('SIM'); CONTRACT=100.0
 P=dict(risk=.007,max_hold=72,min_session_bars=12,max_adx=30.,edge=.08,eq_zone=.06,sigma_mult=2.,sl_atr=.7,rr=1.8,partial_eq=.0055,partial_frac=.5,day_dd=.03,hours=(1,13),weekdays=(0,1,2),commission=7.,slip=.04,tokyo_start_min=15,tokyo_end_min=1185,cycle_target=.012,cycle_dd=.03,max_legs_cycle=4)
-MODES=('REFERENCE','EQ_SESSION','ER020','ER030','ER040','CYCLE_SIGNAL','CYCLE_SAME','SET_REVERSE')
+MODES=('REFERENCE','STRICT_FADE','STRICT_REVERSE','ER020','CYCLE_SIGNAL','CYCLE_SAME','SET_REVERSE')
 
 class Cfg(StrategyConfig,frozen=True):
  instrument_id:InstrumentId; bar_type:BarType; mode:str
@@ -102,7 +102,7 @@ class S(Strategy):
   except:v=1.
   self.b.append(dict(o=o,h=h,l=l,c=c))
   skey=ts.date()
-  if (self.config.mode=='EQ_SESSION' or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE')) and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
+  if (self.config.mode.startswith('STRICT') or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE')) and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
   if skey!=self.sd:self.sd=skey;self.s=[];self.sb=0
   self.sb+=1;tp=(h+l+c)/3;pv=sum(x['tp']*x['v'] for x in self.s)+tp*v;vv=sum(x['v'] for x in self.s)+v;vw=pv/vv;self.s.append(dict(tp=tp,v=v,c=c,vwap=vw))
   if self.entry is not None:return
@@ -118,9 +118,13 @@ class S(Strategy):
    if erv is None:self.blocks['warmup']+=1;return
    thr={'ER020':.20,'ER030':.30,'ER040':.40}[self.config.mode]
    if erv>thr:self.blocks['adx']+=1;return
-  band=P['sigma_mult']*sd;edge=P['edge']*band;z=c-vw;d=-1 if z>=band-edge else (1 if z<=-band+edge else 0)
+  band=P['sigma_mult']*sd;edge=P['edge']*band;z=c-vw
+  if self.config.mode.startswith('STRICT'):
+   d=-1 if (band-edge<=z<=band+edge) else (1 if (-band-edge<=z<=-band+edge) else 0)
+  else:
+   d=-1 if z>=band-edge else (1 if z<=-band+edge else 0)
   if d==0:self.blocks['edge']+=1;return
-  if self.config.mode=='SET_REVERSE':d=-d
+  if self.config.mode=='SET_REVERSE' or self.config.mode=='STRICT_REVERSE':d=-d
   if self.config.mode=='CYCLE_SAME' and self.cycle_active and self.cycle_side!=0:d=self.cycle_side
   self.signals+=1;self.arm=dict(bar=self.bc,side=d,atr=atr)
  def on_quote_tick(self,t:QuoteTick):
@@ -139,7 +143,7 @@ class S(Strategy):
     self.book(px,self.qty,'cycle_target_float');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('target_float');return
    if cycle_eq<=-P['cycle_dd']*self.cycle_start_eq:
     self.book(px,self.qty,'cycle_dd_float');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('dd_float');return
-  if self.config.mode=='EQ_SESSION' or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE'):
+  if self.config.mode.startswith('STRICT') or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE'):
    vw,sd=self.vs()
    if vw is not None and sd is not None:
     eqw=P['eq_zone']*P['sigma_mult']*sd

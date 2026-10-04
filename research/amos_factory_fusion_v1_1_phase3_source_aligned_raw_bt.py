@@ -132,6 +132,13 @@ class S(Strategy):
    d=self.arm['side'];risk=P['sl_atr']*self.arm['atr'];self.start_cycle(e,d) if self.config.mode.startswith('CYCLE') else None;lots=max(.01,round(e*P['risk']/(risk*CONTRACT),2));q=max(1,int(round(lots*CONTRACT)));ins=self.cache.instrument(self.config.instrument_id);od=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if d>0 else OrderSide.SELL,quantity=ins.make_qty(Decimal(q)));self.submit_order(od);px=(ask+P['slip']) if d>0 else (bid-P['slip']);self.entry=px;self.side=d;self.sl=px-d*risk;self.tp=px+d*P['rr']*risk;self.qty=float(q);self.eb=self.bc;self.partial=False;self.pending=False;self.entries+=1;self.real-=P['commission']*(q/CONTRACT)/2;self.cycle_pnl-=P['commission']*(q/CONTRACT)/2 if self.cycle_active else 0.;self.cycle_legs+=1 if self.cycle_active else 0;self.arm=None;return
   if self.entry is None or self.pending:return
   px=bid if self.side>0 else ask
+  if self.config.mode.startswith('CYCLE') and self.cycle_active:
+   floating=(px-self.entry)*self.side*self.qty
+   cycle_eq=self.cycle_pnl+floating
+   if cycle_eq>=P['cycle_target']*self.cycle_start_eq:
+    self.book(px,self.qty,'cycle_target_float');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('target_float');return
+   if cycle_eq<=-P['cycle_dd']*self.cycle_start_eq:
+    self.book(px,self.qty,'cycle_dd_float');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('dd_float');return
   if self.config.mode=='EQ_SESSION' or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE'):
    vw,sd=self.vs()
    if vw is not None and sd is not None:

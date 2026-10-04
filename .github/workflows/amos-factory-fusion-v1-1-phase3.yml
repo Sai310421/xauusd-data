@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [REFERENCE, EQ_SESSION, ER020, ER030, ER040, SET_REVERSE]
+        mode: [REFERENCE, ER020, CYCLE_SIGNAL, CYCLE_SAME]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

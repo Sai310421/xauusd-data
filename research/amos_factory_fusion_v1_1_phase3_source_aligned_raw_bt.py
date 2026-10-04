@@ -21,8 +21,8 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
  ParquetDataCatalog.query_quote_ticks=_q
 
 SIM=Venue('SIM'); CONTRACT=100.0
-P=dict(risk=.007,max_hold=72,min_session_bars=12,max_adx=30.,edge=.08,sigma_mult=2.,sl_atr=.7,rr=1.8,partial_eq=.0055,partial_frac=.5,day_dd=.03,hours=(1,13),weekdays=(0,1,2),commission=7.,slip=.04)
-MODES=('REFERENCE','SET_REVERSE')
+P=dict(risk=.007,max_hold=72,min_session_bars=12,max_adx=30.,edge=.08,eq_zone=.06,sigma_mult=2.,sl_atr=.7,rr=1.8,partial_eq=.0055,partial_frac=.5,day_dd=.03,hours=(1,13),weekdays=(0,1,2),commission=7.,slip=.04,tokyo_start_min=15,tokyo_end_min=1185)
+MODES=('REFERENCE','EQ_SESSION','SET_REVERSE')
 
 class Cfg(StrategyConfig,frozen=True):
  instrument_id:InstrumentId; bar_type:BarType; mode:str
@@ -79,7 +79,9 @@ class S(Strategy):
   try:v=max(self.f(bar.volume),1e-9)
   except:v=1.
   self.b.append(dict(o=o,h=h,l=l,c=c))
-  if ts.date()!=self.sd:self.sd=ts.date();self.s=[];self.sb=0
+  skey=ts.date()
+  if self.config.mode=='EQ_SESSION' and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
+  if skey!=self.sd:self.sd=skey;self.s=[];self.sb=0
   self.sb+=1;tp=(h+l+c)/3;pv=sum(x['tp']*x['v'] for x in self.s)+tp*v;vv=sum(x['v'] for x in self.s)+v;vw=pv/vv;self.s.append(dict(tp=tp,v=v,c=c,vwap=vw))
   if self.entry is not None:return
   if self.halt:self.blocks['dd']+=1;return
@@ -102,6 +104,12 @@ class S(Strategy):
    d=self.arm['side'];risk=P['sl_atr']*self.arm['atr'];lots=max(.01,round(e*P['risk']/(risk*CONTRACT),2));q=max(1,int(round(lots*CONTRACT)));ins=self.cache.instrument(self.config.instrument_id);od=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if d>0 else OrderSide.SELL,quantity=ins.make_qty(Decimal(q)));self.submit_order(od);px=(ask+P['slip']) if d>0 else (bid-P['slip']);self.entry=px;self.side=d;self.sl=px-d*risk;self.tp=px+d*P['rr']*risk;self.qty=float(q);self.eb=self.bc;self.partial=False;self.pending=False;self.entries+=1;self.real-=P['commission']*(q/CONTRACT)/2;self.arm=None;return
   if self.entry is None or self.pending:return
   px=bid if self.side>0 else ask
+  if self.config.mode=='EQ_SESSION':
+   vw,sd=self.vs()
+   if vw is not None and sd is not None:
+    eqw=P['eq_zone']*P['sigma_mult']*sd
+    if abs(px-vw)<=eqw:
+     self.book(px,self.qty,'vwap_eq');self.close_all_positions(self.config.instrument_id);self.reset_state();return
   if not self.partial and (px-self.entry)*self.side*self.qty>=P['partial_eq']*max(e,1e-9):
    q=self.qty*P['partial_frac']
    if self.reduce(q):self.book(px,q,'partial');self.partial=True;return

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-"""MSS_MultiStrat_v1_5 cloud-only Raw Bid/Ask research port.
+"""MSS_MultiStrat_v1_51 cloud-only Raw Bid/Ask research port.
 
-This is a transparent research port of the recovered MQ5 signal layer.
+This is a transparent research port of the recovered and bar-0-fixed v1.51 MQ5 signal layer.
 It deliberately does NOT claim MT5 binary parity.  It consumes Nautilus
 QuoteTicks, constructs M15/H1 bars from the raw stream, evaluates S01-S15,
 and emits auditable signal/confluence evidence.  Execution/risk parity is a
@@ -287,7 +287,7 @@ def main():
       "symbol":a.symbol,"raw_ticks":len(ticks),"m15_bars":len(m15),"h1_bars":len(h1),
       "ohlc_source":"constructed internally from raw QuoteTicks; fills not evaluated here",
       "nautilus_version":getattr(nautilus_trader,"__version__","unknown"),
-      "source_sha256":"7fb3065e4a9a3110c4aaaa594705893c3f96b47bf8df3b441bdcab396c0caa2d",
+      "source_git_commit":"ebaaf46338e53665e7ab0443b2241a6079a8000c","source_git_blob":"466dcfc343b86a34de200332117d03f41cc1e97d","source_version":"1.51",
       "strategy_counts":{f"S{i+1:02d}":counts[i] for i in range(15)},
       "confluence_histogram":tiers,"qualified_signal_events":len(events),
       "sample_events":events[:100],

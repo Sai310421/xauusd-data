@@ -96,7 +96,7 @@ class S(Strategy):
  def on_quote_tick(self,t:QuoteTick):
   bid,ask=self.f(t.bid_price),self.f(t.ask_price);ts=pd.Timestamp(int(t.ts_event),unit='ns',tz='UTC');e=self.upd(ts,bid,ask);flat=not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id)
   if self.halt and self.entry is not None and not self.pending:
-   px=bid if self.side>0 else ask;self.book(px,self.qty,'daily_dd');self.close_all_positions(self.config.instrument_id);self.pending=True;return
+   px=bid if self.side>0 else ask;self.book(px,self.qty,'daily_dd');self.close_all_positions(self.config.instrument_id);self.reset_state();return
   if self.arm and self.entry is None and flat:
    if self.arm['bar']!=self.bc:self.blocks['stale']+=1;self.arm=None;return
    d=self.arm['side'];risk=P['sl_atr']*self.arm['atr'];lots=max(.01,round(e*P['risk']/(risk*CONTRACT),2));q=max(1,int(round(lots*CONTRACT)));ins=self.cache.instrument(self.config.instrument_id);od=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if d>0 else OrderSide.SELL,quantity=ins.make_qty(Decimal(q)));self.submit_order(od);px=(ask+P['slip']) if d>0 else (bid-P['slip']);self.entry=px;self.side=d;self.sl=px-d*risk;self.tp=px+d*P['rr']*risk;self.qty=float(q);self.eb=self.bc;self.partial=False;self.pending=False;self.entries+=1;self.real-=P['commission']*(q/CONTRACT)/2;self.arm=None;return
@@ -106,8 +106,9 @@ class S(Strategy):
    q=self.qty*P['partial_frac']
    if self.reduce(q):self.book(px,q,'partial');self.partial=True;return
   sl=(px<=self.sl if self.side>0 else px>=self.sl);tp=(px>=self.tp if self.side>0 else px<=self.tp);tm=self.bc-self.eb>=P['max_hold']
-  if sl or tp or tm:self.book(px,self.qty,'sl' if sl else ('tp' if tp else 'time'));self.close_all_positions(self.config.instrument_id);self.pending=True
- def on_position_closed(self,e):self.entry=None;self.side=0;self.sl=self.tp=None;self.qty=0.;self.pending=False;self.partial=False
+  if sl or tp or tm:self.book(px,self.qty,'sl' if sl else ('tp' if tp else 'time'));self.close_all_positions(self.config.instrument_id);self.reset_state()
+ def reset_state(self):self.entry=None;self.side=0;self.sl=self.tp=None;self.qty=0.;self.pending=False;self.partial=False
+ def on_position_closed(self,e):self.reset_state()
  def on_stop(self):
   if self.entry is not None and self.qty>0:self.close_all_positions(self.config.instrument_id)
 

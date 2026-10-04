@@ -1,4 +1,4 @@
-name: AMOS Factory Fusion v1.10 Phase3 Source-Aligned RawTick
+name: AMOS Factory Fusion v1.21 Parity RawTick
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [REFERENCE, STRICT_FADE, STRICT_REVERSE]
+        mode: [RECONSTRUCTED_PY, SET_CANDIDATE]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - name: Run source-aligned A/B
         run: |
-          EXPERIMENT_ID="amos-fusion-v110-${{ matrix.mode }}-${GITHUB_RUN_ID}"
+          EXPERIMENT_ID="amos-fusion-v121-${{ matrix.mode }}-${GITHUB_RUN_ID}"
           python research/amos_factory_fusion_v1_1_phase3_source_aligned_raw_bt.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \

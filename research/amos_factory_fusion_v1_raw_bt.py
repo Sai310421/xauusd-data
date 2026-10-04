@@ -256,6 +256,10 @@ class Fusion(Strategy):
         flat=self.portfolio.is_net_flat(self.config.instrument_id)
 
         if self.armed is not None and self.entry is None and flat:
+            # Signal expires when a newer M5 bar appears; never carry stale entries.
+            if self.armed.get("bar") != self.bar_count:
+                self.armed = None
+                return
             if ts.hour not in P["allowed_utc_hours"]:
                 self.block["time"]+=1
                 return

@@ -259,7 +259,7 @@ class Fusion(Strategy):
         ts=pd.Timestamp(int(tick.ts_event),unit="ns",tz="UTC")
         eq=self._update_dd(ts,bid,ask)
         spread=ask-bid
-        flat=self.portfolio.is_net_flat(self.config.instrument_id)
+        flat=(not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id))
 
         if self.armed is not None and self.entry is None and flat:
             # Signal expires when a newer M5 bar appears; never carry stale entries.

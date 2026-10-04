@@ -20,6 +20,10 @@ env:
 jobs:
   bt:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [REFERENCE, SET_REVERSE]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -37,16 +41,17 @@ jobs:
         run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
       - name: Run source-aligned A/B
         run: |
-          EXPERIMENT_ID="amos-fusion-v110-${GITHUB_RUN_ID}"
+          EXPERIMENT_ID="amos-fusion-v110-${{ matrix.mode }}-${GITHUB_RUN_ID}"
           python research/amos_factory_fusion_v1_1_phase3_source_aligned_raw_bt.py \
             --catalog "$RAW_CATALOG" \
             --experiment-id "$EXPERIMENT_ID" \
+            --mode "${{ matrix.mode }}" \
             --raw-bidask-only
       - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amos-fusion-v110-${{ github.run_id }}
+          name: amos-fusion-v110-${{ matrix.mode }}-${{ github.run_id }}
           path: results/amos_factory_fusion_v1_1/
           if-no-files-found: warn
           retention-days: 90

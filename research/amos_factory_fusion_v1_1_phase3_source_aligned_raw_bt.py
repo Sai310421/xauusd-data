@@ -22,14 +22,14 @@ if not hasattr(ParquetDataCatalog,'query_quote_ticks'):
 
 SIM=Venue('SIM'); CONTRACT=100.0
 P=dict(risk=.007,max_hold=72,min_session_bars=12,max_adx=30.,edge=.08,eq_zone=.06,sigma_mult=2.,sl_atr=.7,rr=1.8,partial_eq=.0055,partial_frac=.5,day_dd=.03,hours=(1,13),weekdays=(0,1,2),commission=7.,slip=.04,tokyo_start_min=15,tokyo_end_min=1185,cycle_target=.012,cycle_dd=.03,max_legs_cycle=4)
-MODES=('REFERENCE','STRICT_FADE','STRICT_REVERSE','ER020','CYCLE_SIGNAL','CYCLE_SAME','SET_REVERSE')
+MODES=('RECONSTRUCTED_PY','SET_CANDIDATE')
 
 class Cfg(StrategyConfig,frozen=True):
  instrument_id:InstrumentId; bar_type:BarType; mode:str
 
 class S(Strategy):
  def __init__(self,c):
-  super().__init__(c);self.b=deque(maxlen=600);self.s=[];self.sd=None;self.bc=0;self.sb=0;self.arm=None;self.entry=None;self.side=0;self.sl=None;self.tp=None;self.qty=0.;self.eb=0;self.partial=False;self.pending=False;self.real=0.;self.peak=1000.;self.ds=1000.;self.day=None;self.halt=False;self.mdd=0.;self.dday=0.;self.legs=[];self.entries=0;self.signals=0;self.blocks={k:0 for k in ('hour','weekday','warmup','adx','edge','stale','dd','cycle_limit')};self.cycles=[];self.cycle_id=0;self.cycle_active=False;self.cycle_start_eq=0.;self.cycle_pnl=0.;self.cycle_legs=0;self.cycle_side=0;self.cycle_peak=0.;self.cycle_mdd=0.
+  super().__init__(c);self.b=deque(maxlen=600);self.s=[];self.sd=None;self.bc=0;self.sb=0;self.arm=None;self.entry=None;self.side=0;self.sl=None;self.tp=None;self.qty=0.;self.eb=0;self.partial=False;self.pending=False;self.real=0.;self.peak=1000.;self.ds=1000.;self.day=None;self.halt=False;self.mdd=0.;self.dday=0.;self.legs=[];self.entries=0;self.signals=0;self.blocks={k:0 for k in ('hour','weekday','warmup','adx','edge','stale','dd','cycle_limit')};self.cycles=[];self.cycle_id=0;self.cycle_active=False;self.cycle_start_eq=0.;self.cycle_pnl=0.;self.cycle_legs=0;self.cycle_side=0;self.cycle_peak=0.;self.cycle_mdd=0.;self.entry_meta={};self.now_ts=None
  @staticmethod
  def f(x): return float(x.as_double()) if hasattr(x,'as_double') else float(x)
  def on_start(self): self.subscribe_quote_ticks(self.config.instrument_id);self.subscribe_bars(self.config.bar_type)
@@ -91,7 +91,7 @@ class S(Strategy):
   if self.cycle_legs>=P['max_legs_cycle']:self.finish_cycle('max_legs');return True
   return False
  def book(self,px,q,tag):
-  q=min(q,self.qty);lots=q/CONTRACT;pnl=(px-self.entry)*self.side*q-P['slip']*q-P['commission']*lots/2;self.real+=pnl;self.qty-=q;self.legs.append(dict(pnl=float(pnl),tag=tag,qty_oz=float(q),cycle_id=int(self.cycle_id if self.cycle_active else 0)));self.cycle_pnl+=pnl if self.cycle_active else 0.
+  q=min(q,self.qty);lots=q/CONTRACT;pnl=(px-self.entry)*self.side*q-P['slip']*q-P['commission']*lots/2;self.real+=pnl;self.qty-=q;self.legs.append(dict(**self.entry_meta,exit_ts=str(self.now_ts),exit_px=float(px),pnl=float(pnl),tag=tag,qty_oz=float(q),cycle_id=0));self.cycle_pnl+=pnl if self.cycle_active else 0.
  def reduce(self,q):
   q=max(0,int(round(min(q,self.qty))))
   if q<=0:return False
@@ -102,7 +102,7 @@ class S(Strategy):
   except:v=1.
   self.b.append(dict(o=o,h=h,l=l,c=c))
   skey=ts.date()
-  if (self.config.mode.startswith('STRICT') or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE')) and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
+  if self.config.mode=='SET_CANDIDATE' and ts.hour*60+ts.minute<P['tokyo_start_min']: skey=(ts-pd.Timedelta(days=1)).date()
   if skey!=self.sd:self.sd=skey;self.s=[];self.sb=0
   self.sb+=1;tp=(h+l+c)/3;pv=sum(x['tp']*x['v'] for x in self.s)+tp*v;vv=sum(x['v'] for x in self.s)+v;vw=pv/vv;self.s.append(dict(tp=tp,v=v,c=c,vwap=vw))
   if self.entry is not None:return
@@ -113,52 +113,41 @@ class S(Strategy):
   atr=self.atr();adx=self.adx();vw,sd=self.vs()
   if atr is None or adx is None or sd is None:self.blocks['warmup']+=1;return
   if adx>=P['max_adx']:self.blocks['adx']+=1;return
-  if self.config.mode.startswith('ER'):
-   erv=self.er(250)
-   if erv is None:self.blocks['warmup']+=1;return
-   thr={'ER020':.20,'ER030':.30,'ER040':.40}[self.config.mode]
-   if erv>thr:self.blocks['adx']+=1;return
   band=P['sigma_mult']*sd;edge=P['edge']*band;z=c-vw
-  if self.config.mode.startswith('STRICT'):
+  if self.config.mode=='SET_CANDIDATE':
    d=-1 if (band-edge<=z<=band+edge) else (1 if (-band-edge<=z<=-band+edge) else 0)
   else:
    d=-1 if z>=band-edge else (1 if z<=-band+edge else 0)
   if d==0:self.blocks['edge']+=1;return
-  if self.config.mode=='SET_REVERSE' or self.config.mode=='STRICT_REVERSE':d=-d
-  if self.config.mode=='CYCLE_SAME' and self.cycle_active and self.cycle_side!=0:d=self.cycle_side
-  self.signals+=1;self.arm=dict(bar=self.bc,side=d,atr=atr)
+  if self.config.mode=='SET_CANDIDATE':d=-d
+  self.signals+=1;self.arm=dict(bar=self.bc,bar_ts=str(ts),side=d,atr=atr,adx=adx,vwap=vw,sigma=sd,z=z)
  def on_quote_tick(self,t:QuoteTick):
-  bid,ask=self.f(t.bid_price),self.f(t.ask_price);ts=pd.Timestamp(int(t.ts_event),unit='ns',tz='UTC');e=self.upd(ts,bid,ask);self.cycle_mark(e);flat=not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id)
+  bid,ask=self.f(t.bid_price),self.f(t.ask_price);ts=pd.Timestamp(int(t.ts_event),unit='ns',tz='UTC');self.now_ts=ts;e=self.upd(ts,bid,ask);flat=not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id)
   if self.halt and self.entry is not None and not self.pending:
    px=bid if self.side>0 else ask;self.book(px,self.qty,'daily_dd');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('daily_dd');return
   if self.arm and self.entry is None and flat:
    if self.arm['bar']!=self.bc:self.blocks['stale']+=1;self.arm=None;return
-   d=self.arm['side'];risk=P['sl_atr']*self.arm['atr'];self.start_cycle(e,d) if self.config.mode.startswith('CYCLE') else None;lots=max(.01,round(e*P['risk']/(risk*CONTRACT),2));q=max(1,int(round(lots*CONTRACT)));ins=self.cache.instrument(self.config.instrument_id);od=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if d>0 else OrderSide.SELL,quantity=ins.make_qty(Decimal(q)));self.submit_order(od);px=(ask+P['slip']) if d>0 else (bid-P['slip']);self.entry=px;self.side=d;self.sl=px-d*risk;self.tp=px+d*P['rr']*risk;self.qty=float(q);self.eb=self.bc;self.partial=False;self.pending=False;self.entries+=1;self.real-=P['commission']*(q/CONTRACT)/2;self.cycle_pnl-=P['commission']*(q/CONTRACT)/2 if self.cycle_active else 0.;self.cycle_legs+=1 if self.cycle_active else 0;self.arm=None;return
+   d=self.arm['side'];risk=P['sl_atr']*self.arm['atr'];raw_lots=e*P['risk']/(risk*CONTRACT);lots=math.floor(raw_lots/0.01+1e-12)*0.01
+   if lots<0.01:self.blocks['dd']+=1;self.arm=None;return
+   q=max(1,int(round(lots*CONTRACT)));ins=self.cache.instrument(self.config.instrument_id);od=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY if d>0 else OrderSide.SELL,quantity=ins.make_qty(Decimal(q)));self.submit_order(od);px=(ask+P['slip']) if d>0 else (bid-P['slip']);self.entry=px;self.side=d;self.sl=px-d*risk;self.tp=px+d*P['rr']*risk;self.qty=float(q);self.eb=self.bc;self.partial=False;self.pending=False;self.entries+=1;self.real-=P['commission']*(q/CONTRACT)/2;self.entry_meta=dict(entry_id=int(self.entries),signal_bar_ts=self.arm['bar_ts'],entry_ts=str(ts),side='BUY' if d>0 else 'SELL',entry_px=float(px),sl=float(self.sl),tp=float(self.tp),atr=float(self.arm['atr']),adx=float(self.arm['adx']),vwap=float(self.arm['vwap']),sigma=float(self.arm['sigma']),z=float(self.arm['z']),mode=self.config.mode);self.arm=None;return
   if self.entry is None or self.pending:return
   px=bid if self.side>0 else ask
-  if self.config.mode.startswith('CYCLE') and self.cycle_active:
-   floating=(px-self.entry)*self.side*self.qty
-   cycle_eq=self.cycle_pnl+floating
-   if cycle_eq>=P['cycle_target']*self.cycle_start_eq:
-    self.book(px,self.qty,'cycle_target_float');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('target_float');return
-   if cycle_eq<=-P['cycle_dd']*self.cycle_start_eq:
-    self.book(px,self.qty,'cycle_dd_float');self.close_all_positions(self.config.instrument_id);self.reset_state();self.finish_cycle('dd_float');return
-  if self.config.mode.startswith('STRICT') or self.config.mode.startswith('ER') or self.config.mode.startswith('CYCLE'):
+  if self.config.mode=='SET_CANDIDATE':
    vw,sd=self.vs()
    if vw is not None and sd is not None:
     eqw=P['eq_zone']*P['sigma_mult']*sd
     if abs(px-vw)<=eqw:
-     self.book(px,self.qty,'vwap_eq');self.close_all_positions(self.config.instrument_id);self.reset_state();self.cycle_done() if self.config.mode.startswith('CYCLE') else None;return
-  if not self.partial and (px-self.entry)*self.side*self.qty>=P['partial_eq']*max(e,1e-9):
+     self.book(px,self.qty,'vwap_eq');self.close_all_positions(self.config.instrument_id);self.reset_state();return
+  partial_base=(1000+self.real) if self.config.mode=='RECONSTRUCTED_PY' else e
+  if not self.partial and (px-self.entry)*self.side*self.qty>=P['partial_eq']*max(partial_base,1e-9):
    q=self.qty*P['partial_frac']
    if self.reduce(q):self.book(px,q,'partial');self.partial=True;return
   sl=(px<=self.sl if self.side>0 else px>=self.sl);tp=(px>=self.tp if self.side>0 else px<=self.tp);tm=self.bc-self.eb>=P['max_hold']
-  if sl or tp or tm:self.book(px,self.qty,'sl' if sl else ('tp' if tp else 'time'));self.close_all_positions(self.config.instrument_id);self.reset_state();self.cycle_done() if self.config.mode.startswith('CYCLE') else None
- def reset_state(self):self.entry=None;self.side=0;self.sl=self.tp=None;self.qty=0.;self.pending=False;self.partial=False
+  if sl or tp or tm:self.book(px,self.qty,'sl' if sl else ('tp' if tp else 'time'));self.close_all_positions(self.config.instrument_id);self.reset_state()
+ def reset_state(self):self.entry=None;self.side=0;self.sl=self.tp=None;self.qty=0.;self.pending=False;self.partial=False;self.entry_meta={}
  def on_position_closed(self,e):self.reset_state()
  def on_stop(self):
   if self.entry is not None and self.qty>0:self.close_all_positions(self.config.instrument_id)
-  if self.cycle_active:self.finish_cycle('eod')
 
 def met(xs,days):
  a=np.array([x['pnl'] for x in xs],float)
@@ -169,9 +158,9 @@ def cycle_met(xs):
  a=np.array([x['pnl'] for x in xs],float);w=a[a>0].sum();l=abs(a[a<0].sum());pf=w/l if l else (math.inf if w else 0.)
  return dict(N_cycles=int(len(a)),WR_cycle_pct=float((a>0).mean()*100),PF_cycle=float(pf),NetCycle=float(a.sum()),MaxCycleDD_pct=float(max([x['dd_pct'] for x in xs] or [0.])),TailLoss=float(a.min() if len(a) else 0.))
 def run(cat,inst,ticks,man,mode,out):
- e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)));e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));e.add_instrument(inst);e.add_data(ticks);bt=BarType.from_str(f'{inst.id.value}-5-MINUTE-BID-INTERNAL');s=S(Cfg(instrument_id=inst.id,bar_type=bt,mode=mode));e.add_strategy(s);e.run();r=dict(entries=s.entries,signals=s.signals,metrics=met(s.legs,int(man['days'])),cycle_metrics=cycle_met(s.cycles),max_floating_dd_pct=float(s.mdd/max(s.peak,1e-9)*100),max_daily_loss_pct=float(s.dday*100),blocks=s.blocks,realized=float(s.real));pd.DataFrame(s.legs).to_csv(out/f'{mode.lower()}_legs.csv',index=False);pd.DataFrame(s.cycles).to_csv(out/f'{mode.lower()}_cycles.csv',index=False);e.dispose();return r
+ e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)));e.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'));e.add_instrument(inst);e.add_data(ticks);bt=BarType.from_str(f'{inst.id.value}-5-MINUTE-BID-INTERNAL');s=S(Cfg(instrument_id=inst.id,bar_type=bt,mode=mode));e.add_strategy(s);e.run();r=dict(entries=s.entries,signals=s.signals,metrics=met(s.legs,int(man['days'])),cycle_metrics=cycle_met(s.cycles),max_floating_dd_pct=float(s.mdd/max(s.peak,1e-9)*100),max_daily_loss_pct=float(s.dday*100),blocks=s.blocks,realized=float(s.real));pd.DataFrame(s.legs).to_csv(out/f'{mode.lower()}_trade_legs.csv',index=False);e.dispose();return r
 def main():
  a=argparse.ArgumentParser();a.add_argument('--catalog',required=True);a.add_argument('--experiment-id',required=True);a.add_argument('--raw-bidask-only',action='store_true');a.add_argument('--mode',choices=MODES,required=True);x=a.parse_args()
  if not x.raw_bidask_only:raise SystemExit('raw-bidask-only mandatory')
- cp=Path(x.catalog);man=json.loads((cp/'catalog_manifest.json').read_text());cat=ParquetDataCatalog(str(cp));inst=next(z for z in cat.instruments() if z.id.symbol.value.replace('/','')=='XAUUSD');ticks=cat.query_quote_ticks(identifiers=[inst.id.value]);out=Path('results/amos_factory_fusion_v1_1')/x.experiment_id;out.mkdir(parents=True,exist_ok=True);m={x.mode:run(cat,inst,ticks,man,x.mode,out)};s=dict(verification_level='NAUTILUS_BT_RAW_BIDASK_PHASE3_SOURCE_ALIGNED_AB',nautilus_version=getattr(nautilus_trader,'__version__','unknown'),raw_tick_count=len(ticks),period=dict(start=man['start'],days=man['days'],end_exclusive=man['end_exclusive']),source_alignment=dict(reference='Sai310421/glowing-octo-disco scripts/pci_vwap_bt.py',known_discrepancy='set reverse_signal=true vs reference direct VWAP fade; both tested'),modes=m,limitations=['Native spread replaces reference fixed spread; extra 0.04/side slippage and $7/lot commission charged manually.','Internal M5 quote-derived volume may differ from original OrkAD parquet tick volume.']);(out/'summary.json').write_text(json.dumps(s,indent=2));print(json.dumps(s,indent=2))
+ cp=Path(x.catalog);man=json.loads((cp/'catalog_manifest.json').read_text());cat=ParquetDataCatalog(str(cp));inst=next(z for z in cat.instruments() if z.id.symbol.value.replace('/','')=='XAUUSD');ticks=cat.query_quote_ticks(identifiers=[inst.id.value]);out=Path('results/amos_factory_fusion_v1_1')/x.experiment_id;out.mkdir(parents=True,exist_ok=True);m={x.mode:run(cat,inst,ticks,man,x.mode,out)};s=dict(verification_level='NAUTILUS_BT_RAW_BIDASK_PHASE3_SOURCE_ALIGNED_AB',nautilus_version=getattr(nautilus_trader,'__version__','unknown'),raw_tick_count=len(ticks),period=dict(start=man['start'],days=man['days'],end_exclusive=man['end_exclusive']),source_alignment=dict(reference='Sai310421/glowing-octo-disco scripts/pci_vwap_bt.py',known_discrepancy='RECONSTRUCTED_PY follows recovered pci_vwap_bt.py; SET_CANDIDATE follows recoverable .set semantics without inventing cycle logic'),modes=m,limitations=['Native spread replaces reference fixed spread; extra 0.04/side slippage and $7/lot commission charged manually.','Internal M5 quote-derived volume may differ from original OrkAD parquet tick volume.']);(out/'summary.json').write_text(json.dumps(s,indent=2));print(json.dumps(s,indent=2))
 if __name__=='__main__':main()

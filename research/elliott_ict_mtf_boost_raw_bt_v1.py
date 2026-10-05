@@ -298,7 +298,7 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True)
+    ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--dataset-id',default='xauusd-raw-bidask')
     a=ap.parse_args(); cat=ParquetDataCatalog(a.catalog)
     inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
     if inst is None:raise SystemExit('XAUUSD missing')
@@ -323,10 +323,15 @@ def main():
         'execution_note':'Nonpositive L1 sizes replaced with Quantity(1) only to permit native matching; raw prices/timestamps unchanged.',
         'margin_note':'MinMarginLevel is an approximate gross-notional/leverage diagnostic, not broker-specific hedged-margin accounting.',
         **st.result()}
+    def subset_metrics(rows):
+        p=np.array([x['pnl'] for x in rows],float); gp=p[p>0].sum() if len(p) else 0.0; gl=-p[p<0].sum() if len(p) else 0.0
+        return {'N':int(len(p)),'WR_pct':float((p>0).mean()*100) if len(p) else 0.0,'PF':float(gp/gl) if gl>0 else (math.inf if gp>0 else 0.0),'Net_USD':float(p.sum())}
+    result['per_tf']={str(tf):subset_metrics([x for x in st.closed if x['kind']=='BASE' and x['tf']==tf]) for tf in TF_MIN}
+    result['boost_only']=subset_metrics([x for x in st.closed if x['kind']=='BOOST'])
     (outdir/'result.json').write_text(json.dumps(result,indent=2,default=str),encoding='utf-8')
     manifest={'experiment_id':a.experiment_id,'verification_level':'NAUTILUS_BT','git_sha':os.getenv('GITHUB_SHA'),
         'github_run_id':os.getenv('GITHUB_RUN_ID'),'workflow':os.getenv('GITHUB_WORKFLOW'),'nautilus_version':'1.230.0',
-        'dataset_id':'external-xauusd-raw-bidask-20260225-20260526-v1','strategy_sha256':sha(__file__),
+        'dataset_id':a.dataset_id,'strategy_sha256':sha(__file__),
         'config_sha256':hashlib.sha256(json.dumps({'initial':INITIAL,'leverage':LEVERAGE,'fibs':FIBS,'boost_window_min':45,'base_qty':BASE_QTY,'boost_qty':BOOST_QTY},sort_keys=True).encode()).hexdigest(),
         'started_finished_utc':datetime.datetime.now(datetime.timezone.utc).isoformat()}
     (outdir/'manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')

@@ -1,0 +1,40 @@
+name: AMOS Virtual Binary Recovery Stack v9
+on:
+  push:
+    branches:
+      - research/virtual-binary-recovery-stack-v9
+    paths:
+      - 'research/virtual_binary_recovery_stack_v9.py'
+      - '.github/workflows/amos-virtual-binary-recovery-stack-v9.yml'
+  workflow_dispatch:
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  recovery-grid:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy scikit-learn
+      - name: Restore canonical Raw BidAsk catalog
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Guard Raw BidAsk only
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run Recovery Stack v9
+        run: |
+          cd research
+          python virtual_binary_recovery_stack_v9.py             --catalog ../"$RAW_CATALOG"             --out ../results/virtual_binary_recovery_stack_v9             --slippage-side 0.10
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-virtual-binary-recovery-stack-v9-${{ github.run_id }}
+          path: results/virtual_binary_recovery_stack_v9/
+          retention-days: 90

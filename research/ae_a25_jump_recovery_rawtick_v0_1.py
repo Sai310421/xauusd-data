@@ -11,7 +11,7 @@ from nautilus_trader.model import Money
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, BookType
-from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.objects import Quantity\nfrom nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy

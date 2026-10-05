@@ -1,9 +1,9 @@
-import json, math
+import json, math, os
 from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DATA = Path("csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv")
+DATA = Path(os.environ.get("XAU_HYBRID_DATA", "csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv"))
 OUT = Path("bt_results/xau_hybrid_v031")
 OUT.mkdir(parents=True, exist_ok=True)
 

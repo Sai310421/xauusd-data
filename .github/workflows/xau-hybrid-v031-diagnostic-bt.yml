@@ -1,6 +1,12 @@
 name: XAU Hybrid v0.31 Diagnostic BT
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/xau_hybrid_v031_bar_bt.py"
+      - ".github/workflows/xau-hybrid-v031-diagnostic-bt.yml"
   push:
     branches:
       - bt/xau-hybrid-v031-20261006

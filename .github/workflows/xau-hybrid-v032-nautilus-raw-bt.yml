@@ -1,6 +1,13 @@
 name: XAU Hybrid v0.32 Nautilus Raw BT
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/xau_hybrid_v032_bar_bt.py"
+      - "research/export_xauusd_m1_from_nautilus_raw.py"
+      - ".github/workflows/xau-hybrid-v032-nautilus-raw-bt.yml"
   push:
     branches:
       - bt/xau-hybrid-v032-20261006

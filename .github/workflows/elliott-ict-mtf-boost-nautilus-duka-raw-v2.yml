@@ -1,0 +1,111 @@
+name: Elliott ICT MTF Boost Nautilus Duka Raw BT v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/elliott_ict_mtf_boost_raw_bt_v1.py'
+      - '.github/workflows/elliott-ict-mtf-boost-nautilus-duka-raw-v2.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elliott-ict-mtf-duka-raw-v2
+  cancel-in-progress: false
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  CATALOG: catalog/elliott_duka_xau_90d
+  CACHE_KEY: elliott-duka-xau-20260225-91d-v2
+  EXPERIMENT_ID: elliott-ict-mtf-duka-${{ github.run_id }}
+  EVIDENCE: results/elliott-ict-mtf-raw/elliott-ict-mtf-duka-${{ github.run_id }}
+
+jobs:
+  raw-bidask-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Restore direct Dukascopy catalog cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Build direct Dukascopy BI5 QuoteTick catalog
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/build_raw_bidask_catalog_duka.py             --start 2026-02-25             --days 91             --catalog "${CATALOG}"             --workers 12             --symbols XAUUSD             --fresh
+
+      - name: Price continuity and Raw BidAsk gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE}"
+          python - <<'PY'
+          import json, os, math
+          import numpy as np
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          cat=ParquetDataCatalog(os.environ['CATALOG'])
+          inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+          assert inst is not None, 'XAUUSD missing'
+          ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+          assert len(ticks)>100000, 'too few raw ticks'
+          bid=np.fromiter((float(t.bid_price) for t in ticks),dtype=float,count=len(ticks))
+          ask=np.fromiter((float(t.ask_price) for t in ticks),dtype=float,count=len(ticks))
+          assert np.all(ask>=bid), 'crossed quotes'
+          med=float(np.median(bid))
+          pmin=float(bid.min()); pmax=float(bid.max())
+          # Fail closed on factor-scale corruption such as 51.xx inside a 5,1xx series.
+          assert pmin > med/5.0, f'price scale discontinuity: min={pmin} median={med}'
+          assert pmax < med*5.0, f'price scale discontinuity: max={pmax} median={med}'
+          # Sample consecutive jumps; XAU should never jump by a multiplicative factor intratick.
+          step=max(1,len(bid)//2_000_000)
+          b=bid[::step]
+          ratios=np.maximum(b[1:]/b[:-1],b[:-1]/b[1:])
+          max_ratio=float(np.max(ratios)) if len(ratios) else 1.0
+          assert max_ratio < 1.20, f'abnormal consecutive scale jump ratio={max_ratio}'
+          q={'status':'PASS','ticks':len(ticks),'median_bid':med,'min_bid':pmin,'max_bid':pmax,
+             'max_sampled_consecutive_ratio':max_ratio,'ohlc_resample_used':False,
+             'source':'direct Dukascopy BI5 Bid/Ask'}
+          Path(os.environ['EVIDENCE'],'data_quality.json').write_text(json.dumps(q,indent=2))
+          print(json.dumps(q,indent=2))
+          PY
+
+      - name: Save direct Dukascopy catalog cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Run Elliott ICT M1 M5 M15 + Triple Boost
+        run: |
+          python research/elliott_ict_mtf_boost_raw_bt_v1.py             --catalog "${CATALOG}"             --experiment-id "${EXPERIMENT_ID}"             --dataset-id "dukascopy-bi5-xauusd-20260225-91d-v2"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliott-ict-mtf-duka-nautilus-raw-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 90

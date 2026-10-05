@@ -1,0 +1,106 @@
+name: Elliott ICT MTF Boost Nautilus Raw BT v1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/elliott_ict_mtf_boost_raw_bt_v1.py'
+      - '.github/workflows/elliott-ict-mtf-boost-nautilus-raw-bt-v1.yml'
+      - 'bt_requests/elliott-ict-mtf-boost-v1.request'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elliott-ict-mtf-boost-raw-v1
+  cancel-in-progress: false
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  CATALOG: catalog/amos_complete_external_raw
+  INPUT_DIR: external_raw/xauusd
+  START: '2026-02-25T00:00:00Z'
+  END: '2026-05-26T23:59:59.999Z'
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+  EXPERIMENT_ID: elliott-ict-mtf-boost-${{ github.run_id }}
+  EVIDENCE: results/elliott-ict-mtf-raw/elliott-ict-mtf-boost-${{ github.run_id }}
+
+jobs:
+  raw-bidask-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Restore verified Raw BidAsk catalog cache
+        id: catalog-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Download upstream raw parquet when cache missing
+        if: steps.catalog-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${INPUT_DIR}"
+          base='https://raw.githubusercontent.com/simom1/XAUUSD-history/main/2026'
+          for f in xauusd_2026_02.parquet xauusd_2026_03_early.parquet xauusd_2026_03_mid.parquet xauusd_2026_03_late.parquet xauusd_2026_04.parquet xauusd_2026_05.parquet
+          do
+            curl -fL --retry 5 --retry-delay 3 "${base}/${f}" -o "${INPUT_DIR}/${f}"
+          done
+
+      - name: Build Nautilus QuoteTick catalog when cache missing
+        if: steps.catalog-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/import_external_xauusd_raw_parquet_to_nautilus.py             --input-dir "${INPUT_DIR}"             --catalog "${CATALOG}"             --start "${START}"             --end "${END}"             --manifest "/tmp/catalog_manifest.json"
+
+      - name: Raw BidAsk fail-closed gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+          cat=ParquetDataCatalog(os.environ['CATALOG'])
+          inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+          assert inst is not None, 'XAUUSD instrument missing'
+          ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+          assert ticks and len(ticks)>100000, 'raw QuoteTick catalog missing/incomplete'
+          assert all(float(t.ask_price)>=float(t.bid_price) for t in ticks[:10000]), 'invalid bid/ask sample'
+          print(json.dumps({'status':'PASS','ticks':len(ticks),'instrument':str(inst.id),'ohlc_resample_used':False},indent=2))
+          PY
+
+      - name: Save verified catalog cache
+        if: steps.catalog-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Run Elliott ICT M1 M5 M15 + Triple Boost Raw BT
+        run: |
+          python research/elliott_ict_mtf_boost_raw_bt_v1.py             --catalog "${CATALOG}"             --experiment-id "${EXPERIMENT_ID}"
+
+      - name: Upload canonical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliott-ict-mtf-boost-nautilus-raw-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 90

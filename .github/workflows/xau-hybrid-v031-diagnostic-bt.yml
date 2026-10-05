@@ -1,0 +1,32 @@
+name: XAU Hybrid v0.31 Diagnostic BT
+
+on:
+  push:
+    branches:
+      - bt/xau-hybrid-v031-20261006
+    paths:
+      - "scripts/xau_hybrid_v031_bar_bt.py"
+      - ".github/workflows/xau-hybrid-v031-diagnostic-bt.yml"
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install pandas numpy
+      - name: Run backtest
+        run: python scripts/xau_hybrid_v031_bar_bt.py
+      - name: Print report
+        run: cat bt_results/xau_hybrid_v031/REPORT.md
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: xau-hybrid-v031-diagnostic-bt
+          path: bt_results/xau_hybrid_v031/

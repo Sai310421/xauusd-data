@@ -157,7 +157,8 @@ def run(name, cb_mode="off", initial_balance=1000.0):
     crt_dir=0; crt_score=0; crt_start=None; cycle_dir=0; legs=[False]*5
     pos=[]; balance=initial_balance; peak=initial_balance; maxdd=0; halted=False
     trades_opened=0; cb_count=0; leg_count=[0]*5; state_counts={s:0 for s in ["SEARCH","RANGE","TRANSITION","EXPANSION","TREND"]}
-    risk_reason=""; equity_curve=[]; last_m5_time=None\n    recovery_armed=False; recovery_armed_time=None; basket_results=[]; exit_counts={"BASKET_TP":0,"RECOVERY_EXIT":0,"TREND_END":0,"RISK_STOP":0,"FORCED_EOT":0}
+    risk_reason=""; equity_curve=[]; last_m5_time=None
+    recovery_armed=False; recovery_armed_time=None; basket_results=[]; exit_counts={"BASKET_TP":0,"RECOVERY_EXIT":0,"TREND_END":0,"RISK_STOP":0,"FORCED_EOT":0}
 
     def floating(price):
         return sum((price-p["entry"])*p["dir"]*100.0*p["lot"] for p in pos)

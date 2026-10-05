@@ -158,7 +158,181 @@ def run(name, cb_mode="off", initial_balance=1000.0):
     pos=[]; balance=initial_balance; peak=initial_balance; maxdd=0; halted=False
     trades_opened=0; cb_count=0; leg_count=[0]*5; state_counts={s:0 for s in ["SEARCH","RANGE","TRANSITION","EXPANSION","TREND"]}
     risk_reason=""; equity_curve=[]; last_m5_time=None
-    recovery_armed=False; recovery_armed_time=None; basket_
+    recovery_armed=False; recovery_armed_time=None; basket_results=[]; exit_counts={"BASKET_TP":0,"RECOVERY_EXIT":0,"TREND_END":0,"RISK_STOP":0,"FORCED_EOT":0}
+
+    def floating(price):
+        return sum((price-p["entry"])*p["dir"]*100.0*p["lot"] for p in pos)
+    def inv():
+        L=sum(p["lot"] for p in pos if p["dir"]>0); S=sum(p["lot"] for p in pos if p["dir"]<0)
+        return L,S,L-S
+    def openpos(d,lot,kind):
+        nonlocal trades_opened,cb_count
+        if halted or lot<=0:return False
+        pos.append({"dir":d,"lot":lot,"entry":price,"kind":kind})
+        trades_opened+=1
+        if kind=="CB":cb_count+=1
+        return True
+    def openleg(d,k):
+        if k<0 or k>=5 or k>=P["MaxLegs"] or legs[k]: return False
+        ok=openpos(d,P["BaseTrendLot"],f"Leg{k+1}")
+        if ok: legs[k]=True; leg_count[k]+=1
+        return ok
+
+    def closebasket(reason, px):
+        nonlocal balance, state, range_locked, rh, rl, req, crt_dir, crt_score, crt_start, cycle_dir, legs
+        nonlocal recovery_armed, recovery_armed_time
+        if not pos:
+            return 0.0
+        pnl=sum((px-p["entry"])*p["dir"]*100.0*p["lot"] for p in pos)
+        balance += pnl
+        pos.clear()
+        basket_results.append(float(pnl))
+        exit_counts[reason]=exit_counts.get(reason,0)+1
+        range_locked=False; rh=rl=req=np.nan
+        crt_dir=0; crt_score=0; crt_start=None; cycle_dir=0; legs=[False]*5
+        recovery_armed=False; recovery_armed_time=None
+        state="SEARCH"
+        return pnl
+
+    for t,row1 in m1.iterrows():
+        price=float(row1.close)
+        r5=m5a.loc[t]; r15=m15a.loc[t]
+        if pd.isna(r5.adx) or pd.isna(r15.rsi): continue
+        state_counts[state]+=1
+        eq=balance+floating(price); peak=max(peak,eq)
+        dd=100*(peak-eq)/peak if peak>0 else 0; maxdd=max(maxdd,dd)
+        equity_curve.append((t,eq,dd,len(pos)))
+        if dd>=P["MaxAccountDDPercent"] or floating(price)<=-P["MaxBasketLossUSD"]:
+            curp=floating(price)
+            risk_reason=f"DD {dd:.2f}%" if dd>=P["MaxAccountDDPercent"] else f"Basket {curp:.2f}"
+            closebasket("RISK_STOP", price)
+            halted=True
+            break
+
+        # v0.32 normal exit engine, evaluated before new entries.
+        if pos:
+            curp=floating(price)
+            if P["EnableBasketTP"] and P["BasketTakeProfitUSD"]>0 and curp>=P["BasketTakeProfitUSD"]:
+                closebasket("BASKET_TP", price)
+                continue
+            if P["EnableRecoveryExit"] and (not recovery_armed) and P["RecoveryArmLossUSD"]>0 and curp<=-P["RecoveryArmLossUSD"]:
+                recovery_armed=True; recovery_armed_time=t
+            if P["EnableRecoveryExit"] and recovery_armed and curp>=P["RecoveryExitProfitUSD"]:
+                held=(t-recovery_armed_time).total_seconds() if recovery_armed_time is not None else 0
+                if held>=P["RecoveryMinHoldSeconds"]:
+                    closebasket("RECOVERY_EXIT", price)
+                    continue
+
+        dhtf=0
+        if r15.rsi>P["RSI_Mid"] and macd_aligned(r15,1): dhtf=1
+        elif r15.rsi<P["RSI_Mid"] and macd_aligned(r15,-1): dhtf=-1
+
+        expansion=lambda d: d!=0 and r5.adx>P["ADX_Trend"] and r5.adx>m5.adx.shift(1).reindex([r5.name]).iloc[0] and r5.atr_ratio>1.0
+        trend_end = r5.adx<P["ADX_Range"] and r5.er20<0.25 and r5.atr_ratio<P["ATR_RangeRatio"]
+
+        # New M5 bar marker for pattern calculations
+        mt = m5.index[m5.index<=t][-1] if len(m5.index[m5.index<=t]) else None
+        mi = m5.index.get_loc(mt) if mt is not None else None
+
+        if state=="SEARCH":
+            if bool(r5.range_state) and bool(r5.range_width_ok):
+                rh=float(r5.range_hi); rl=float(r5.range_lo); req=float(r5.range_eq); range_locked=True; state="RANGE"
+                continue
+            if dhtf and expansion(dhtf) and r5.er20>=P["TrendERMin"]:
+                cycle_dir=dhtf; crt_dir=dhtf; legs=[False]*5; state="TREND"
+        elif state=="RANGE":
+            sweep=0
+            if range_locked:
+                b=float(r5.atr14)*P["SweepATRBuffer"]
+                if r5.low<rl-b and r5.close>rl: sweep=1
+                elif r5.high>rh+b and r5.close<rh: sweep=-1
+            if sweep:
+                crt_dir=sweep; crt_start=t; crt_score=25; state="TRANSITION"
+        elif state=="TRANSITION":
+            if crt_start is None or (t-crt_start).total_seconds()>P["CRTTimeoutMinutes"]*60:
+                crt_dir=0; crt_score=0; range_locked=False; state="SEARCH"; continue
+            f=detect_m5_features(mi,crt_dir)
+            crt_score=25+20*f["dis"]+15*f["cisd"]+10*f["br"]+10*f["ifvg"]+5*f["bpr"]+5*f["fvg"]+5*bool(r5.adx_expanding)+5*(r5.atr_ratio>1.0)
+            if (crt_dir>0 and bool(r15.rsi_reclaim_up)) or (crt_dir<0 and bool(r15.rsi_reclaim_dn)): crt_score+=5
+            eqbreak=(r5.close>req) if crt_dir>0 else (r5.close<req)
+            if crt_score>=P["CRTThreshold"] and eqbreak:
+                cycle_dir=crt_dir; legs=[False]*5; state="EXPANSION"
+        elif state=="EXPANSION":
+            if crt_dir==0: continue
+            if not legs[0]:
+                initial=((crt_dir>0 and (bool(r15.rsi_reclaim_up) or bool(row1.stoch_reclaim_up))) or
+                         (crt_dir<0 and (bool(r15.rsi_reclaim_dn) or bool(row1.stoch_reclaim_dn))) or
+                         (macd_aligned(r15,crt_dir) and ((bool(row1.m1_break_up) if crt_dir>0 else bool(row1.m1_break_dn)) or expansion(crt_dir))))
+                if initial or crt_score>=P["CRTThreshold"]: openleg(crt_dir,0)
+                if not legs[0]: continue
+            if expansion(crt_dir): state="TREND"
+        elif state=="TREND":
+            d=cycle_dir
+            if d:
+                initial=((d>0 and (bool(r15.rsi_reclaim_up) or bool(row1.stoch_reclaim_up))) or
+                         (d<0 and (bool(r15.rsi_reclaim_dn) or bool(row1.stoch_reclaim_dn))) or
+                         (macd_aligned(r15,d) and ((bool(row1.m1_break_up) if d>0 else bool(row1.m1_break_dn)) or expansion(d))))
+                if not legs[0] and initial: openleg(d,0)
+                if not legs[1] and ((d>0 and bool(row1.stoch_reclaim_up)) or (d<0 and bool(row1.stoch_reclaim_dn))): openleg(d,1)
+                if not legs[2] and ((d>0 and bool(row1.stoch50_up)) or (d<0 and bool(row1.stoch50_dn))): openleg(d,2)
+                if not legs[3] and ((d>0 and bool(row1.m1_break_up)) or (d<0 and bool(row1.m1_break_dn))): openleg(d,3)
+                if not legs[4] and mi is not None and mi>=3:
+                    m5br=(r5.close>m5.iloc[mi-2:mi].high.max()) if d>0 else (r5.close<m5.iloc[mi-2:mi].low.min())
+                    if m5br and expansion(d): openleg(d,4)
+            if trend_end:
+                if P["CloseOnTrendEnd"] and pos:
+                    closebasket("TREND_END", price)
+                else:
+                    crt_dir=0; crt_score=0; range_locked=False; cycle_dir=0; legs=[False]*5; state="SEARCH"
+
+        # Conservative CB approximation: max one entry per M1 bar, vs EA target every 5 sec.
+        if cb_mode=="1min" and state in ("RANGE","TRANSITION"):
+            L,S,N=inv()
+            total=L+S
+            if total+P["CBLot"]<=P["CBMaxTotalLots"]:
+                mom=(1 if row1.close>m1.close.shift(1).loc[t] else -1)+(1 if row1.close>m1.close.shift(3).loc[t] else -1)
+                if row1.close>m1.high.shift(1).loc[t]: mom+=0.5
+                if row1.close<m1.low.shift(1).loc[t]: mom-=0.5
+                mr=0
+                if range_locked and rh>rl: mr=-((price-req)/((rh-rl)/2))
+                invs=0 if abs(N)<1e-12 else -max(-1,min(1,N/P["CBMaxNetLots"]))
+                crtb=0 if crt_dir==0 or crt_score<=0 else crt_dir*max(0,min(1,crt_score/P["CRTThreshold"]))
+                score=mom*P["CBWeightMomentum"]+mr*P["CBWeightMeanRev"]+invs*P["CBWeightInventory"]+crtb*P["CBWeightCRTMax"]
+                pref=1 if score>=0 else -1
+                lot=P["CBLot"]
+                if crt_dir and crt_score>0:
+                    prog=max(0,min(1,crt_score/P["CRTThreshold"]))
+                    lot=P["CBLot"]*max(P["CBMinMultiplier"],1-prog)
+                def can(d):
+                    fut=N+lot*(1 if d>0 else -1)
+                    return total+lot<=P["CBMaxTotalLots"] and abs(fut)<=P["CBMaxNetLots"]
+                dd= pref if can(pref) else (-pref if can(-pref) else 0)
+                if dd: openpos(dd,lot,"CB")
+
+    # End-of-test mark-to-market close for complete accounting.
+    last=float(m1.close.iloc[-1]) if len(m1) else 0.0
+    if pos:
+        closebasket("FORCED_EOT", last)
+    ret=100*(balance/initial_balance-1)
+    gp=sum(x for x in basket_results if x>0); gl=-sum(x for x in basket_results if x<0)
+    pf=(gp/gl) if gl>0 else (float("inf") if gp>0 else 0.0)
+    wins=sum(1 for x in basket_results if x>0)
+    wr=100*wins/len(basket_results) if basket_results else 0.0
+    out={
+        "scenario":name,"initial_balance":initial_balance,"final_balance":round(balance,2),
+        "return_pct":round(ret,3),"max_equity_dd_pct":round(maxdd,3),
+        "risk_halted":halted,"risk_reason":risk_reason,"orders_opened":trades_opened,
+        "cb_orders":cb_count,"leg_orders":sum(leg_count),"leg_counts":leg_count,
+        "basket_closes":len(basket_results),"basket_win_rate_pct":round(wr,3),
+        "basket_profit_factor":("inf" if math.isinf(pf) else round(pf,4)),
+        "gross_profit":round(gp,2),"gross_loss":round(gl,2),
+        "exit_counts":exit_counts,"state_minutes":state_counts,
+        "note":"PF/WR are basket-close metrics. v0.33 sweep runs CB OFF only."
+    }
+    ec=pd.DataFrame(equity_curve,columns=["time","equity","dd_pct","open_positions"])
+    ec.to_csv(OUT/f"equity_{name}.csv",index=False)
+    return out
+
 def run_cfg(name, **overrides):
     old={k:P[k] for k in overrides}
     P.update(overrides)
@@ -187,19 +361,20 @@ for adx_trend in [23.0, 28.0]:
                         MaxLegs=max_legs,
                     ))
 
+def pfv(x):
+    return 999.0 if x["basket_profit_factor"]=="inf" else float(x["basket_profit_factor"])
+
+def passed(x):
+    return x["return_pct"]>=0.0 and pfv(x)>=1.2 and x["max_equity_dd_pct"]<=10.0
+
 def score(x):
-    pf=x["basket_profit_factor"]
-    pfv=999.0 if pf=="inf" else float(pf)
-    passed=(x["return_pct"]>=0.0 and pfv>=1.2 and x["max_equity_dd_pct"]<=10.0)
-    return (1 if passed else 0, x["return_pct"], pfv, -x["max_equity_dd_pct"])
+    return (1 if passed(x) else 0, x["return_pct"], pfv(x), -x["max_equity_dd_pct"])
 
 ranked=sorted(results,key=score,reverse=True)
 top=ranked[:10]
 for i,x in enumerate(top,1):
     x["rank"]=i
-    pf=x["basket_profit_factor"]
-    pfv=999.0 if pf=="inf" else float(pf)
-    x["pass_core_gate"]=bool(x["return_pct"]>=0.0 and pfv>=1.2 and x["max_equity_dd_pct"]<=10.0)
+    x["pass_core_gate"]=passed(x)
 
 (OUT/"summary.json").write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding="utf-8")
 pd.DataFrame(results).to_csv(OUT/"summary.csv",index=False)
@@ -222,13 +397,9 @@ for x in top:
         f"- Params: {x['params']}",
         ""
     ]
-passes=[x for x in ranked if (x["return_pct"]>=0 and (999.0 if x["basket_profit_factor"]=="inf" else float(x["basket_profit_factor"]))>=1.2 and x["max_equity_dd_pct"]<=10.0)]
+passes=[x for x in ranked if passed(x)]
 md += ["## Gate result",f"- Passing configurations: {len(passes)} / {len(results)}"]
-if passes:
-    b=passes[0]
-    md += [f"- Best pass: {b['scenario']} | Return {b['return_pct']}% | DD {b['max_equity_dd_pct']}% | PF {b['basket_profit_factor']} | WR {b['basket_win_rate_pct']}%"]
-else:
-    b=ranked[0]
-    md += [f"- No full pass. Best candidate: {b['scenario']} | Return {b['return_pct']}% | DD {b['max_equity_dd_pct']}% | PF {b['basket_profit_factor']} | WR {b['basket_win_rate_pct']}%"]
+b=passes[0] if passes else ranked[0]
+md += [f"- Best: {b['scenario']} | Return {b['return_pct']}% | DD {b['max_equity_dd_pct']}% | PF {b['basket_profit_factor']} | WR {b['basket_win_rate_pct']}%"]
 (OUT/"REPORT.md").write_text("\n".join(md),encoding="utf-8")
-print(json.dumps({"tested":len(results),"passes":len(passes),"best":ranked[0]},indent=2))
+print(json.dumps({"tested":len(results),"passes":len(passes),"best":b},indent=2))

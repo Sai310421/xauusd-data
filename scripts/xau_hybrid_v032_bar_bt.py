@@ -348,6 +348,6 @@ for x in results:
     md += [f"## {x['scenario']}",f"- Return: {x['return_pct']}%",
            f"- Max equity DD: {x['max_equity_dd_pct']}%",f"- Orders: {x['orders_opened']} (CB {x['cb_orders']}, legs {x['leg_orders']})",
            f"- Risk halted: {x['risk_halted']} {x['risk_reason']}",f"- Basket PF / WR: {x['basket_profit_factor']} / {x['basket_win_rate_pct']}%",f"- Basket closes: {x['basket_closes']} {x['exit_counts']}",""]
-md += ["## Structural finding","v0.32 adds Basket TP, recovery-to-positive exit, and TrendEnded basket close. PF/WR are therefore reported at basket-close level. The CB path is still sampled once per M1 bar in this diagnostic, so true 5-second CB performance requires direct tick-driven strategy execution.""]
+md += ["## Structural finding","v0.32 adds Basket TP, recovery-to-positive exit, and TrendEnded basket close. PF/WR are therefore reported at basket-close level. The CB path is still sampled once per M1 bar in this diagnostic, so true 5-second CB performance requires direct tick-driven strategy execution."]
 (OUT/"REPORT.md").write_text("\n".join(md),encoding="utf-8")
 print(json.dumps(results,indent=2))

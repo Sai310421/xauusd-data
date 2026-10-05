@@ -173,7 +173,7 @@ def main():
     out=Path(a.out); out.mkdir(parents=True,exist_ok=True)
     pd.DataFrame(val_rows).to_csv(out/"validation_thresholds.csv",index=False)
     pd.DataFrame(diags).to_csv(out/"oos_kpi.csv",index=False)
-    pd.DataFrame({"ts":oos.index.astype(str),"mode_true":oos.mode.values,"p_cont":pc,"p_rev":pr,"side":side,
+    pd.DataFrame({"ts":oos.index.astype(str),"mode_true":oos["mode"].values,"p_cont":pc,"p_rev":pr,"side":side,
                   "htf_trend":np.sign(oos["phase_htf_trend"].values).astype(int),
                   "long_pnl":oos.long_pnl.values,"short_pnl":oos.short_pnl.values}).to_csv(out/"oos_predictions.csv",index=False)
 

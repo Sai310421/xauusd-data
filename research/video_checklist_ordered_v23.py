@@ -1,11 +1,11 @@
 # v23 research wrapper: ordered/latching checklist audit over v22.
 # This file is backtest-only. It does not connect to a broker or place live orders.
-import importlib.util, json, shutil
+import importlib.util, json, shutil, sys
 from pathlib import Path
 
 P=Path(__file__).with_name("video_checklist_core_v22.py")
 spec=importlib.util.spec_from_file_location("v22",P)
-m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m=importlib.util.module_from_spec(spec); sys.modules[spec.name]=m; spec.loader.exec_module(m)
 
 # Video review shows a sequence, not a simultaneous all-green AND.
 # Remove v22's arbitrary 60m window; retain the pre-existing M5 setup lifetime.

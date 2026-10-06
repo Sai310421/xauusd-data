@@ -1,0 +1,222 @@
+name: Elliott ICT MTF Boost Nautilus Duka Raw BT v3 Split
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/elliott_ict_mtf_boost_raw_bt_v1.py'
+      - '.github/workflows/elliott-ict-mtf-boost-nautilus-duka-raw-v3-split.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elliott-ict-mtf-duka-raw-v3-split
+  cancel-in-progress: false
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+
+jobs:
+  build-raw-parts:
+    name: Build Raw Part ${{ matrix.part }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: p1
+            start: '2026-02-25'
+            days: '30'
+          - part: p2
+            start: '2026-03-27'
+            days: '30'
+          - part: p3
+            start: '2026-04-26'
+            days: '31'
+    env:
+      CATALOG: catalog/elliott_duka_${{ matrix.part }}
+      CACHE_KEY: elliott-duka-xau-${{ matrix.start }}-${{ matrix.days }}d-v3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Restore part cache
+        id: part-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Build direct Dukascopy BI5 part
+        if: steps.part-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/build_raw_bidask_catalog_duka.py             --start "${{ matrix.start }}"             --days "${{ matrix.days }}"             --catalog "${CATALOG}"             --workers 16             --symbols XAUUSD             --fresh
+
+      - name: Part continuity gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          import numpy as np
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          cat=ParquetDataCatalog(os.environ['CATALOG'])
+          inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+          assert inst is not None, 'XAUUSD missing'
+          ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+          assert len(ticks)>100000, f'too few raw ticks: {len(ticks)}'
+          bid=np.fromiter((float(t.bid_price) for t in ticks),dtype=float,count=len(ticks))
+          ask=np.fromiter((float(t.ask_price) for t in ticks),dtype=float,count=len(ticks))
+          assert np.all(ask>=bid), 'crossed quotes'
+          med=float(np.median(bid)); pmin=float(bid.min()); pmax=float(bid.max())
+          assert pmin > med/5.0, f'price scale discontinuity: min={pmin} median={med}'
+          assert pmax < med*5.0, f'price scale discontinuity: max={pmax} median={med}'
+          step=max(1,len(bid)//1_000_000)
+          b=bid[::step]
+          ratios=np.maximum(b[1:]/b[:-1],b[:-1]/b[1:])
+          max_ratio=float(np.max(ratios)) if len(ratios) else 1.0
+          assert max_ratio < 1.20, f'abnormal consecutive scale jump ratio={max_ratio}'
+          out={'status':'PASS','ticks':len(ticks),'median_bid':med,'min_bid':pmin,'max_bid':pmax,
+               'max_sampled_consecutive_ratio':max_ratio,'source':'direct Dukascopy BI5 Bid/Ask'}
+          Path(os.environ['CATALOG'],'part_quality.json').write_text(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Save part cache
+        if: steps.part-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+
+      - name: Upload part catalog
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliott-duka-${{ matrix.part }}
+          path: ${{ env.CATALOG }}
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 7
+
+  run-nautilus:
+    needs: build-raw-parts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      EXPERIMENT_ID: elliott-ict-mtf-duka-v3-${{ github.run_id }}
+      MERGED: catalog/elliott_duka_merged
+      EVIDENCE: results/elliott-ict-mtf-raw/elliott-ict-mtf-duka-v3-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Download all raw parts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: elliott-duka-p*
+          path: raw_parts
+
+      - name: Merge Nautilus catalogs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, shutil, os
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          parts=[Path('raw_parts/elliott-duka-p1'),Path('raw_parts/elliott-duka-p2'),Path('raw_parts/elliott-duka-p3')]
+          out=Path(os.environ['MERGED'])
+          if out.exists(): shutil.rmtree(out)
+          out.mkdir(parents=True,exist_ok=True)
+          outcat=ParquetDataCatalog(str(out.resolve()))
+          total=0
+          first=None; last=None
+          instrument=None
+          for p in parts:
+            cat=ParquetDataCatalog(str(p.resolve()))
+            inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+            assert inst is not None, f'XAUUSD missing in {p}'
+            if instrument is None:
+              instrument=inst
+              outcat.write_data([instrument])
+            ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+            assert ticks, f'no ticks in {p}'
+            outcat.write_data(ticks)
+            total += len(ticks)
+            first = int(ticks[0].ts_event) if first is None else min(first,int(ticks[0].ts_event))
+            last = int(ticks[-1].ts_event) if last is None else max(last,int(ticks[-1].ts_event))
+          m={'status':'COMPLETE','parts':3,'ticks':total,'first_ts_ns':first,'last_ts_ns':last,
+             'source':'direct Dukascopy BI5 Bid/Ask','ohlc_resample_used':False}
+          (out/'catalog_manifest.json').write_text(json.dumps(m,indent=2))
+          print(json.dumps(m,indent=2))
+          PY
+
+      - name: Final continuity gate across part boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE}"
+          python - <<'PY'
+          import json, os
+          import numpy as np
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          cat=ParquetDataCatalog(os.environ['MERGED'])
+          inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+          ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+          bid=np.fromiter((float(t.bid_price) for t in ticks),dtype=float,count=len(ticks))
+          ask=np.fromiter((float(t.ask_price) for t in ticks),dtype=float,count=len(ticks))
+          assert np.all(ask>=bid), 'crossed quotes'
+          med=float(np.median(bid)); pmin=float(bid.min()); pmax=float(bid.max())
+          assert pmin > med/5.0 and pmax < med*5.0, f'scale failure min={pmin} med={med} max={pmax}'
+          step=max(1,len(bid)//2_000_000); b=bid[::step]
+          ratios=np.maximum(b[1:]/b[:-1],b[:-1]/b[1:])
+          max_ratio=float(np.max(ratios)) if len(ratios) else 1.0
+          assert max_ratio < 1.20, f'abnormal scale jump ratio={max_ratio}'
+          q={'status':'PASS','ticks':len(ticks),'median_bid':med,'min_bid':pmin,'max_bid':pmax,
+             'max_sampled_consecutive_ratio':max_ratio,'ohlc_resample_used':False,
+             'source':'direct Dukascopy BI5 Bid/Ask split-merged'}
+          Path(os.environ['EVIDENCE'],'data_quality.json').write_text(json.dumps(q,indent=2))
+          print(json.dumps(q,indent=2))
+          PY
+
+      - name: Run Elliott ICT M1 M5 M15 plus Triple Boost
+        run: |
+          python research/elliott_ict_mtf_boost_raw_bt_v1.py             --catalog "${MERGED}"             --experiment-id "${EXPERIMENT_ID}"             --dataset-id "dukascopy-bi5-xauusd-20260225-20260526-v3-split"
+
+      - name: Upload canonical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliott-ict-mtf-duka-v3-nautilus-raw-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 90

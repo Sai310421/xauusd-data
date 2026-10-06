@@ -67,9 +67,9 @@ def executable(xs):
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--experiment-id',required=True);a=ap.parse_args()
  cat=ParquetDataCatalog(a.catalog)
- raw=(cat.query_quote_ticks(identifiers=[next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD').id.value]) if hasattr(cat,'query_quote_ticks') else [])
- if not raw: raise SystemExit('no raw XAUUSD QuoteTicks')
  inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD')
+ raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+ if not raw: raise SystemExit('no raw XAUUSD QuoteTicks')
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
  eng.add_instrument(inst);eng.add_data(executable(raw));st=TrendPursuit(Cfg(instrument_id=inst.id));eng.add_strategy(st);eng.run();eng.end()

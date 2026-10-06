@@ -2,19 +2,25 @@ name: AMOS Checklist Parity v1.3 Ordered Patterns
 on:
   push:
     branches: [feat/amos-checklist-parity-v1-2]
-    paths: ['research/amos_checklist_parity_v1_3/**','.github/workflows/amos-checklist-parity-v1-3.yml']
+    paths:
+      - 'research/amos_checklist_parity_v1_3/**'
+      - '.github/workflows/amos-checklist-parity-v1-3.yml'
   workflow_dispatch:
-permissions: {contents: read}
+permissions:
+  contents: read
 jobs:
   ordered-screen:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - run: pip install pandas numpy
       - run: python research/amos_checklist_parity_v1_3/ordered_pattern_bt.py --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv --out results/amos-checklist-parity-v1-3
-      - name: Print P5 hourly KPI\n        run: cat results/amos-checklist-parity-v1-3/p5_hourly_kpi.csv\n      - uses: actions/upload-artifact@v4
+      - name: Print P5 hourly KPI
+        run: cat results/amos-checklist-parity-v1-3/p5_hourly_kpi.csv
+      - uses: actions/upload-artifact@v4
         with:
           name: amos-checklist-parity-v1-3
           path: results/amos-checklist-parity-v1-3/

@@ -1,0 +1,37 @@
+name: AMOS Checklist Parity v1.2 Matrix
+
+on:
+  push:
+    branches:
+      - feat/amos-checklist-parity-v1-2
+    paths:
+      - 'research/amos_checklist_parity_v1_2/**'
+      - '.github/workflows/amos-checklist-parity-v1-2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pandas numpy
+      - name: Run 4/8 5/8 6/8 x all mandatory masks
+        run: |
+          python research/amos_checklist_parity_v1_2/checklist_matrix_bt.py \
+            --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/amos-checklist-parity-v1-2 \
+            --thresholds 4,5,6 \
+            --risk-pct 0.35 \
+            --min-trades-rank 20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-checklist-parity-v1-2-matrix
+          path: results/amos-checklist-parity-v1-2/
+          retention-days: 90

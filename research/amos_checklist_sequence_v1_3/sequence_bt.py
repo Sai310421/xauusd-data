@@ -166,15 +166,23 @@ def collect_events(df,h15,ref_hi,ref_lo,lookback,mss_body_atr,fib_lo,fib_hi,entr
             state='IDLE'
     return ev,stages
 
+def cache_outcomes(df,events):
+    for e in events:
+        for rr in (2.0,3.0,4.0):
+            r,ex=simulate_trade(df,e,rr)
+            e[f'out_{int(rr)}R']=r
+            e[f'exit_{int(rr)}R']=ex
+
 def evaluate(df,events,rr,ctx_min,require_runway,risk=.35):
     eq=100.; peak=100.; maxdd=0.; w=l=be=0; gw=gl=0.; sumr=0.; end_idx=-1
     accepted=0
+    rk=int(rr)
     for e in events:
         if e['entry_idx']<=end_idx: continue
         if e['ctx_count']<ctx_min: continue
         if require_runway and e['runway_rr']<rr: continue
         accepted+=1
-        r,ex=simulate_trade(df,e,rr); end_idx=ex
+        r,ex=e[f'out_{rk}R'],e[f'exit_{rk}R']; end_idx=ex
         if r>0:w+=1;gw+=r
         elif r<0:l+=1;gl+=1
         else:be+=1
@@ -200,6 +208,7 @@ def main():
     all_events=[]; stage_rows=[]; result_rows=[]
     for lb,mb,fibs,emode in core_grid:
         ev,st=collect_events(df,h15,ref_hi,ref_lo,lb,mb,fibs[0],fibs[1],emode)
+        cache_outcomes(df,ev)
         all_events.extend(ev)
         stage_rows.append(dict(lookback=lb,mss_body_atr=mb,fib_lo=fibs[0],fib_hi=fibs[1],entry_mode=emode,**st))
         for rr,ctx,runway in product([2.0,3.0,4.0],[0,1,2],[False,True]):

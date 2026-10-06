@@ -106,7 +106,7 @@ class VideoCISDRaw(Strategy):
    touch=b['h']>=self.cisd if self.di<0 else b['l']<=self.cisd;hold=b['c']<=self.cisd if self.di<0 else b['c']>=self.cisd
    if touch and hold and i>self.confirm_i and self.pos is None:
     # signal at closed M15 bar; actual entry is next raw quote, preserving no-lookahead
-    self.pos={'pending':True,'di':self.di,'sl_ref':self.sweep,'atr':a,'route':self.route,'signal':str(b['t'])};self.reset()
+    self.pos={'pending':True,'di':self.di,'sl_ref':self.sweep,'atr':a,'route':self.route,'signal':str(b['t']),'acc_hi':self.acc_hi,'acc_lo':self.acc_lo};self.reset()
    elif self.age>6:self.reset()
  def on_quote_tick(self,t:QuoteTick):
   bid,ask=f(t.bid_price),f(t.ask_price);ts=nsdt(t.ts_event)
@@ -122,7 +122,7 @@ class VideoCISDRaw(Strategy):
   if self.pos and self.pos.get('pending'):
    p=self.pos;entry=ask if p['di']>0 else bid;sl=p['sl_ref']-p['atr']*.05 if p['di']>0 else p['sl_ref']+p['atr']*.05
    # target uses completed bars only
-   self.di=p['di'];self.acc_hi=self.acc_hi if self.acc_hi is not None else entry+abs(entry-sl)*2;self.acc_lo=self.acc_lo if self.acc_lo is not None else entry-abs(entry-sl)*2
+   self.di=p['di'];self.acc_hi=p['acc_hi'];self.acc_lo=p['acc_lo']
    z=self.target(len(self.bars)-1,entry,sl)
    if z is None:tp=entry+p['di']*abs(entry-sl)*2;rr=2.
    else:_,tp,rr=z
@@ -144,7 +144,7 @@ def main():
  raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value]);assert raw
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
- eng.add_instrument(inst);eng.add_data(executable(raw));st=VideoCISDRaw(Cfg(instrument_id=inst.id));eng.add_strategy(st);eng.run();eng.end()
- out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_5_NAUTILUS_RAW_BIDASK','raw_ticks':len(raw),'ohlc_resample_used_for_execution':False,'signal_bars':'M15 built causally from raw midpoint quotes','execution':'next QuoteTick Bid/Ask after closed M15 signal','initial_usd':1000,'leverage':2000,**metrics(st.rs)}
+ eng.add_instrument(inst);eng.add_data(raw);st=VideoCISDRaw(Cfg(instrument_id=inst.id));eng.add_strategy(st);eng.run();eng.end()
+ out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_6_NAUTILUS_RAW_BIDASK_TARGET_PRESERVED','raw_ticks':len(raw),'ohlc_resample_used_for_execution':False,'signal_bars':'M15 built causally from raw midpoint quotes','execution':'next QuoteTick Bid/Ask after closed M15 signal','initial_usd':1000,'leverage':2000,**metrics(st.rs)}
  p=Path(a.out);p.mkdir(parents=True,exist_ok=True);(p/'summary.json').write_text(json.dumps(out,indent=2));pd.DataFrame(st.trades).to_csv(p/'trades.csv',index=False);print(json.dumps(out,indent=2))
 if __name__=='__main__':main()

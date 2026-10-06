@@ -1,0 +1,28 @@
+name: AMOS AMD M15 v1.4
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_amd_m15_v1_4/**'
+      - '.github/workflows/amos-amd-m15-v1-4.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  amd-m15:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - run: python research/amos_amd_m15_v1_4/amd_m15_bt.py --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv --out results/amos-amd-m15-v1-4
+      - name: Print summary
+        run: |
+          cat results/amos-amd-m15-v1-4/summary.json
+          cat results/amos-amd-m15-v1-4/amd_m15_hourly.csv || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-amd-m15-v1-4
+          path: results/amos-amd-m15-v1-4/

@@ -1,0 +1,39 @@
+name: AMOS Video CISD v1.7 Nautilus Engine
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_engine.py'
+      - '.github/workflows/amos-video-cisd-v1-7-nautilus-engine.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  CATALOG: catalog/amos_complete_external_raw
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+  OUT: results/amos-video-cisd-v1-7-nautilus-engine
+jobs:
+  raw-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - name: Fail closed if raw catalog cache missing
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: exit 17
+      - run: python research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_engine.py --catalog "${CATALOG}" --out "${OUT}"
+      - run: cat "${OUT}/summary.json"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-cisd-v1-7-nautilus-engine
+          path: ${{ env.OUT }}

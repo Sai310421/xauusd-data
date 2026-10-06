@@ -1,0 +1,30 @@
+name: AMOS Gate Candidate Learning v1.6
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_gate_candidate_learning_v1_6.py'
+      - '.github/workflows/amos-gate-candidate-learning-v1-6.yml'
+jobs:
+  learn:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install pandas numpy scikit-learn
+      - name: Build all gate candidates and OOS learn
+        run: |
+          python research/amos_gate_candidate_learning_v1_6.py \
+            --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/amos-gate-candidate-learning-v1-6 \
+            --target-r 1.5 --horizon 60
+      - name: Print result
+        run: cat results/amos-gate-candidate-learning-v1-6/result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-gate-candidate-learning-v1-6
+          path: results/amos-gate-candidate-learning-v1-6/
+          retention-days: 90

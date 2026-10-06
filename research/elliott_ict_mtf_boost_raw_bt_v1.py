@@ -294,6 +294,108 @@ def executable(xs):
         else: out.append(t)
     return out,repl
 
+
+def broker_reality_overlay(ticks, trades, initial=INITIAL, leverage=LEVERAGE):
+    scenarios = [
+        {'name':'RAW_0MS','latency_ms':0,'slip_spread_mult':0.0,'commission_rt_per_lot':0.0,'cashback_rt_per_lot':0.0},
+        {'name':'MARKET_NEAR_100MS_C7','latency_ms':100,'slip_spread_mult':0.0,'commission_rt_per_lot':7.0,'cashback_rt_per_lot':0.0},
+        {'name':'MARKET_NEAR_100MS_C7_CB6','latency_ms':100,'slip_spread_mult':0.0,'commission_rt_per_lot':7.0,'cashback_rt_per_lot':6.0},
+        {'name':'STRESS_300MS_SPREAD10_C7','latency_ms':300,'slip_spread_mult':0.10,'commission_rt_per_lot':7.0,'cashback_rt_per_lot':0.0},
+    ]
+    outputs={}
+    if not ticks:
+        return outputs
+
+    first_ns=int(ticks[0].ts_event); last_ns=int(ticks[-1].ts_event)
+    start=pd.Timestamp(first_ns,unit='ns',tz='UTC').date()
+    end=pd.Timestamp(last_ns,unit='ns',tz='UTC').date()
+    bdays=max(1,len(pd.bdate_range(start,end)))
+
+    for sc in scenarios:
+        lat_ns=int(sc['latency_ms']*1_000_000)
+        events=[]
+        for i,tr in enumerate(trades):
+            events.append((int(tr['entry_ns'])+lat_ns,0,i,int(tr['entry_ns'])))
+            events.append((int(tr['exit_ns'])+lat_ns,1,i,int(tr['exit_ns'])))
+        events.sort(key=lambda x:(x[0],x[1]))
+        eidx=0
+        states={}
+        trade_pnl=[]
+        fill_delays=[]
+        realized=0.0
+        long_qty=0.0; long_basis=0.0
+        short_qty=0.0; short_basis=0.0
+        peak=initial; maxdd=0.0; min_ml=math.inf; max_gross=0.0
+        spread_sample=[]
+
+        for k,t in enumerate(ticks):
+            ts=int(t.ts_event); bid=ff(t.bid_price); ask=ff(t.ask_price); spread=max(0.0,ask-bid)
+            while eidx < len(events) and events[eidx][0] <= ts:
+                target,etype,i,signal_ns=events[eidx]
+                tr=trades[i]; d=int(tr['direction']); qty=float(tr['qty']); lots=qty/100.0
+                slip=spread*float(sc['slip_spread_mult'])
+                half_comm=lots*float(sc['commission_rt_per_lot'])/2.0
+                if etype==0:
+                    px=(ask+slip) if d>0 else (bid-slip)
+                    realized -= half_comm
+                    states[i]={'entry':px,'direction':d,'qty':qty,'active':True}
+                    if d>0:
+                        long_qty += qty; long_basis += px*qty
+                    else:
+                        short_qty += qty; short_basis += px*qty
+                else:
+                    st=states.get(i)
+                    if st and st['active']:
+                        px=(bid-slip) if d>0 else (ask+slip)
+                        gross=(px-st['entry'])*d*qty
+                        cashback=lots*float(sc['cashback_rt_per_lot'])
+                        realized += gross-half_comm+cashback
+                        net_trade=gross-(2.0*half_comm)+cashback
+                        trade_pnl.append(net_trade)
+                        if d>0:
+                            long_qty -= qty; long_basis -= st['entry']*qty
+                        else:
+                            short_qty -= qty; short_basis -= st['entry']*qty
+                        st['active']=False
+                fill_delays.append((ts-signal_ns)/1_000_000.0)
+                eidx+=1
+
+            floating=(bid*long_qty-long_basis)+(short_basis-ask*short_qty)
+            equity=initial+realized+floating
+            peak=max(peak,equity); maxdd=max(maxdd,peak-equity)
+            gross_qty=long_qty+short_qty; max_gross=max(max_gross,gross_qty)
+            if gross_qty>0:
+                margin=gross_qty*((bid+ask)/2.0)/leverage
+                if margin>0:min_ml=min(min_ml,equity/margin*100.0)
+            if k % 1000 == 0:
+                spread_sample.append(spread)
+
+        p=np.array(trade_pnl,float)
+        gp=float(p[p>0].sum()) if len(p) else 0.0
+        gl=float(-p[p<0].sum()) if len(p) else 0.0
+        pf=(gp/gl) if gl>0 else (math.inf if gp>0 else 0.0)
+        net=float(p.sum()) if len(p) else 0.0
+        scale=21.0/bdays
+        monthly21=(net*scale)/initial*100.0
+        delays=np.array(fill_delays,float) if fill_delays else np.array([],float)
+        spr=np.array(spread_sample,float) if spread_sample else np.array([],float)
+        outputs[sc['name']]={
+            **sc,'N':int(len(p)),'WR_pct':float((p>0).mean()*100.0) if len(p) else 0.0,
+            'PF':float(pf),'Net_USD':net,'Return_pct':net/initial*100.0,
+            'MaxFloatingDD_USD':float(maxdd),'MaxFloatingDD_pct_initial':float(maxdd/initial*100.0),
+            'RF':float(net/maxdd) if maxdd>0 else None,
+            'MinMarginLevel_pct_approx':None if math.isinf(min_ml) else float(min_ml),
+            'MaxGrossQty_oz':float(max_gross),'MaxGrossLots_approx':float(max_gross/100.0),
+            'BusinessDays':bdays,'Monthly21_pct_linearized':float(monthly21),
+            'Net21_USD_linearized':float(net*scale),'N21_linearized':float(len(p)*scale),
+            'FillDelay_ms_median':float(np.median(delays)) if len(delays) else None,
+            'FillDelay_ms_p95':float(np.percentile(delays,95)) if len(delays) else None,
+            'Spread_abs_median_sampled':float(np.median(spr)) if len(spr) else None,
+            'Spread_abs_p95_sampled':float(np.percentile(spr,95)) if len(spr) else None,
+            'note':'Signals are frozen from the canonical Raw Bid/Ask Nautilus run; execution is replayed on the first raw quote at/after the latency target. Commission/cashback are explicit scenario assumptions.'
+        }
+    return outputs
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -334,6 +436,9 @@ def main():
         return {'N':int(len(p)),'WR_pct':float((p>0).mean()*100) if len(p) else 0.0,'PF':float(gp/gl) if gl>0 else (math.inf if gp>0 else 0.0),'Net_USD':float(p.sum())}
     result['per_tf']={str(tf):subset_metrics([x for x in st.closed if x['kind']=='BASE' and x['tf']==tf]) for tf in TF_MIN}
     result['boost_only']=subset_metrics([x for x in st.closed if x['kind']=='BOOST'])
+    if a.broker_reality:
+        result['broker_reality']=broker_reality_overlay(ticks, st.closed)
+        (outdir/'broker_reality.json').write_text(json.dumps(result['broker_reality'],indent=2,default=str),encoding='utf-8')
     (outdir/'result.json').write_text(json.dumps(result,indent=2,default=str),encoding='utf-8')
     manifest={'experiment_id':a.experiment_id,'verification_level':'NAUTILUS_BT','git_sha':os.getenv('GITHUB_SHA'),
         'github_run_id':os.getenv('GITHUB_RUN_ID'),'workflow':os.getenv('GITHUB_WORKFLOW'),'nautilus_version':'1.230.0',

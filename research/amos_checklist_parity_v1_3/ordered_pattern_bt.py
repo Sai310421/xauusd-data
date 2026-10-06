@@ -52,6 +52,8 @@ def eqzone(di,se,de):
 class Stat:
  def __init__(self):self.eq=100.;self.pk=100.;self.dd=0.;self.w=0;self.l=0;self.r=0.;self.gw=0.;self.gl=0.;self.a=None;self.trades=[]
  def close(self,x,risk):
+  q=self.a or {}
+  self.trades.append({"entry_time":q.get("time"),"dir":q.get("d"),"R":x,"win":int(x>0),"rr":q.get("rr")})
   if x>0:self.w+=1;self.gw+=x
   else:self.l+=1;self.gl+=1
   self.r+=x;self.eq*=max(.0001,1+risk*x/100);self.pk=max(self.pk,self.eq);self.dd=max(self.dd,100*(self.pk-self.eq)/self.pk);self.a=None

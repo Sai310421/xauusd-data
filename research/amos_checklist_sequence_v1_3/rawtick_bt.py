@@ -24,6 +24,7 @@ from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
 
 from research.minimumspike_raw6x3_bt import extract_trades, metrics
+import research.minimumspike_raw6x3_bt_compat as _raw_catalog_compat  # patches Nautilus 1.230 QuoteTick reader
 
 SIM = Venue("SIM")
 ASIA = (0, 6 * 60)

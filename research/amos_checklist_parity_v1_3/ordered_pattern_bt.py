@@ -50,7 +50,7 @@ def eqzone(di,se,de):
   z=se-de;return (de+z*.50,de+z*.79) if z>0 else None
  z=de-se;return (de-z*.79,de-z*.50) if z>0 else None
 class Stat:
- def __init__(self):self.eq=100.;self.pk=100.;self.dd=0.;self.w=0;self.l=0;self.r=0.;self.gw=0.;self.gl=0.;self.a=None
+ def __init__(self):self.eq=100.;self.pk=100.;self.dd=0.;self.w=0;self.l=0;self.r=0.;self.gw=0.;self.gl=0.;self.a=None;self.trades=[]
  def close(self,x,risk):
   if x>0:self.w+=1;self.gw+=x
   else:self.l+=1;self.gl+=1
@@ -122,12 +122,27 @@ def main():
     if st.a is None and tr.dir:
      e=float(b.close);stop=tr.se-b.atr*.08 if tr.dir>0 else tr.se+b.atr*.08;rd=abs(e-stop);target=rh if tr.dir>0 else rl;reward=(target-e) if tr.dir>0 else (e-target)
      rrn=reward/rd if rd>0 else 0
-     if rrn>=1.25:st.a={"d":tr.dir,"e":e,"sl":stop,"tp":target,"rr":rrn}
+     if rrn>=1.25:st.a={"d":tr.dir,"e":e,"sl":stop,"tp":target,"rr":rrn,"time":str(t)}
     tr.reset()
  rows=[]
  for n,st in S.items():
   N=st.w+st.l;rows.append({"pattern":n,"sequence":">".join(PATTERNS[n]["seq"]),"N":N,"wins":st.w,"losses":st.l,"WR_pct":100*st.w/N if N else 0,"PF_R":st.pf(),"sum_R":st.r,"Return_pct":st.eq-100,"MaxDD_pct":st.dd})
  pd.DataFrame(rows).to_csv(out/"pattern_kpi.csv",index=False);pd.DataFrame(evidence).to_csv(out/"sequence_evidence.csv",index=False)
+ trades=[]
+ for n,st in S.items():
+  for q in st.trades:
+   q=dict(q);q["pattern"]=n;trades.append(q)
+ td=pd.DataFrame(trades)
+ if not td.empty:
+  td["entry_time"]=pd.to_datetime(td.entry_time);td["hour_utc"]=td.entry_time.dt.hour;td["hour_jst"]=(td.hour_utc+9)%24
+  td.to_csv(out/"trades.csv",index=False)
+  def agg(g):
+   gp=g.loc[g.R>0,"R"].sum();gl=-g.loc[g.R<0,"R"].sum()
+   return pd.Series({"N":len(g),"wins":int(g.win.sum()),"WR_pct":100*g.win.mean(),"PF_R":gp/gl if gl>0 else np.inf,"sum_R":g.R.sum(),"avg_R":g.R.mean()})
+  td.groupby(["pattern","hour_utc","hour_jst"]).apply(agg,include_groups=False).reset_index().to_csv(out/"hourly_kpi.csv",index=False)
+  p5=td[td.pattern=="P5_SWEEP_MSS_VOL_EQ"]
+  if not p5.empty:
+   p5.groupby(["hour_utc","hour_jst"]).apply(agg,include_groups=False).reset_index().to_csv(out/"p5_hourly_kpi.csv",index=False)
  (out/"manifest.json").write_text(json.dumps({"level":"M1_OHLC_SEQUENCE_SCREEN","start":str(d.datetime.iloc[0]),"end":str(d.datetime.iloc[-1]),"patterns":PATTERNS},indent=2),encoding="utf-8")
  print(pd.DataFrame(rows).to_string(index=False))
 if __name__=="__main__":main()

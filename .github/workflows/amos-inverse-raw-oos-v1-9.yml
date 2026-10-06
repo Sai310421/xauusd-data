@@ -1,0 +1,44 @@
+name: AMOS Inverse Raw OOS v1.9
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_inverse_raw_oos_v1_9.py'
+      - '.github/workflows/amos-inverse-raw-oos-v1-9.yml'
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  raw-oos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy scikit-learn
+      - name: Restore Raw BidAsk cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - name: Guard Raw BidAsk
+        run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: External future Raw OOS
+        run: |
+          python research/amos_inverse_raw_oos_v1_9.py \
+            --catalog "$RAW_CATALOG" \
+            --history csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/amos-inverse-raw-oos-v1-9
+      - run: cat results/amos-inverse-raw-oos-v1-9/result.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amos-inverse-raw-oos-v1-9
+          path: results/amos-inverse-raw-oos-v1-9/
+          retention-days: 90

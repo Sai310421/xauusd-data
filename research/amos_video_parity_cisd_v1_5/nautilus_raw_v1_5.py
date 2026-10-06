@@ -106,6 +106,7 @@ class VideoParityStrategy(Strategy):
         self.acc_lo=np.nan
         self.sweep_ext=np.nan
         self.cisd_level=np.nan
+        self.entry_stop=np.nan
         self.pda=False
         self.macro=False
         self.volume=False
@@ -132,7 +133,7 @@ class VideoParityStrategy(Strategy):
     def reset_setup(self):
         self.phase=0; self.age=0; self.di=0
         self.acc_hi=np.nan; self.acc_lo=np.nan
-        self.sweep_ext=np.nan; self.cisd_level=np.nan
+        self.sweep_ext=np.nan; self.cisd_level=np.nan; self.entry_stop=np.nan
         self.pda=False; self.macro=False; self.volume=False
 
     def _atr15(self):
@@ -290,22 +291,16 @@ class VideoParityStrategy(Strategy):
             confirmed=b["c"]<self.cisd_level if self.di<0 else b["c"]>self.cisd_level
             if confirmed:
                 self.volume=self._volume_influx()
+                self.entry_stop=self.sweep_ext+a*.05 if self.di<0 else self.sweep_ext-a*.05
                 self.phase=3;self.age=0
-                self._log("CISD_CONFIRMED",b["ts"])
+                self._log("CISD_CONFIRMED",b["ts"],{"entry_mode":"WAIT_RAW_TICK_RETEST"})
             elif self.age>8:self.reset_setup()
             return
 
         if self.phase==3:
-            touched=b["h"]>=self.cisd_level if self.di<0 else b["l"]<=self.cisd_level
-            held=b["c"]<=self.cisd_level if self.di<0 else b["c"]>=self.cisd_level
-            if touched and held and self.active is None and self.armed is None:
-                stop=self.sweep_ext+a*.05 if self.di<0 else self.sweep_ext-a*.05
-                # target candidates are frozen on confirmed M15 entry bar; executable choice uses next raw quote.
-                self.armed={"route":self.route,"side":self.di,"stop":float(stop),"pda":self.pda,"macro":self.macro,
-                            "volume":self.volume,"cisd_level":self.cisd_level,"ts":b["ts"]}
-                self._log("CISD_ENTRY_ARMED",b["ts"])
-                self.reset_setup()
-            elif self.age>6:self.reset_setup()
+            # M15 defines the confirmed CISD structure. Entry is causal: wait up to 6 M15 bars
+            # for the raw BID stream to retest the CISD level, then execute on the live Bid/Ask.
+            if self.age>6:self.reset_setup()
 
     def _mark_dd(self,px):
         if self.active is None:return
@@ -340,25 +335,34 @@ class VideoParityStrategy(Strategy):
                 self._finish(px,ts,"WIN");self.close_all_positions(self.config.instrument_id);return
             return
         if self.exit_pending:return
-        if self.armed is None:return
-        a=self.armed
-        if self.config.variant=="VIDEO_OR" and not (a["macro"] or (a["pda"] and a["volume"])):
-            self.armed=None;return
-        side=a["side"];entry=ask if side>0 else bid;stop=a["stop"];risk=abs(entry-stop)
-        if risk<=0 or not math.isfinite(risk):self.armed=None;return
+        if self.phase!=3:return
+        side=self.di
+        # Signal chart is BID-based, so the retest is detected on raw bid; execution still pays spread.
+        touched=(bid>=self.cisd_level) if side<0 else (bid<=self.cisd_level)
+        if not touched:return
+        if self.config.variant=="VIDEO_OR" and not (self.macro or (self.pda and self.volume)):
+            self._log("CISD_ENTRY_CONTEXT_REJECT",ts)
+            self.reset_setup();return
+        entry=ask if side>0 else bid;stop=float(self.entry_stop);risk=abs(entry-stop)
+        if risk<=0 or not math.isfinite(risk):
+            self._log("CISD_ENTRY_RISK_REJECT",ts);self.reset_setup();return
         cands=self._candidate_targets(side,entry,stop)
-        if not cands:self.armed=None;return
+        if not cands:
+            self._log("CISD_ENTRY_TARGET_REJECT",ts,{"entry":entry});self.reset_setup();return
         _,target,rr,kind=cands[0]
         inst=self.cache.instrument(self.config.instrument_id)
         order=self.order_factory.market(instrument_id=self.config.instrument_id,
             order_side=OrderSide.BUY if side>0 else OrderSide.SELL,
             quantity=inst.make_qty(Decimal("1")))
         self.submit_order(order)
-        self.active={"route":a["route"],"side":side,"entry":entry,"stop":stop,"target":target,"risk":risk,
+        route=self.route;pda=self.pda;macro=self.macro;volume=self.volume;cisd=self.cisd_level
+        self.active={"route":route,"side":side,"entry":entry,"stop":stop,"target":target,"risk":risk,
                      "entry_time":str(pd.Timestamp(ts,unit="ns",tz="UTC")),"equity0":self.display_equity,
-                     "pda":a["pda"],"macro":a["macro"],"volume":a["volume"],"cisd_level":a["cisd_level"],"target_kind":kind}
+                     "pda":pda,"macro":macro,"volume":volume,"cisd_level":cisd,"target_kind":kind}
         self.active_risk_cash=self.display_equity*(self.config.risk_pct/100.0)
-        self.entries+=1;self.armed=None
+        self.entries+=1
+        self._log("CISD_ENTRY_RAW_TICK",ts,{"entry":entry,"target":target,"rr":rr,"target_kind":kind})
+        self.reset_setup()
 
     def on_position_closed(self,event):
         self.exit_pending=False
@@ -453,6 +457,7 @@ def main():
     pd.DataFrame(strat.sequence).to_csv(out/f"sequence_{a.variant}.csv",index=False)
     conf={"variant":a.variant,"risk_pct":a.risk_pct,"start":a.start,"days":a.days,"routes":"NORMAL + fixed-JST AMD priority","sweep_min_atr":.03,
           "cisd_confirm_ttl_bars":8,"entry_ttl_bars":6,"target_min_rr":.8,
+          "entry_execution":"after M15 CISD confirmation, first raw BID retest of CISD level; market execution on Bid/Ask; no retrospective bar fill",
           "context":"CORE=none; VIDEO_OR=Macro OR (HTF PDA and raw tick-volume influx)"}
     evidence={"experiment_id":a.experiment_id,"verification_level":"NAUTILUS_BT","git_sha":os.environ.get("GITHUB_SHA"),
               "run_id":os.environ.get("GITHUB_RUN_ID"),"nautilus_version":getattr(nautilus_trader,"__version__","unknown"),

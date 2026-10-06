@@ -1,0 +1,33 @@
+name: AMOS Checklist Learning v1.5
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_checklist_learning_v1_5.py'
+      - '.github/workflows/amos-checklist-learning-v1-5.yml'
+
+jobs:
+  learn:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install pandas numpy scikit-learn
+      - name: Run chronological OOS learning
+        run: |
+          python research/amos_checklist_learning_v1_5.py \
+            --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/amos-checklist-learning-v1-5
+      - name: Print KPI
+        run: cat results/amos-checklist-learning-v1-5/result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-checklist-learning-v1-5
+          path: results/amos-checklist-learning-v1-5/
+          retention-days: 90

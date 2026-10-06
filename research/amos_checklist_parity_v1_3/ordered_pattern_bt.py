@@ -53,13 +53,13 @@ class Stat:
  def __init__(self):self.eq=100.;self.pk=100.;self.dd=0.;self.w=0;self.l=0;self.r=0.;self.gw=0.;self.gl=0.;self.a=None;self.trades=[]
  def close(self,x,risk):
   q=self.a or {}
-  self.trades.append({"entry_time":q.get("time"),"dir":q.get("d"),"R":x,"win":int(x>0),"rr":q.get("rr")})
+  self.trades.append({"entry_time":q.get("time"),"dir":q.get("d"),"R":x,"win":int(x>0),"rr":q.get("rr"),"setup":q.get("setup"),"sweep_time":q.get("sweep_time"),"bars_from_sweep":q.get("bars_from_sweep"),"acc_range_atr":q.get("acc_range_atr"),"acc_eff":q.get("acc_eff")})
   if x>0:self.w+=1;self.gw+=x
   else:self.l+=1;self.gl+=1
   self.r+=x;self.eq*=max(.0001,1+risk*x/100);self.pk=max(self.pk,self.eq);self.dd=max(self.dd,100*(self.pk-self.eq)/self.pk);self.a=None
  def pf(self):return self.gw/self.gl if self.gl else 0
 class Track:
- def __init__(self,name):self.name=name;self.step=0;self.age=0;self.dir=0;self.se=0.;self.de=0.;self.zone=None;self.fvg=None;self.setup=0
+ def __init__(self,name):self.name=name;self.step=0;self.age=0;self.dir=0;self.se=0.;self.de=0.;self.zone=None;self.fvg=None;self.setup=0;self.sweep_i=-1;self.sweep_time=None;self.acc_range_atr=np.nan;self.acc_eff=np.nan
  def reset(self):self.__init__(self.name)
 def main():
  ap=argparse.ArgumentParser();ap.add_argument("--data",required=True);ap.add_argument("--out",required=True);ap.add_argument("--risk-pct",type=float,default=.35);a=ap.parse_args()
@@ -97,7 +97,11 @@ def main():
     event=True
    elif want=="sweep":
     if sh or sl:
-     tr.dir=-1 if sh else 1;tr.se=float(b.high if sh else b.low);tr.de=float(b.low if sh else b.high);event=True;sid+=1;tr.setup=sid
+     tr.dir=-1 if sh else 1;tr.se=float(b.high if sh else b.low);tr.de=float(b.low if sh else b.high);event=True;sid+=1;tr.setup=sid;tr.sweep_i=i;tr.sweep_time=str(t)
+     pre=d.iloc[max(0,i-30):i]
+     if len(pre)>=10:
+      ar=float(pre.high.max()-pre.low.min());tr.acc_range_atr=ar/float(b.atr) if b.atr>0 else np.nan
+      tr.acc_eff=abs(float(pre.close.iloc[-1]-pre.open.iloc[0]))/ar if ar>0 else np.nan
      if name=="P4_HTFPDA_SWEEP_MSS_EQ" and not pda(H,t,tr.dir,float(b.close)):event=False
    elif tr.dir:
     tr.se=max(tr.se,float(b.high)) if tr.dir<0 else min(tr.se,float(b.low));tr.de=min(tr.de,float(b.low)) if tr.dir<0 else max(tr.de,float(b.high))
@@ -124,7 +128,7 @@ def main():
     if st.a is None and tr.dir:
      e=float(b.close);stop=tr.se-b.atr*.08 if tr.dir>0 else tr.se+b.atr*.08;rd=abs(e-stop);target=rh if tr.dir>0 else rl;reward=(target-e) if tr.dir>0 else (e-target)
      rrn=reward/rd if rd>0 else 0
-     if rrn>=1.25:st.a={"d":tr.dir,"e":e,"sl":stop,"tp":target,"rr":rrn,"time":str(t)}
+     if rrn>=1.25:st.a={"d":tr.dir,"e":e,"sl":stop,"tp":target,"rr":rrn,"time":str(t),"setup":tr.setup,"sweep_time":tr.sweep_time,"bars_from_sweep":(i-tr.sweep_i if tr.sweep_i>=0 else np.nan),"acc_range_atr":tr.acc_range_atr,"acc_eff":tr.acc_eff}
     tr.reset()
  rows=[]
  for n,st in S.items():
@@ -145,6 +149,16 @@ def main():
   p5=td[td.pattern=="P5_SWEEP_MSS_VOL_EQ"]
   if not p5.empty:
    p5.groupby(["hour_utc","hour_jst"]).apply(agg,include_groups=False).reset_index().to_csv(out/"p5_hourly_kpi.csv",index=False)
+   # Operational ICT AMD diagnostic: A=30m compression (efficiency <=0.35), M=session-liquidity sweep (built into P5),
+   # D=post-sweep MSS/displacement sequence (built into P5). This checks whether bad hours are entering after a recognizable A->M->D setup.
+   p5=p5.copy()
+   p5["accumulation_like"]=(p5.acc_eff<=0.35).astype(int)
+   p5["manipulation_sweep"]=1
+   p5["distribution_confirmed"]=1
+   p5["amd_like"]=(p5.accumulation_like & p5.manipulation_sweep & p5.distribution_confirmed).astype(int)
+   p5.to_csv(out/"p5_amd_trades.csv",index=False)
+   amd=p5.groupby(["hour_utc","hour_jst"]).agg(N=("R","size"),wins=("win","sum"),WR_pct=("win",lambda s:100*s.mean()),AMD_N=("amd_like","sum"),AMD_rate_pct=("amd_like",lambda s:100*s.mean()),avg_acc_eff=("acc_eff","mean"),avg_acc_range_atr=("acc_range_atr","mean"),avg_bars_from_sweep=("bars_from_sweep","mean"),sum_R=("R","sum")).reset_index()
+   amd.to_csv(out/"p5_amd_hourly.csv",index=False)
  (out/"manifest.json").write_text(json.dumps({"level":"M1_OHLC_SEQUENCE_SCREEN","start":str(d.datetime.iloc[0]),"end":str(d.datetime.iloc[-1]),"patterns":PATTERNS},indent=2),encoding="utf-8")
  print(pd.DataFrame(rows).to_string(index=False))
 if __name__=="__main__":main()

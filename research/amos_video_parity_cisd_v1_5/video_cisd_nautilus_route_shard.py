@@ -17,6 +17,7 @@ from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
 
 ROUTES={"ASIA":(9,10),"LONDON":(16,18),"NY":(23,1)}
+BAR_NS=15*60*1_000_000_000
 def f(x):return float(x.as_double()) if hasattr(x,'as_double') else float(x)
 def ts(x):return pd.Timestamp(int(x),unit='ns',tz='UTC')
 def parse_money(v):
@@ -61,7 +62,7 @@ class VideoAMD(Strategy):
   super().__init__(c);self.bars=deque(maxlen=800);self.phase=0;self.age=0;self.route=None;self.di=0
   self.acc_hi=self.acc_lo=self.sweep=self.cisd=None;self.confirm_idx=-1;self.signals=0;self.route_signals={k:0 for k in ROUTES};self.signal_meta=[]
  def on_start(self):self.subscribe_bars(self.config.bar_type)
- def jst(self,b):return ts(b['ts']).tz_convert('Asia/Tokyo')
+ def jst(self,b):return ts(int(b['ts'])-BAR_NS).tz_convert('Asia/Tokyo')
  def route_at(self,b):
   h=self.jst(b).hour;k=self.config.route_name;a,z=ROUTES[k]
   return k if ((a<=h<z) if a<z else (h>=a or h<z)) else None
@@ -117,7 +118,8 @@ class VideoAMD(Strategy):
  def reset(self):
   self.phase=0;self.age=0;self.route=None;self.di=0;self.acc_hi=self.acc_lo=self.sweep=self.cisd=None;self.confirm_idx=-1
  def submit_bracket(self,b,a):
-  if not (self.config.signal_start_ns<=int(b['ts'])<self.config.signal_end_ns):return False
+  logical_ts=int(b['ts'])-BAR_NS
+  if not (self.config.signal_start_ns<=logical_ts<self.config.signal_end_ns):return False
   if not self.flat():return False
   instrument=self.cache.instrument(self.config.instrument_id)
   q=self.cache.quote_tick(self.config.instrument_id)
@@ -132,7 +134,7 @@ class VideoAMD(Strategy):
       tp_price=instrument.make_price(tp),sl_trigger_price=instrument.make_price(sl),tp_post_only=False)
   self.submit_order_list(orders)
   self.signals+=1;self.route_signals[self.route]+=1
-  self.signal_meta.append({'signal_ts':int(b['ts']),'route':self.route,'dir':self.di,'entry_ref':entry,'sl':sl,'tp':tp,'rr':rr})
+  self.signal_meta.append({'signal_ts':logical_ts,'signal_close_ts':int(b['ts']),'route':self.route,'dir':self.di,'entry_ref':entry,'sl':sl,'tp':tp,'rr':rr})
   return True
  def on_bar(self,bar:Bar):
   b={'o':f(bar.open),'h':f(bar.high),'l':f(bar.low),'c':f(bar.close),'ts':int(bar.ts_event)}
@@ -184,7 +186,7 @@ def main():
  st=VideoAMD(Cfg(instrument_id=inst.id,bar_type=bt,signal_start_ns=int(primary_start.value),signal_end_ns=int(primary_end.value),route_name=a.route))
  eng.add_strategy(st);eng.run();eng.end()
  report=eng.trader.generate_positions_report();tr=extract_trades(report);m=metrics(tr,300.)
- out={'verification':'NAUTILUS_BT_RAW_BIDASK_VIDEO_CISD_V1_9_ROUTE_ISOLATED','shard':a.label,'route':a.route,
+ out={'verification':'NAUTILUS_BT_RAW_BIDASK_VIDEO_CISD_V1_10_BAR_TIME_PARITY','shard':a.label,'route':a.route,
       'primary_start':str(primary_start),'primary_end_exclusive':str(primary_end),
       'query_start':str(query_start),'query_end':str(query_end),
       'engine':'NautilusTrader BacktestEngine','nautilus_version':getattr(nautilus_trader,'__version__','unknown'),

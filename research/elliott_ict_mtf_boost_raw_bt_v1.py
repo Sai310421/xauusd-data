@@ -298,12 +298,18 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--catalog',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--dataset-id',default='xauusd-raw-bidask')
-    a=ap.parse_args(); cat=ParquetDataCatalog(a.catalog)
-    inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+    ap=argparse.ArgumentParser(); ap.add_argument('--catalog',action='append',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--dataset-id',default='xauusd-raw-bidask')
+    a=ap.parse_args()
+    catalogs=[ParquetDataCatalog(p) for p in a.catalog]
+    inst=next((x for x in catalogs[0].instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
     if inst is None:raise SystemExit('XAUUSD missing')
-    raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+    raw=[]
+    for cat in catalogs:
+        ci=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+        if ci is None:raise SystemExit('XAUUSD missing in one catalog')
+        raw.extend(cat.query(data_cls=QuoteTick,identifiers=[ci.id.value]))
     if not raw:raise SystemExit('no raw XAUUSD QuoteTicks')
+    raw.sort(key=lambda t:int(t.ts_event))
     ticks,repl=executable(raw)
     eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
     eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,

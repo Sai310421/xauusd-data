@@ -57,7 +57,7 @@ class SequenceRawStrategy(Strategy):
         self.asia_hi = self.asia_lo = None
         self.london_hi = self.london_lo = None
         self.entries_today = 0
-        self.state = "IDLE"
+        self.seq_state = "IDLE"
         self.age = 0
         self.direction = 0
         self.sweep_extreme = None
@@ -103,7 +103,7 @@ class SequenceRawStrategy(Strategy):
         return a if math.isfinite(a) and a > 0 else None
 
     def _reset_sequence(self) -> None:
-        self.state = "IDLE"
+        self.seq_state = "IDLE"
         self.age = 0
         self.direction = 0
         self.sweep_extreme = self.protected = None
@@ -240,7 +240,7 @@ class SequenceRawStrategy(Strategy):
         if atr is None:
             return
 
-        if self.state == "IDLE":
+        if self.seq_state == "IDLE":
             ref = self._session_reference(minute)
             if ref is None or len(prior) < self.config.lookback:
                 return
@@ -251,7 +251,7 @@ class SequenceRawStrategy(Strategy):
             if not (high_sweep or low_sweep):
                 return
             self.diag["sweeps"] += 1
-            self.state = "WAIT_MSS" if self.config.model == "MSS_EQ" else "WAIT_IFVG"
+            self.seq_state = "WAIT_MSS" if self.config.model == "MSS_EQ" else "WAIT_IFVG"
             self.age = 0
             self.ref_hi, self.ref_lo = float(H), float(L)
             self.sweep_ts = b["ts"]
@@ -270,12 +270,12 @@ class SequenceRawStrategy(Strategy):
             self._reset_sequence()
             return
 
-        if self.state == "WAIT_IFVG":
+        if self.seq_state == "WAIT_IFVG":
             self.sweep_extreme = max(self.sweep_extreme, b["h"]) if self.direction < 0 else min(self.sweep_extreme, b["l"])
             self._track_ifvg(b)
             return
 
-        if self.state == "WAIT_MSS":
+        if self.seq_state == "WAIT_MSS":
             if self.direction < 0:
                 self.sweep_extreme = max(self.sweep_extreme, b["h"])
                 mss = b["c"] < self.protected
@@ -286,13 +286,13 @@ class SequenceRawStrategy(Strategy):
             if not (mss and disp):
                 return
             self.diag["mss"] += 1
-            self.state = "WAIT_EQ"
+            self.seq_state = "WAIT_EQ"
             self.age = 0
             self.mss_ts = b["ts"]
             self.disp_extreme = b["l"] if self.direction < 0 else b["h"]
             return
 
-        if self.state == "WAIT_EQ":
+        if self.seq_state == "WAIT_EQ":
             if self.direction < 0:
                 self.disp_extreme = min(self.disp_extreme, b["l"])
                 rng = self.sweep_extreme - self.disp_extreme

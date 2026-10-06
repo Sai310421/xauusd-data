@@ -12,18 +12,31 @@ env:
   NAUTILUS_VERSION: '1.230.0'
   INPUT_DIR: external_raw/xauusd
   CATALOG: catalog/amos_complete_external_raw
-  START: '2026-02-25T00:00:00Z'
-  END: '2026-05-26T23:59:59.999Z'
+  FULL_START: '2026-02-25T00:00:00Z'
+  FULL_END: '2026-05-26T23:59:59.999Z'
   CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
-  OUT: results/amos-video-parity-cisd-v1-5-nautilus-raw
 jobs:
-  raw:
+  raw-shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: feb_mar
+            start: '2026-02-25T00:00:00Z'
+            end: '2026-03-31T23:59:59.999999999Z'
+          - shard: apr
+            start: '2026-04-01T00:00:00Z'
+            end: '2026-04-30T23:59:59.999999999Z'
+          - shard: may
+            start: '2026-05-01T00:00:00Z'
+            end: '2026-05-26T23:59:59.999999999Z'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
       - id: cache
         uses: actions/cache/restore@v4
@@ -34,17 +47,69 @@ jobs:
         run: |
           mkdir -p "${INPUT_DIR}"
           base='https://raw.githubusercontent.com/simom1/XAUUSD-history/main/2026'
-          for f in xauusd_2026_02.parquet xauusd_2026_03_early.parquet xauusd_2026_03_mid.parquet xauusd_2026_03_late.parquet xauusd_2026_04.parquet xauusd_2026_05.parquet; do curl -fL --retry 5 "${base}/$f" -o "${INPUT_DIR}/$f"; done
-          python research/import_external_xauusd_raw_parquet_to_nautilus.py --input-dir "${INPUT_DIR}" --catalog "${CATALOG}" --start "${START}" --end "${END}" --manifest catalog_manifest.json
-      - if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.CATALOG }}
-          key: ${{ env.CACHE_KEY }}
-      - run: python research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_raw.py --catalog "${CATALOG}" --out "${OUT}"
-      - run: cat "${OUT}/summary.json"
+          for f in xauusd_2026_02.parquet xauusd_2026_03_early.parquet xauusd_2026_03_mid.parquet xauusd_2026_03_late.parquet xauusd_2026_04.parquet xauusd_2026_05.parquet; do
+            curl -fL --retry 5 "${base}/$f" -o "${INPUT_DIR}/$f"
+          done
+          python research/import_external_xauusd_raw_parquet_to_nautilus.py             --input-dir "${INPUT_DIR}" --catalog "${CATALOG}"             --start "${FULL_START}" --end "${FULL_END}" --manifest catalog_manifest.json
+      - name: Run shard
+        run: |
+          OUT="results/amos-video-parity-cisd-v1-5-nautilus-raw/${{ matrix.shard }}"
+          python research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_raw.py             --catalog "${CATALOG}" --out "$OUT"             --start "${{ matrix.start }}" --end "${{ matrix.end }}"
+          cat "$OUT/summary.json"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amos-video-parity-cisd-v1-5-nautilus-raw
-          path: ${{ env.OUT }}
+          name: amos-video-parity-cisd-v1-5-raw-${{ matrix.shard }}
+          path: results/amos-video-parity-cisd-v1-5-nautilus-raw/${{ matrix.shard }}/
+
+  aggregate:
+    needs: raw-shard
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: amos-video-parity-cisd-v1-5-raw-*
+          path: shards
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas
+      - name: Aggregate KPI
+        run: |
+          python - <<'PY'
+          import json, math
+          from pathlib import Path
+          import pandas as pd
+          files=list(Path('shards').rglob('trades.csv'))
+          if not files:
+              raise SystemExit('NO_SHARD_TRADES')
+          frames=[pd.read_csv(x) for x in files if x.stat().st_size>0]
+          d=pd.concat(frames,ignore_index=True) if frames else pd.DataFrame()
+          if not d.empty and 'entry_time' in d:
+              d=d.sort_values('entry_time').reset_index(drop=True)
+          rs=d['R'].astype(float).tolist() if not d.empty else []
+          eq=pk=100.;dd=0.;gp=gl=0.
+          for r in rs:
+              if r>0:gp+=r
+              else:gl-=r
+              eq*=max(.0001,1+.35*r/100);pk=max(pk,eq);dd=max(dd,100*(pk-eq)/pk)
+          out={
+              'verification':'AMOS_VIDEO_PARITY_CISD_V1_5_NAUTILUS_RAW_BIDASK_90D_SHARDED',
+              'N':len(rs),'wins':sum(r>0 for r in rs),
+              'WR_pct':100*sum(r>0 for r in rs)/len(rs) if rs else 0.,
+              'PF_R':gp/gl if gl else (math.inf if gp else 0.),
+              'sum_R':sum(rs),'Return_pct':eq-100,'MaxDD_pct':dd,
+              'promotion': bool(rs) and 100*sum(r>0 for r in rs)/len(rs)>=40 and (gp/gl if gl else 999)>=1.2 and dd<=5,
+              'criteria':{'WR_pct_min':40,'PF_R_min':1.2,'MaxDD_pct_max':5},
+              'execution':'Nautilus catalog Raw QuoteTick Bid/Ask; M15 signals built causally from raw midpoint; entries/exits evaluated on raw Bid/Ask'
+          }
+          Path('aggregate').mkdir(exist_ok=True)
+          Path('aggregate/summary.json').write_text(json.dumps(out,indent=2))
+          d.to_csv('aggregate/trades.csv',index=False)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-parity-cisd-v1-5-nautilus-raw-aggregate
+          path: aggregate/

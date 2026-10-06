@@ -170,7 +170,8 @@ def run(name, cb_mode="off", initial_balance=1000.0):
     risk_reason=""; equity_curve=[]; last_m5_time=None
     recovery_armed=False; recovery_armed_time=None; basket_results=[]
     exit_counts={"BASKET_TP":0,"RECOVERY_EXIT":0,"TREND_END":0,"TIME_EXIT":0,"DD_SOFT_CUT":0,"RISK_STOP":0,"FORCED_EOT":0}
-    entry_cycles=0; entry_days=set(); last_cycle_time=None; basket_open_time=None\n    current_dd=0.0
+    entry_cycles=0; entry_days=set(); last_cycle_time=None; basket_open_time=None
+    current_dd=0.0
 
     def floating(price):
         return sum((price-p["entry"])*p["dir"]*100.0*p["lot"] for p in pos)

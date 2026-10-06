@@ -1,0 +1,118 @@
+name: AMOS Video Parity v1.5 Nautilus Raw90D Chunked
+
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/nautilus_raw_v1_5.py'
+      - '.github/workflows/amos-video-parity-v15-nautilus-chunked.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+
+jobs:
+  ensure-chunks:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { name: a, start: '2026-02-25', days: 23 }
+          - { name: b, start: '2026-03-20', days: 23 }
+          - { name: c, start: '2026-04-12', days: 23 }
+          - { name: d, start: '2026-05-05', days: 22 }
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==$NAUTILUS_VERSION" pandas numpy pyarrow
+      - name: Restore chunk
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-${{ matrix.name }}
+          key: elliott-duka-xau-${{ matrix.name }}-${{ matrix.start }}-${{ matrix.days }}d-v3
+      - name: Build missing chunk
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: python research/build_raw_bidask_catalog_duka.py --start "${{ matrix.start }}" --days "${{ matrix.days }}" --catalog "catalog/chunk-${{ matrix.name }}" --workers 16 --symbols XAUUSD --fresh
+      - name: Raw BidAsk gate
+        run: python research/raw_bidask_catalog_guard.py --catalog "catalog/chunk-${{ matrix.name }}" --symbols XAUUSD
+      - name: Save chunk
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/chunk-${{ matrix.name }}
+          key: elliott-duka-xau-${{ matrix.name }}-${{ matrix.start }}-${{ matrix.days }}d-v3
+
+  raw-bt:
+    needs: ensure-chunks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      EXPERIMENT_ID: amos-vp15-chunked-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install "nautilus_trader==$NAUTILUS_VERSION" pandas numpy pyarrow
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-a
+          key: elliott-duka-xau-a-2026-02-25-23d-v3
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-b
+          key: elliott-duka-xau-b-2026-03-20-23d-v3
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-c
+          key: elliott-duka-xau-c-2026-04-12-23d-v3
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-d
+          key: elliott-duka-xau-d-2026-05-05-22d-v3
+          fail-on-cache-miss: true
+      - name: Prepare immutable evidence
+        run: |
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "experiment_id=$EXPERIMENT_ID" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/amos_video_parity_cisd_v1_5/nautilus_raw_v1_5.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt"
+          for x in a b c d; do cp "catalog/chunk-$x/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_$x.json"; done
+      - name: Run CORE
+        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog catalog/chunk-a catalog/chunk-b catalog/chunk-c catalog/chunk-d --experiment-id "$EXPERIMENT_ID" --variant CORE --risk-pct 0.35 --start 2026-02-25 --days 90
+      - name: Run VIDEO_OR
+        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog catalog/chunk-a catalog/chunk-b catalog/chunk-c catalog/chunk-d --experiment-id "$EXPERIMENT_ID" --variant VIDEO_OR --risk-pct 0.35 --start 2026-02-25 --days 90
+      - name: Compare and gate
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path("results/ae-bt")/os.environ["EXPERIMENT_ID"]
+          out={"experiment_id":os.environ["EXPERIMENT_ID"],"gate":{"WR_min":40,"PF_min":1.2,"MaxDD_max":5.0}}
+          for k in ("CORE","VIDEO_OR"):
+              r=json.load(open(p/f"result_{k}.json"))
+              x=r["overall"];x["pass"]=bool(x["WR_pct"]>=40 and x["PF_R"]>=1.2 and x["MaxFloatingDD_pct"]<=5)
+              out[k]=x
+              out[f"{k}_by_route"]=r["by_route"]
+          (p/"comparison.json").write_text(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nautilus-amos-vp15-chunked-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

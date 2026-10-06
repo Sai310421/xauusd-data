@@ -175,7 +175,7 @@ def main():
  primary_start=pd.Timestamp(a.start,tz='UTC');primary_end=pd.Timestamp(a.end,tz='UTC')
  query_start=primary_start-pd.Timedelta(days=1);query_end=primary_end+pd.Timedelta(days=1)
  cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD')
- raw=cat.query_quote_ticks(identifiers=[inst.id.value],start=int(query_start.value),end=int(query_end.value))
+ raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value],start=int(query_start.value),end=int(query_end.value))
  if not raw:raise SystemExit('no raw XAUUSD QuoteTicks in shard')
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(300,USD)],default_leverage=Decimal('2000'))

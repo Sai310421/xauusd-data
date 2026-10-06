@@ -1,0 +1,142 @@
+name: AMOS Video CISD v1.9 Nautilus Route Isolated
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_route_shard.py'
+      - '.github/workflows/amos-video-cisd-v1-9-nautilus-route-isolated.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  CATALOG: catalog/amos_complete_external_raw
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+jobs:
+  cell:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - "s1|2026-02-25T00:00:00Z|2026-03-27T00:00:00Z"
+          - "s2|2026-03-27T00:00:00Z|2026-04-26T00:00:00Z"
+          - "s3|2026-04-26T00:00:00Z|2026-05-27T00:00:00Z"
+        route: [ASIA, LONDON, NY]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - name: Fail closed if raw catalog cache missing
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: exit 17
+      - name: Parse shard
+        id: p
+        shell: bash
+        run: |
+          IFS='|' read -r label start end <<< "${{ matrix.shard }}"
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "start=$start" >> "$GITHUB_OUTPUT"
+          echo "end=$end" >> "$GITHUB_OUTPUT"
+      - run: |
+          python research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_route_shard.py \
+            --catalog "${CATALOG}" \
+            --out "results/v1_9/${{ steps.p.outputs.label }}-${{ matrix.route }}" \
+            --label "${{ steps.p.outputs.label }}" \
+            --route "${{ matrix.route }}" \
+            --start "${{ steps.p.outputs.start }}" \
+            --end "${{ steps.p.outputs.end }}"
+      - run: cat "results/v1_9/${{ steps.p.outputs.label }}-${{ matrix.route }}/summary.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v1-9-${{ steps.p.outputs.label }}-${{ matrix.route }}
+          path: results/v1_9/${{ steps.p.outputs.label }}-${{ matrix.route }}/
+  aggregate:
+    needs: cell
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v1-9-*
+          path: cells
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install pandas numpy
+      - name: Aggregate independent-route 90d KPI
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,math
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          roots=sorted(Path('cells').glob('v1-9-*'))
+          summaries=[]; actual=[]; sigframes=[]; r_rows=[]
+          for r in roots:
+              s=json.loads((r/'summary.json').read_text()); summaries.append(s)
+              tp=r/'trades.csv'; sp=r/'signals.csv'
+              t=pd.read_csv(tp) if tp.exists() and tp.stat().st_size else pd.DataFrame()
+              g=pd.read_csv(sp) if sp.exists() and sp.stat().st_size else pd.DataFrame()
+              if len(t): actual.append(t)
+              if len(g): sigframes.append(g)
+              # One-position-per-route cell => submitted signals and closed positions preserve order.
+              n=min(len(t),len(g))
+              for i in range(n):
+                  pnl=float(t.iloc[i]['pnl']); entry=float(g.iloc[i]['entry_ref']); sl=float(g.iloc[i]['sl'])
+                  risk=abs(entry-sl)
+                  rr_real=(pnl/risk) if risk>0 else 0.0
+                  r_rows.append({'shard':s['shard'],'route':s['route'],'signal_ts':int(g.iloc[i]['signal_ts']),
+                                 'pnl':pnl,'risk_ref':risk,'R_realized':rr_real,'planned_rr':float(g.iloc[i]['rr'])})
+          t=pd.concat(actual,ignore_index=True) if actual else pd.DataFrame(columns=['pnl','ts_closed'])
+          if len(t): t=t.sort_values('ts_closed')
+          a=t['pnl'].to_numpy(float) if len(t) else np.array([],float)
+          w=a[a>0];l=a[a<0];eq=peak=300.;dd=0.
+          for x in a: eq+=x;peak=max(peak,eq);dd=max(dd,peak-eq)
+          pf=float(w.sum()/abs(l.sum())) if len(l) and l.sum()!=0 else (math.inf if len(w) else 0.)
+          rrdf=pd.DataFrame(r_rows)
+          rs=rrdf.sort_values('signal_ts')['R_realized'].to_numpy(float) if len(rrdf) else np.array([],float)
+          req=rpeak=100.;rdd=0.;rg=rl=0.
+          for x in rs:
+              if x>0:rg+=x
+              elif x<0:rl-=x
+              req*=max(.0001,1+0.0035*x);rpeak=max(rpeak,req);rdd=max(rdd,100*(rpeak-req)/rpeak)
+          route_kpi={}
+          for route in ['ASIA','LONDON','NY']:
+              z=rrdf[rrdf.route==route] if len(rrdf) else rrdf
+              ar=z.R_realized.to_numpy(float) if len(z) else np.array([],float)
+              gw=ar[ar>0].sum() if len(ar) else 0.;gl=-ar[ar<0].sum() if len(ar) else 0.
+              route_kpi[route]={'N':int(len(ar)),'wins':int((ar>0).sum()),'WR_pct':float((ar>0).mean()*100) if len(ar) else 0.,
+                                'PF_R':float(gw/gl) if gl>0 else (math.inf if gw>0 else 0.),'sum_R':float(ar.sum()) if len(ar) else 0.}
+          out={
+            'verification':'NAUTILUS_BT_RAW_BIDASK_VIDEO_CISD_V1_9_ROUTE_ISOLATED_90D',
+            'period':'2026-02-25..2026-05-26','cells':len(summaries),
+            'signals_submitted':sum(int(s['signals_submitted']) for s in summaries),
+            'N':int(len(a)),'wins':int((a>0).sum()),'WR_pct':float((a>0).mean()*100) if len(a) else 0.,
+            'PF_actual_cash':pf,'NetProfit_actual_fixed_1XAU':float(a.sum()),
+            'Return_pct_actual_fixed_1XAU':float(a.sum()/300*100),
+            'MaxDD_pct_actual_fixed_1XAU':float(dd/peak*100 if peak else 0.),
+            'R_model_N':int(len(rs)),'R_model_PF':float(rg/rl) if rl>0 else (math.inf if rg>0 else 0.),
+            'R_model_sum_R':float(rs.sum()) if len(rs) else 0.,
+            'R_model_Return_pct_at_0_35pct_risk':float(req-100.),
+            'R_model_MaxDD_pct_at_0_35pct_risk':float(rdd),
+            'route_kpi_R':route_kpi,
+          }
+          out['promotion_gate']={'WR_ge_40':out['WR_pct']>=40,'PF_ge_1_2':out['R_model_PF']>=1.2,
+                                 'DD_le_5':out['R_model_MaxDD_pct_at_0_35pct_risk']<=5,'N_ge_10':out['N']>=10}
+          out['PROMOTE']=all(out['promotion_gate'].values())
+          p=Path('results/v1_9_90d');p.mkdir(parents=True,exist_ok=True)
+          (p/'summary.json').write_text(json.dumps(out,indent=2))
+          t.to_csv(p/'trades.csv',index=False);rrdf.to_csv(p/'risk_normalized_trades.csv',index=False)
+          if sigframes:pd.concat(sigframes,ignore_index=True).sort_values('signal_ts').to_csv(p/'signals.csv',index=False)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-cisd-v1-9-nautilus-route-isolated-90d
+          path: results/v1_9_90d/

@@ -14,7 +14,7 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install pandas numpy
       - run: python research/amos_checklist_parity_v1_3/ordered_pattern_bt.py --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv --out results/amos-checklist-parity-v1-3
-      - uses: actions/upload-artifact@v4
+      - name: Print P5 hourly KPI\n        run: cat results/amos-checklist-parity-v1-3/p5_hourly_kpi.csv\n      - uses: actions/upload-artifact@v4
         with:
           name: amos-checklist-parity-v1-3
           path: results/amos-checklist-parity-v1-3/

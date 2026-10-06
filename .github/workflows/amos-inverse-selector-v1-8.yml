@@ -1,0 +1,28 @@
+name: AMOS Inverse Selector v1.8
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_inverse_selector_v1_8.py'
+      - '.github/workflows/amos-inverse-selector-v1-8.yml'
+jobs:
+  inverse-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install pandas numpy scikit-learn
+      - name: Run inverse chronological walk-forward
+        run: |
+          python research/amos_inverse_selector_v1_8.py \
+            --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/amos-inverse-selector-v1-8
+      - run: cat results/amos-inverse-selector-v1-8/result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-inverse-selector-v1-8
+          path: results/amos-inverse-selector-v1-8/
+          retention-days: 90

@@ -400,7 +400,7 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument('--catalog',action='append',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--dataset-id',default='xauusd-raw-bidask')
+    ap=argparse.ArgumentParser(); ap.add_argument('--catalog',action='append',required=True); ap.add_argument('--experiment-id',required=True); ap.add_argument('--dataset-id',default='xauusd-raw-bidask'); ap.add_argument('--broker-reality',action='store_true')
     a=ap.parse_args()
     catalogs=[ParquetDataCatalog(p) for p in a.catalog]
     inst=next((x for x in catalogs[0].instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)

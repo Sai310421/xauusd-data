@@ -87,3 +87,5 @@ if __name__=="__main__":
     r["verification_level"]="NAUTILUS_BT_VIDEO_CHECKLIST_ORDERED_V23"
     r["note"]="v23 enforces a latched ordered MSS checklist. M5 parent/G75 are unchanged. M1 is entry refinement only. Exact HTF PDA formula remains an explicit proxy; Macro/Volume/IFVG/EQ/CISD are not silently invented."
     p.write_text(json.dumps(r,indent=2,default=str))
+
+# workflow trigger

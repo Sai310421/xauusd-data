@@ -29,18 +29,20 @@ def make_m15(df):
     }).dropna().reset_index()
     return h
 
-def ref_range(df, i):
-    t=df.datetime.iat[i]; day=t.normalize(); m=t.hour*60+t.minute
-    if inwin(m,LONDON):
-        a,b=ASIA
-    elif inwin(m,NY):
-        a,b=LONDON
-    else:
-        return None
-    s=day+pd.Timedelta(minutes=a); e=day+pd.Timedelta(minutes=b)
-    w=df[(df.datetime>=s)&(df.datetime<e)]
-    if w.empty:return None
-    return float(w.high.max()),float(w.low.min())
+def build_ref_arrays(df):
+    ref_hi=np.full(len(df),np.nan); ref_lo=np.full(len(df),np.nan)
+    daykey=df.datetime.dt.normalize()
+    for _,g in df.groupby(daykey,sort=False):
+        mins=g.datetime.dt.hour*60+g.datetime.dt.minute
+        asia=g[(mins>=ASIA[0])&(mins<ASIA[1])]
+        london=g[(mins>=LONDON[0])&(mins<LONDON[1])]
+        lon_idx=g.index[(mins>=LONDON[0])&(mins<LONDON[1])]
+        ny_idx=g.index[(mins>=NY[0])&(mins<NY[1])]
+        if len(asia):
+            ref_hi[lon_idx]=float(asia.high.max()); ref_lo[lon_idx]=float(asia.low.min())
+        if len(london):
+            ref_hi[ny_idx]=float(london.high.max()); ref_lo[ny_idx]=float(london.low.min())
+    return ref_hi,ref_lo
 
 def htf_context(h15,t,di,px,look=32):
     j=h15.datetime.searchsorted(t,side='right')-2
@@ -71,7 +73,7 @@ def simulate_trade(df, event, rr):
             if lo<=tp:return float(rr),j
     return 0.0,len(df)-1
 
-def collect_events(df,h15,lookback,mss_body_atr,fib_lo,fib_hi,entry_mode):
+def collect_events(df,h15,ref_hi,ref_lo,lookback,mss_body_atr,fib_lo,fib_hi,entry_mode):
     stages={'sweeps':0,'mss':0,'eq_touches':0,'eq_rebalances':0,'candidates':0}
     ev=[]
     state='IDLE'; sweep_i=None; di=0; sweep_ext=0.; protected=0.; age=0
@@ -197,7 +199,7 @@ def main():
     core_grid=list(product([4,8],[.35,.55],[(.50,.62),(.62,.79)],['touch','reject']))
     all_events=[]; stage_rows=[]; result_rows=[]
     for lb,mb,fibs,emode in core_grid:
-        ev,st=collect_events(df,h15,lb,mb,fibs[0],fibs[1],emode)
+        ev,st=collect_events(df,h15,ref_hi,ref_lo,lb,mb,fibs[0],fibs[1],emode)
         all_events.extend(ev)
         stage_rows.append(dict(lookback=lb,mss_body_atr=mb,fib_lo=fibs[0],fib_hi=fibs[1],entry_mode=emode,**st))
         for rr,ctx,runway in product([2.0,3.0,4.0],[0,1,2],[False,True]):

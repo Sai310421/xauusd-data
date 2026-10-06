@@ -1,0 +1,27 @@
+name: XAUUSD External Raw Scale Audit
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/xauusd_external_scale_audit.py'
+      - '.github/workflows/xauusd-external-scale-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas pyarrow
+      - run: |
+          mkdir -p external_raw/xauusd results/scale-audit
+          curl -fL --retry 5 "https://raw.githubusercontent.com/simom1/XAUUSD-history/5d1bfa39cb8bb3715b027fa33815de7198fb1aca/2026/xauusd_2026_04.parquet" -o external_raw/xauusd/xauusd_2026_04.parquet
+          python research/xauusd_external_scale_audit.py --file external_raw/xauusd/xauusd_2026_04.parquet --out results/scale-audit/april_daily.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xauusd-external-scale-audit
+          path: results/scale-audit/

@@ -1,0 +1,177 @@
+name: Elliott ICT MTF Boost Nautilus Duka Raw BT v3 Chunked
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/elliott-ict-mtf-boost-nautilus-duka-raw-v3-chunked.yml'
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+
+jobs:
+  build-chunks:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: a
+            start: '2026-02-25'
+            days: 23
+          - name: b
+            start: '2026-03-20'
+            days: 23
+          - name: c
+            start: '2026-04-12'
+            days: 23
+          - name: d
+            start: '2026-05-05'
+            days: 22
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Restore chunk cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-${{ matrix.name }}
+          key: elliott-duka-xau-${{ matrix.name }}-${{ matrix.start }}-${{ matrix.days }}d-v3
+
+      - name: Build direct Dukascopy BI5 chunk
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/build_raw_bidask_catalog_duka.py             --start "${{ matrix.start }}"             --days "${{ matrix.days }}"             --catalog "catalog/chunk-${{ matrix.name }}"             --workers 16             --symbols XAUUSD             --fresh
+
+      - name: Validate chunk price scale
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, numpy as np
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+          name=os.environ['CHUNK_NAME']
+          path=f"catalog/chunk-{name}"
+          cat=ParquetDataCatalog(path)
+          inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+          assert inst is not None
+          ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+          assert len(ticks)>10000, f"too few ticks {len(ticks)}"
+          step=max(1,len(ticks)//500000)
+          bid=np.array([float(t.bid_price) for t in ticks[::step]],dtype=float)
+          ask=np.array([float(t.ask_price) for t in ticks[::step]],dtype=float)
+          assert np.all(ask>=bid)
+          med=float(np.median(bid)); mn=float(bid.min()); mx=float(bid.max())
+          ratios=np.maximum(bid[1:]/bid[:-1],bid[:-1]/bid[1:])
+          mr=float(ratios.max()) if len(ratios) else 1.0
+          assert mn>med/5.0 and mx<med*5.0, (mn,med,mx)
+          assert mr<1.20, mr
+          print(json.dumps({'chunk':name,'ticks':len(ticks),'sample_n':len(bid),'min':mn,'median':med,'max':mx,'max_ratio':mr},indent=2))
+          PY
+        env:
+          CHUNK_NAME: ${{ matrix.name }}
+
+      - name: Save chunk cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/chunk-${{ matrix.name }}
+          key: elliott-duka-xau-${{ matrix.name }}-${{ matrix.start }}-${{ matrix.days }}d-v3
+
+  run-bt:
+    needs: build-chunks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      EXPERIMENT_ID: elliott-ict-mtf-duka-v3-${{ github.run_id }}
+      EVIDENCE: results/elliott-ict-mtf-raw/elliott-ict-mtf-duka-v3-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Restore chunk A
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-a
+          key: elliott-duka-xau-a-2026-02-25-23d-v3
+          fail-on-cache-miss: true
+      - name: Restore chunk B
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-b
+          key: elliott-duka-xau-b-2026-03-20-23d-v3
+          fail-on-cache-miss: true
+      - name: Restore chunk C
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-c
+          key: elliott-duka-xau-c-2026-04-12-23d-v3
+          fail-on-cache-miss: true
+      - name: Restore chunk D
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/chunk-d
+          key: elliott-duka-xau-d-2026-05-05-22d-v3
+          fail-on-cache-miss: true
+
+      - name: Cross-chunk continuity gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE}"
+          python - <<'PY'
+          import json, numpy as np, os
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+          rows=[]
+          prev_last=None
+          for name in 'abcd':
+              cat=ParquetDataCatalog(f'catalog/chunk-{name}')
+              inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD')
+              ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+              assert ticks
+              first=float(ticks[0].bid_price); last=float(ticks[-1].bid_price)
+              if prev_last is not None:
+                  ratio=max(first/prev_last,prev_last/first)
+                  assert ratio<1.20, f'boundary scale discontinuity {name}: {prev_last}->{first}'
+              rows.append({'chunk':name,'ticks':len(ticks),'first_bid':first,'last_bid':last})
+              prev_last=last
+          Path(os.environ['EVIDENCE'],'chunk_continuity.json').write_text(json.dumps(rows,indent=2))
+          print(json.dumps(rows,indent=2))
+          PY
+
+      - name: Run canonical Raw BidAsk Elliott BT
+        run: |
+          python research/elliott_ict_mtf_boost_raw_bt_v1.py             --catalog catalog/chunk-a             --catalog catalog/chunk-b             --catalog catalog/chunk-c             --catalog catalog/chunk-d             --experiment-id "${EXPERIMENT_ID}"             --dataset-id "dukascopy-bi5-xauusd-20260225-91d-v3-chunked"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliott-ict-mtf-duka-v3-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 90

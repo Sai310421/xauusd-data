@@ -1,0 +1,23 @@
+name: AMOS Ordered Pattern v1.3
+on:
+  push:
+    branches: [feat/amos-ordered-pattern-v1-3]
+    paths: ['research/amos_ordered_pattern_v1_3/**','.github/workflows/amos-ordered-pattern-v1-3.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ordered-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install --disable-pip-version-check pandas numpy
+      - run: python research/amos_ordered_pattern_v1_3/ordered_pattern_bt.py --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv --out results/amos-ordered-pattern-v1-3 --risk-pct 0.35
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-ordered-pattern-v1-3
+          path: results/amos-ordered-pattern-v1-3/
+          retention-days: 90

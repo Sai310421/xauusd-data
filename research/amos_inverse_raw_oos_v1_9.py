@@ -14,7 +14,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from nautilus_trader.persistence.catalog import ParquetDataCatalog\nfrom nautilus_trader.model.data import QuoteTick
 
 FEATURES=["rr_to_session_target","acc_eff","acc_range_atr","bars_from_sweep","hour_sin","hour_cos",
 "m15_body_atr","m15_range_atr","m15_close_pos","m15_efficiency","m15_prev4_eff",
@@ -34,7 +34,7 @@ def main():
  a=ap.parse_args();out=Path(a.out);out.mkdir(parents=True,exist_ok=True)
  cat=ParquetDataCatalog(a.catalog)
  inst=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD")
- ticks=cat.query_quote_ticks(identifiers=[inst.id.value])
+ ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
  if not ticks:raise SystemExit("no XAUUSD raw quote ticks")
  ts=np.fromiter((int(x.ts_event) for x in ticks),dtype=np.int64,count=len(ticks))
  bid=np.fromiter((fpx(x.bid_price) for x in ticks),dtype=np.float64,count=len(ticks))

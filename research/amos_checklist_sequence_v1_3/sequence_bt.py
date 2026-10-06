@@ -196,6 +196,7 @@ def main():
     df=df.dropna().sort_values('datetime').reset_index(drop=True)
     df['atr']=atr(df);df['vma']=df.volume.shift(1).rolling(20).mean()
     h15=make_m15(df)
+    ref_hi,ref_lo=build_ref_arrays(df)
     core_grid=list(product([4,8],[.35,.55],[(.50,.62),(.62,.79)],['touch','reject']))
     all_events=[]; stage_rows=[]; result_rows=[]
     for lb,mb,fibs,emode in core_grid:

@@ -1,0 +1,132 @@
+name: AMOS Video CISD v1.11 Direct Dukascopy Nautilus
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/build_direct_duka_catalog.py'
+      - 'research/amos_video_parity_cisd_v1_5/video_cisd_direct_duka_shard.py'
+      - 'research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_route_shard.py'
+      - '.github/workflows/amos-video-cisd-v1-11-direct-duka.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+jobs:
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: s1, primary_start: '2026-02-25T00:00:00Z', primary_end: '2026-03-27T00:00:00Z', fetch_start: '2026-02-24T00:00:00Z', fetch_end: '2026-03-28T00:00:00Z'}
+          - {label: s2, primary_start: '2026-03-27T00:00:00Z', primary_end: '2026-04-26T00:00:00Z', fetch_start: '2026-03-26T00:00:00Z', fetch_end: '2026-04-27T00:00:00Z'}
+          - {label: s3, primary_start: '2026-04-26T00:00:00Z', primary_end: '2026-05-27T00:00:00Z', fetch_start: '2026-04-25T00:00:00Z', fetch_end: '2026-05-28T00:00:00Z'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      LABEL: ${{ matrix.label }}
+      CATALOG: catalog/direct_duka_${{ matrix.label }}
+      WORK: work/direct_duka_${{ matrix.label }}
+      OUT: results/direct_duka_v111/${{ matrix.label }}
+      CACHE_KEY: direct-duka-xauusd-${{ matrix.label }}-20260224-20260528-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - name: Build direct Dukascopy QuoteTick catalog
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          python research/amos_video_parity_cisd_v1_5/build_direct_duka_catalog.py \
+            --start "${{ matrix.fetch_start }}" --end "${{ matrix.fetch_end }}" \
+            --catalog "${CATALOG}" --work "${WORK}" --workers 24 \
+            --manifest "${CATALOG}/direct_duka_manifest.json"
+      - name: Save direct Duka catalog cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - name: Validate direct source manifest
+        run: |
+          test -s "${CATALOG}/direct_duka_manifest.json"
+          python - <<'PY'
+          import json,os
+          x=json.load(open(os.path.join(os.environ['CATALOG'],'direct_duka_manifest.json')))
+          assert x['verification']=='DIRECT_DUKASCOPY_BI5_XAUUSD'
+          assert x['ticks_written']>0
+          bad=[d for d in x['daily'] if d.get('ticks',0)>0 and not (1000<d['bid_median']<10000)]
+          assert not bad,bad
+          print(json.dumps({'ticks':x['ticks_written'],'days':len(x['daily']),'bad_scale':len(bad)},indent=2))
+          PY
+      - name: Run three independent AMD routes in Nautilus
+        run: |
+          python research/amos_video_parity_cisd_v1_5/video_cisd_direct_duka_shard.py \
+            --catalog "${CATALOG}" --out "${OUT}" --label "${LABEL}" \
+            --primary-start "${{ matrix.primary_start }}" --primary-end "${{ matrix.primary_end }}"
+          cp "${CATALOG}/direct_duka_manifest.json" "${OUT}/catalog_manifest.json"
+      - run: cat "${OUT}/summary.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: direct-duka-v111-${{ matrix.label }}
+          path: ${{ env.OUT }}/
+  aggregate:
+    needs: shard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: direct-duka-v111-*
+          path: shards
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install pandas numpy
+      - name: Aggregate direct Duka 90d
+        run: |
+          python - <<'PY'
+          import json,math
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          roots=sorted(Path('shards').glob('direct-duka-v111-*')); rows=[]; sums=[]
+          for r in roots:
+              sums.append(json.loads((r/'summary.json').read_text()))
+              p=r/'risk_trades.csv'
+              if p.exists() and p.stat().st_size>1:
+                  try:
+                      x=pd.read_csv(p)
+                      if len(x):rows.append(x)
+                  except pd.errors.EmptyDataError:pass
+          z=pd.concat(rows,ignore_index=True) if rows else pd.DataFrame(columns=['route','signal_ts','R_realized'])
+          if len(z):z=z.sort_values('signal_ts')
+          a=z.R_realized.to_numpy(float) if len(z) else np.array([],float)
+          gp=a[a>0].sum() if len(a) else 0.;gl=-a[a<0].sum() if len(a) else 0.;eq=pk=100.;dd=0.
+          for r in a:
+              eq*=max(.0001,1+.0035*r);pk=max(pk,eq);dd=max(dd,100*(pk-eq)/pk)
+          route={}
+          for k in ['ASIA','LONDON','NY']:
+              q=z[z.route==k] if len(z) else z;v=q.R_realized.to_numpy(float) if len(q) else np.array([],float)
+              wg=v[v>0].sum() if len(v) else 0.;ls=-v[v<0].sum() if len(v) else 0.
+              route[k]={'N':int(len(v)),'wins':int((v>0).sum()),'WR_pct':float((v>0).mean()*100) if len(v) else 0.,
+                        'PF_R':float(wg/ls) if ls>0 else (math.inf if wg>0 else 0.),'sum_R':float(v.sum()) if len(v) else 0.}
+          out={'verification':'NAUTILUS_DIRECT_DUKASCOPY_VIDEO_CISD_V1_11_90D','period':'2026-02-25..2026-05-26',
+               'source':'datafeed.dukascopy.com BI5 direct','shards':len(sums),'N':int(len(a)),'wins':int((a>0).sum()),
+               'WR_pct':float((a>0).mean()*100) if len(a) else 0.,
+               'PF_R':float(gp/gl) if gl>0 else (math.inf if gp>0 else 0.),'sum_R':float(a.sum()) if len(a) else 0.,
+               'Return_pct_at_0_35pct_risk':float(eq-100),'MaxDD_pct_at_0_35pct_risk':float(dd),'route_kpi_R':route,
+               'raw_ticks_by_shard':{s['shard']:s['raw_ticks'] for s in sums}}
+          out['promotion_gate']={'WR_ge_40':out['WR_pct']>=40,'PF_ge_1_2':out['PF_R']>=1.2,
+                                 'DD_le_5':out['MaxDD_pct_at_0_35pct_risk']<=5,'N_ge_10':out['N']>=10}
+          out['PROMOTE']=all(out['promotion_gate'].values())
+          p=Path('results/direct_duka_v111_90d');p.mkdir(parents=True,exist_ok=True)
+          (p/'summary.json').write_text(json.dumps(out,indent=2));z.to_csv(p/'risk_trades.csv',index=False)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-cisd-v1-11-direct-duka-nautilus-90d
+          path: results/direct_duka_v111_90d/

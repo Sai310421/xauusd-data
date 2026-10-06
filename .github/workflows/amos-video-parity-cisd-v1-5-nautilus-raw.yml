@@ -14,7 +14,7 @@ env:
   CATALOG: catalog/amos_complete_external_raw
   FULL_START: '2026-02-25T00:00:00Z'
   FULL_END: '2026-05-26T23:59:59.999Z'
-  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v2-normalized
 jobs:
   raw-shard:
     strategy:

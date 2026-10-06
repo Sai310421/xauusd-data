@@ -1,0 +1,42 @@
+name: Checklist Sequence Research v23
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['research/video_checklist_ordered_v23.py']
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install nautilus_trader==1.230.0 pandas numpy pyarrow
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/elliott_duka_p1
+          key: elliott-duka-xau-2026-02-25-30d-v3
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/elliott_duka_p2
+          key: elliott-duka-xau-2026-03-27-30d-v3
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/elliott_duka_p3
+          key: elliott-duka-xau-2026-04-26-31d-v3
+          fail-on-cache-miss: true
+      - run: python -m py_compile research/video_checklist_ordered_v23.py
+      - run: python research/video_checklist_ordered_v23.py --catalog catalog/elliott_duka_p1 --catalog catalog/elliott_duka_p2 --catalog catalog/elliott_duka_p3 --experiment-id v23-${{ github.run_id }} --mode g75 --g75-reversal 0.05
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checklist-sequence-v23-${{ github.run_id }}
+          path: results/video-checklist-ordered-v23/v23-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 90

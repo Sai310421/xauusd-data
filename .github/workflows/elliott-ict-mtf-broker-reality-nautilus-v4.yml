@@ -1,0 +1,139 @@
+name: Elliott ICT MTF Broker Reality Nautilus Raw BT v4
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research/elliott_ict_mtf_boost_raw_bt_v1.py'
+      - '.github/workflows/elliott-ict-mtf-broker-reality-nautilus-v4.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elliott-ict-mtf-broker-reality-v4
+  cancel-in-progress: false
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  MERGED: catalog/elliott_duka_merged_v4
+  EXPERIMENT_ID: elliott-ict-mtf-broker-reality-v4-${{ github.run_id }}
+  EVIDENCE: results/elliott-ict-mtf-raw/elliott-ict-mtf-broker-reality-v4-${{ github.run_id }}
+
+jobs:
+  broker-reality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+
+      - name: Restore p1 cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/elliott_duka_p1
+          key: elliott-duka-xau-2026-02-25-30d-v3
+          fail-on-cache-miss: true
+
+      - name: Restore p2 cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/elliott_duka_p2
+          key: elliott-duka-xau-2026-03-27-30d-v3
+          fail-on-cache-miss: true
+
+      - name: Restore p3 cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/elliott_duka_p3
+          key: elliott-duka-xau-2026-04-26-31d-v3
+          fail-on-cache-miss: true
+
+      - name: Merge cached Dukascopy catalogs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, shutil, os
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          parts=[Path('catalog/elliott_duka_p1'),Path('catalog/elliott_duka_p2'),Path('catalog/elliott_duka_p3')]
+          out=Path(os.environ['MERGED'])
+          if out.exists(): shutil.rmtree(out)
+          out.mkdir(parents=True,exist_ok=True)
+          outcat=ParquetDataCatalog(str(out.resolve()))
+          total=0; first=None; last=None; instrument=None
+          for p in parts:
+            cat=ParquetDataCatalog(str(p.resolve()))
+            inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+            assert inst is not None, f'XAUUSD missing in {p}'
+            if instrument is None:
+              instrument=inst
+              outcat.write_data([instrument])
+            ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+            assert ticks, f'no ticks in {p}'
+            outcat.write_data(ticks)
+            total += len(ticks)
+            first = int(ticks[0].ts_event) if first is None else min(first,int(ticks[0].ts_event))
+            last = int(ticks[-1].ts_event) if last is None else max(last,int(ticks[-1].ts_event))
+          m={'status':'COMPLETE','parts':3,'ticks':total,'first_ts_ns':first,'last_ts_ns':last,
+             'source':'direct Dukascopy BI5 Bid/Ask','ohlc_resample_used':False}
+          (out/'catalog_manifest.json').write_text(json.dumps(m,indent=2))
+          print(json.dumps(m,indent=2))
+          PY
+
+      - name: Raw BidAsk market-data gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${EVIDENCE}"
+          python - <<'PY'
+          import json, os
+          import numpy as np
+          from pathlib import Path
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          cat=ParquetDataCatalog(os.environ['MERGED'])
+          inst=next((x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD'),None)
+          ticks=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+          assert len(ticks)>100000, f'too few ticks: {len(ticks)}'
+          bid=np.fromiter((float(t.bid_price) for t in ticks),dtype=float,count=len(ticks))
+          ask=np.fromiter((float(t.ask_price) for t in ticks),dtype=float,count=len(ticks))
+          assert np.all(ask>=bid), 'crossed quotes'
+          med=float(np.median(bid)); pmin=float(bid.min()); pmax=float(bid.max())
+          assert pmin > med/5.0 and pmax < med*5.0, f'scale failure min={pmin} med={med} max={pmax}'
+          step=max(1,len(bid)//2_000_000); b=bid[::step]
+          ratios=np.maximum(b[1:]/b[:-1],b[:-1]/b[1:])
+          max_ratio=float(np.max(ratios)) if len(ratios) else 1.0
+          assert max_ratio < 1.20, f'abnormal scale jump ratio={max_ratio}'
+          q={'status':'PASS','ticks':len(ticks),'median_bid':med,'min_bid':pmin,'max_bid':pmax,
+             'max_sampled_consecutive_ratio':max_ratio,'ohlc_resample_used':False,
+             'source':'direct Dukascopy BI5 Bid/Ask split-merged'}
+          Path(os.environ['EVIDENCE'],'data_quality.json').write_text(json.dumps(q,indent=2))
+          print(json.dumps(q,indent=2))
+          PY
+
+      - name: Run canonical Raw BT plus broker-reality execution replay
+        run: |
+          python research/elliott_ict_mtf_boost_raw_bt_v1.py             --catalog "${MERGED}"             --experiment-id "${EXPERIMENT_ID}"             --dataset-id "dukascopy-bi5-xauusd-20260225-20260526-v4-broker-reality"             --broker-reality
+
+      - name: Upload canonical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elliott-ict-mtf-broker-reality-v4-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 90

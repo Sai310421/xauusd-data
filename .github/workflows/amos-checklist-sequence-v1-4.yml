@@ -1,0 +1,34 @@
+name: AMOS Checklist Sequence v1.4
+
+on:
+  push:
+    branches:
+      - feat/amos-checklist-parity-v1-2
+    paths:
+      - 'research/amos_checklist_parity_v1_4/**'
+      - '.github/workflows/amos-checklist-sequence-v1-4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sequence-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pandas numpy
+      - name: Run ordered mandatory-gate state machine
+        run: |
+          python research/amos_checklist_parity_v1_4/sequence_gate_bt.py \
+            --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv \
+            --out results/amos-checklist-parity-v1-4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-checklist-parity-v1-4-sequence
+          path: results/amos-checklist-parity-v1-4/
+          retention-days: 90

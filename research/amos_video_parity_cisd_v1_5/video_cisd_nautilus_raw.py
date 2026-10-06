@@ -139,12 +139,12 @@ def executable(xs):
  one=Quantity.from_int(1);return [QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,bid_size=one if f(t.bid_size)<=0 else t.bid_size,ask_size=one if f(t.ask_size)<=0 else t.ask_size,ts_event=t.ts_event,ts_init=t.ts_init) for t in xs]
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--out',required=True);a=ap.parse_args()
+ ap=argparse.ArgumentParser();ap.add_argument('--catalog',required=True);ap.add_argument('--out',required=True);ap.add_argument('--start');ap.add_argument('--end');a=ap.parse_args()
  cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD')
- raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value]);assert raw
+ raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value],start=a.start,end=a.end);assert raw
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
  eng.add_instrument(inst);eng.add_data(raw);st=VideoCISDRaw(Cfg(instrument_id=inst.id));eng.add_strategy(st);eng.run();eng.end()
- out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_6_NAUTILUS_RAW_BIDASK_TARGET_PRESERVED','raw_ticks':len(raw),'ohlc_resample_used_for_execution':False,'signal_bars':'M15 built causally from raw midpoint quotes','execution':'next QuoteTick Bid/Ask after closed M15 signal','initial_usd':1000,'leverage':2000,**metrics(st.rs)}
+ out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_6_NAUTILUS_RAW_BIDASK_TARGET_PRESERVED','raw_ticks':len(raw),'ohlc_resample_used_for_execution':False,'signal_bars':'M15 built causally from raw midpoint quotes','execution':'next QuoteTick Bid/Ask after closed M15 signal','initial_usd':1000,'leverage':2000,'query_start':a.start,'query_end':a.end,**metrics(st.rs)}
  p=Path(a.out);p.mkdir(parents=True,exist_ok=True);(p/'summary.json').write_text(json.dumps(out,indent=2));pd.DataFrame(st.trades).to_csv(p/'trades.csv',index=False);print(json.dumps(out,indent=2))
 if __name__=='__main__':main()

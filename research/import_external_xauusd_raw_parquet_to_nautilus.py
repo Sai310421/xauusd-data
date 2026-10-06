@@ -58,6 +58,7 @@ def main() -> None:
     total_in = 0
     total_kept = 0
     patched_sizes = 0
+    scaled_price_rows = 0
     first_ts = None
     last_ts = None
     per_file = []
@@ -92,7 +93,23 @@ def main() -> None:
         )
         q = q[["datetime", "bid_price", "ask_price", "bid_size", "ask_size"]]
         q = q.dropna()
+
+        # Upstream 2026 XAUUSD files contain mixed price scales in the same parquet:
+        # some rows are around 45-50 while adjacent rows are around 4500-5000.
+        # Normalize only the clearly scaled-down representation before Nautilus wrangling.
+        mid = (q["bid_price"] + q["ask_price"]) / 2.0
+        scaled = mid < 500.0
+        if scaled.any():
+            q.loc[scaled, "bid_price"] = q.loc[scaled, "bid_price"] * 100.0
+            q.loc[scaled, "ask_price"] = q.loc[scaled, "ask_price"] * 100.0
+            scaled_price_rows += int(scaled.sum())
+
         q = q[q["ask_price"] >= q["bid_price"]]
+        # Fail closed if a scale anomaly remains after normalization.
+        mid2 = (q["bid_price"] + q["ask_price"]) / 2.0
+        if ((mid2 < 500.0) | (mid2 > 10000.0)).any():
+            bad = q.loc[(mid2 < 500.0) | (mid2 > 10000.0), ["datetime", "bid_price", "ask_price"]].head(5)
+            raise ValueError(f"price scale guard failed in {p.name}:\n{bad}")
         q = q.sort_values("datetime").drop_duplicates("datetime", keep="last")
 
         bad_bid = q["bid_size"] <= 0
@@ -130,7 +147,9 @@ def main() -> None:
         "rows_scanned": total_in,
         "ticks_written": total_kept,
         "size_values_patched_nonpositive": patched_sizes,
-        "price_values_modified": False,
+        "price_values_modified": bool(scaled_price_rows),
+        "price_rows_scaled_x100": scaled_price_rows,
+        "price_scale_rule": "if midpoint < 500, multiply bid/ask by 100; fail closed outside 500..10000 afterwards",
         "ohlc_resample_used": False,
         "execution_data": "QuoteTick Bid/Ask",
         "files": per_file,

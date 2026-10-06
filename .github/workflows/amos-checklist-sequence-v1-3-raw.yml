@@ -1,0 +1,83 @@
+name: AMOS Checklist Sequence v1.3 Raw BidAsk
+
+on:
+  push:
+    branches:
+      - feat/amos-checklist-parity-v1-2
+    paths:
+      - 'research/amos_checklist_sequence_v1_3/rawtick_bt.py'
+      - '.github/workflows/amos-checklist-sequence-v1-3-raw.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+
+jobs:
+  raw-sequence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: MSS_EQ
+            target_r: '3.0'
+            context_min: '1'
+            experiment: checklist-seq-v13-msseq-r3-c1
+          - model: IFVG
+            target_r: '2.0'
+            context_min: '1'
+            experiment: checklist-seq-v13-ifvg-r2-c1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+
+      - name: Restore shared Raw BidAsk catalog
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Ensure canonical Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+
+      - name: Run ordered sequence on raw XAUUSD quotes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m research.amos_checklist_sequence_v1_3.rawtick_bt \
+            --catalog "$RAW_CATALOG" \
+            --experiment-id "${{ matrix.experiment }}" \
+            --model "${{ matrix.model }}" \
+            --target-r "${{ matrix.target_r }}" \
+            --context-min "${{ matrix.context_min }}" \
+            --raw-bidask-only
+
+      - name: Upload Raw BidAsk evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-checklist-sequence-v1-3-raw-${{ matrix.model }}
+          path: results/ae-bt/${{ matrix.experiment }}/
+          if-no-files-found: error
+          retention-days: 90

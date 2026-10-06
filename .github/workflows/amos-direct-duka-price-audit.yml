@@ -1,0 +1,19 @@
+name: AMOS Direct Dukascopy Price Audit
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/duka_price_audit.py'
+      - '.github/workflows/amos-direct-duka-price-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python research/amos_video_parity_cisd_v1_5/duka_price_audit.py

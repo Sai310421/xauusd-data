@@ -283,8 +283,9 @@ class M5CoreG75PursuitRawV17(Strategy):
         # Execute on the same first raw quote that reveals the closed M5 bar.
         # This removes the old artificial +5min +100ms delay without changing signal logic.
         for m in closed:self._setup_tick(m,bid,ask,ts)
-        self._manage_g75(bid,ask,ts)
-        self._manage_legs(bid,ask,ts); self._risk(bid,ask)
+        # Parent M5 exits have priority; do not add a chase layer on a tick that already hits base SL/TP/TIMEOUT.
+        self._manage_legs(bid,ask,ts)
+        self._manage_g75(bid,ask,ts); self._risk(bid,ask)
 
     def on_stop(self):
         if self.last_bid is None:return

@@ -1,0 +1,123 @@
+name: AMOS Video CISD v1.8 Nautilus Sharded
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_shard.py'
+      - '.github/workflows/amos-video-cisd-v1-8-nautilus-sharded.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  CATALOG: catalog/amos_complete_external_raw
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+jobs:
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: s1, start: '2026-02-25T00:00:00Z', end: '2026-03-27T00:00:00Z'}
+          - {label: s2, start: '2026-03-27T00:00:00Z', end: '2026-04-26T00:00:00Z'}
+          - {label: s3, start: '2026-04-26T00:00:00Z', end: '2026-05-27T00:00:00Z'}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - name: Fail closed if raw catalog cache missing
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: exit 17
+      - run: |
+          python research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_shard.py \
+            --catalog "${CATALOG}" \
+            --out "results/v1_8/${{ matrix.label }}" \
+            --label "${{ matrix.label }}" \
+            --start "${{ matrix.start }}" \
+            --end "${{ matrix.end }}"
+      - run: cat "results/v1_8/${{ matrix.label }}/summary.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v1-8-${{ matrix.label }}
+          path: results/v1_8/${{ matrix.label }}/
+  aggregate:
+    needs: shard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v1-8-*
+          path: shards
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install pandas numpy
+      - name: Aggregate 90d KPI
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,math
+          from pathlib import Path
+          import numpy as np,pandas as pd
+          roots=sorted(Path('shards').glob('v1-8-*'))
+          sums=[]; trades=[]; signals=[]
+          for r in roots:
+              sums.append(json.loads((r/'summary.json').read_text()))
+              p=r/'trades.csv'
+              if p.exists() and p.stat().st_size:
+                  x=pd.read_csv(p)
+                  if len(x): trades.append(x)
+              p=r/'signals.csv'
+              if p.exists() and p.stat().st_size:
+                  x=pd.read_csv(p)
+                  if len(x): signals.append(x)
+          t=pd.concat(trades,ignore_index=True) if trades else pd.DataFrame(columns=['pnl','ts_closed'])
+          if len(t) and 'ts_closed' in t:t=t.sort_values('ts_closed')
+          a=t['pnl'].to_numpy(float) if len(t) else np.array([],float)
+          w=a[a>0];l=a[a<0];eq=peak=300.;dd=0.
+          for x in a:
+              eq+=x;peak=max(peak,eq);dd=max(dd,peak-eq)
+          pf=float(w.sum()/abs(l.sum())) if len(l) and l.sum()!=0 else (math.inf if len(w) else 0.)
+          route={}
+          for s in sums:
+              for k,v in s.get('route_signals',{}).items():route[k]=route.get(k,0)+int(v)
+          out={
+              'verification':'NAUTILUS_BT_RAW_BIDASK_VIDEO_CISD_V1_8_SHARDED_90D',
+              'period':'2026-02-25..2026-05-26',
+              'shards':len(sums),
+              'raw_ticks_loaded_with_overlap':sum(int(s.get('raw_ticks_loaded',0)) for s in sums),
+              'signals_submitted':sum(int(s.get('signals_submitted',0)) for s in sums),
+              'route_signals':route,
+              'N':int(len(a)),
+              'wins':int((a>0).sum()),
+              'WR_pct':float((a>0).mean()*100) if len(a) else 0.,
+              'PF':pf,
+              'NetProfit':float(a.sum()),
+              'Return_pct':float(a.sum()/300*100),
+              'MaxDD_pct':float(dd/peak*100 if peak else 0.),
+          }
+          out['promotion_gate']={
+              'WR_ge_40':out['WR_pct']>=40,
+              'PF_ge_1_2':out['PF']>=1.2,
+              'DD_le_5':out['MaxDD_pct']<=5,
+              'N_ge_10':out['N']>=10,
+          }
+          out['PROMOTE']=all(out['promotion_gate'].values())
+          Path('results/v1_8_90d').mkdir(parents=True,exist_ok=True)
+          Path('results/v1_8_90d/summary.json').write_text(json.dumps(out,indent=2))
+          t.to_csv('results/v1_8_90d/trades.csv',index=False)
+          if signals:
+              pd.concat(signals,ignore_index=True).sort_values('signal_ts').to_csv('results/v1_8_90d/signals.csv',index=False)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-cisd-v1-8-nautilus-raw-90d
+          path: results/v1_8_90d/

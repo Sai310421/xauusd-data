@@ -84,13 +84,16 @@ def main():
                 elif b.low<=q["tp"]:hit=q["rr"]
             if hit is not None:st.close(hit,a.risk_pct,t)
 
-        if not in_window_jst(t,windows):
-            if s.state>0:s.reset()
-            continue
+        inside_amd=in_window_jst(t,windows)
         if not np.isfinite(b.atr) or b.atr<=0:continue
 
+        # AMD window is the activation window, not the full lifecycle.
+        # Once manipulation is latched, follow CISD/distribution/retrace even after the window ends.
+        if s.state==0 and not inside_amd:
+            continue
+
         s.step_age()
-        # STATE 0: lock prior accumulation range at AMD-window entry
+        # STATE 0: lock prior accumulation range only while entering an AMD activation window
         if s.state==0:
             prev=m.iloc[i-a.acc-bars:i] if False else m.iloc[i-a.acc_bars:i]
             s.acc_hi=float(prev.high.max());s.acc_lo=float(prev.low.min());s.state=1;s.age=0;s.start=str(t)

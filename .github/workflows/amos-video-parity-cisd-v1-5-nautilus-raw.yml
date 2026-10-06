@@ -1,0 +1,50 @@
+name: AMOS Video Parity CISD v1.5 Nautilus Raw
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_raw.py'
+      - '.github/workflows/amos-video-parity-cisd-v1-5-nautilus-raw.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  INPUT_DIR: external_raw/xauusd
+  CATALOG: catalog/amos_complete_external_raw
+  START: '2026-02-25T00:00:00Z'
+  END: '2026-05-26T23:59:59.999Z'
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v1
+  OUT: results/amos-video-parity-cisd-v1-5-nautilus-raw
+jobs:
+  raw:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "${INPUT_DIR}"
+          base='https://raw.githubusercontent.com/simom1/XAUUSD-history/main/2026'
+          for f in xauusd_2026_02.parquet xauusd_2026_03_early.parquet xauusd_2026_03_mid.parquet xauusd_2026_03_late.parquet xauusd_2026_04.parquet xauusd_2026_05.parquet; do curl -fL --retry 5 "${base}/$f" -o "${INPUT_DIR}/$f"; done
+          python research/import_external_xauusd_raw_parquet_to_nautilus.py --input-dir "${INPUT_DIR}" --catalog "${CATALOG}" --start "${START}" --end "${END}" --manifest catalog_manifest.json
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+      - run: python research/amos_video_parity_cisd_v1_5/video_cisd_nautilus_raw.py --catalog "${CATALOG}" --out "${OUT}"
+      - run: cat "${OUT}/summary.json"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-parity-cisd-v1-5-nautilus-raw
+          path: ${{ env.OUT }}

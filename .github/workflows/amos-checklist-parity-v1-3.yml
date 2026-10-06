@@ -20,6 +20,8 @@ jobs:
       - run: python research/amos_checklist_parity_v1_3/ordered_pattern_bt.py --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv --out results/amos-checklist-parity-v1-3
       - name: Print P5 hourly KPI
         run: cat results/amos-checklist-parity-v1-3/p5_hourly_kpi.csv
+      - name: Print P5 AMD hourly
+        run: cat results/amos-checklist-parity-v1-3/p5_amd_hourly.csv
       - uses: actions/upload-artifact@v4
         with:
           name: amos-checklist-parity-v1-3

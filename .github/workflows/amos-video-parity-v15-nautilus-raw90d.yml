@@ -19,11 +19,11 @@ permissions:
 env:
   PYTHONPATH: ${{ github.workspace }}
   NAUTILUS_VERSION: '1.230.0'
-  RAW_CATALOG: catalog/amos_vp15_xauusd_raw90d
+  RAW_CATALOG: catalog/elliott_duka_xau_90d
   RAW_START: '2026-02-25'
-  RAW_DAYS: '90'
+  RAW_DAYS: '91'
   RAW_WORKERS: '16'
-  RAW_CACHE_KEY: amos-vp15-xauusd-duka-2026-02-25-90d-v1
+  RAW_CACHE_KEY: elliott-duka-xau-20260225-91d-v2
   EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('amos-vp15-raw90d-{0}', github.run_id) }}
 
 jobs:
@@ -59,28 +59,25 @@ jobs:
           path: ${{ env.RAW_CATALOG }}
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Ensure exact 90d XAUUSD Raw BidAsk catalog
+      - name: Ensure cached 91d XAUUSD Raw BidAsk catalog
         shell: bash
         run: |
           set -euo pipefail
-          ok=0
-          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
-            python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD && ok=1 || true
-            python - <<'PY' && true || ok=0
+          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != "true" ]; then
+            rm -rf "$RAW_CATALOG"
+            python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers "$RAW_WORKERS" --symbols XAUUSD --fresh
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+          python - <<'PY'
           import json,os
           p=os.path.join(os.environ["RAW_CATALOG"],"catalog_manifest.json")
           m=json.load(open(p))
-          assert m["start"]==os.environ["RAW_START"] and int(m["days"])==int(os.environ["RAW_DAYS"]) and m["symbols"]==["XAUUSD"]
+          assert m["start"]=="2026-02-25"
+          assert int(m["days"])>=90
+          assert m["symbols"]==["XAUUSD"]
+          assert m["ohlc_resample_used"] is False
+          print({"catalog_start":m["start"],"catalog_days":m["days"],"ticks":m["stats"]["XAUUSD"]["ticks"]})
           PY
-          fi
-          if [ "$ok" -ne 1 ]; then
-            rm -rf "$RAW_CATALOG"
-            for n in 1 2 3; do
-              python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers "$RAW_WORKERS" --symbols XAUUSD --fresh && break || true
-              rm -rf "$RAW_CATALOG"; sleep $((n*10))
-            done
-          fi
-          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
           cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
           find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
 
@@ -92,10 +89,10 @@ jobs:
           key: ${{ env.RAW_CACHE_KEY }}
 
       - name: Run CORE on Nautilus Raw BidAsk
-        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --variant CORE --risk-pct 0.35
+        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --variant CORE --risk-pct 0.35 --start 2026-02-25 --days 90
 
       - name: Run VIDEO_OR on Nautilus Raw BidAsk
-        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --variant VIDEO_OR --risk-pct 0.35
+        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --variant VIDEO_OR --risk-pct 0.35 --start 2026-02-25 --days 90
 
       - name: Build comparison
         run: |

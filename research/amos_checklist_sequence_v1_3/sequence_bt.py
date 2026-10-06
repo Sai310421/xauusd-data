@@ -82,10 +82,9 @@ def collect_events(df,h15,ref_hi,ref_lo,lookback,mss_body_atr,fib_lo,fib_hi,entr
         a=float(df.atr.iat[i])
         if not np.isfinite(a) or a<=0: continue
         b=df.iloc[i]; t=b.datetime
-        rrng=ref_range(df,i)
+        H=ref_hi[i]; L=ref_lo[i]
         if state=='IDLE':
-            if rrng is None: continue
-            H,L=rrng
+            if not (np.isfinite(H) and np.isfinite(L)): continue
             min_s=.02*a; max_s=1.2*a
             sh=(b.high>H+min_s and b.close<H and b.high-H<=max_s)
             sl=(b.low<L-min_s and b.close>L and L-b.low<=max_s)

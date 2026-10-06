@@ -319,7 +319,7 @@ class VideoParityStrategy(Strategy):
         self.trades.append(Rec(q["route"],self.config.variant,q["side"],q["entry_time"],
             str(pd.Timestamp(ts,unit="ns",tz="UTC")),q["entry"],q["stop"],q["target"],px,float(r),result,
             int(q["pda"]),int(q["macro"]),int(q["volume"]),q["cisd_level"],q["target_kind"]))
-        self.active=None;self.active_risk_cash=0.0;self.exit_pending=True
+        self.active=None;self.active_risk_cash=0.0;self.exit_pending=False
 
     def on_quote_tick(self,tick:QuoteTick):
         ts=int(tick.ts_event);bid=fpx(tick.bid_price);ask=fpx(tick.ask_price)
@@ -334,7 +334,10 @@ class VideoParityStrategy(Strategy):
             if (side>0 and px>=target) or (side<0 and px<=target):
                 self._finish(px,ts,"WIN");self.close_all_positions(self.config.instrument_id);return
             return
-        if self.exit_pending:return
+        # Do not rely on a strategy callback to clear an exit flag. The Nautilus portfolio
+        # is the source of truth: re-entry is allowed only after the engine is actually flat.
+        is_flat=not self.portfolio.is_net_long(self.config.instrument_id) and not self.portfolio.is_net_short(self.config.instrument_id)
+        if not is_flat:return
         if self.phase!=3:return
         side=self.di
         # Signal chart is BID-based, so the retest is detected on raw bid; execution still pays spread.
@@ -457,7 +460,7 @@ def main():
     pd.DataFrame(strat.sequence).to_csv(out/f"sequence_{a.variant}.csv",index=False)
     conf={"variant":a.variant,"risk_pct":a.risk_pct,"start":a.start,"days":a.days,"routes":"NORMAL + fixed-JST AMD priority","sweep_min_atr":.03,
           "cisd_confirm_ttl_bars":8,"entry_ttl_bars":6,"target_min_rr":.8,
-          "entry_execution":"after M15 CISD confirmation, first raw BID retest of CISD level; market execution on Bid/Ask; no retrospective bar fill",
+          "entry_execution":"after M15 CISD confirmation, first raw BID retest of CISD level; market execution on Bid/Ask; no retrospective bar fill; portfolio-flat gate from Nautilus engine",
           "context":"CORE=none; VIDEO_OR=Macro OR (HTF PDA and raw tick-volume influx)"}
     evidence={"experiment_id":a.experiment_id,"verification_level":"NAUTILUS_BT","git_sha":os.environ.get("GITHUB_SHA"),
               "run_id":os.environ.get("GITHUB_RUN_ID"),"nautilus_version":getattr(nautilus_trader,"__version__","unknown"),

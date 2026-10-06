@@ -1,0 +1,122 @@
+name: AMOS Video Parity v1.5 Nautilus Raw90D
+
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/nautilus_raw_v1_5.py'
+      - '.github/workflows/amos-video-parity-v15-nautilus-raw90d.yml'
+  workflow_dispatch:
+    inputs:
+      experiment_id:
+        description: Unique experiment id
+        required: true
+        default: amos-vp15-raw90d
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/amos_vp15_xauusd_raw90d
+  RAW_START: '2026-02-25'
+  RAW_DAYS: '90'
+  RAW_WORKERS: '16'
+  RAW_CACHE_KEY: amos-vp15-xauusd-duka-2026-02-25-90d-v1
+  EXPERIMENT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.experiment_id || format('amos-vp15-raw90d-{0}', github.run_id) }}
+
+jobs:
+  raw90d:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Prepare evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=$GITHUB_RUN_ID" "git_sha=$GITHUB_SHA" "experiment_id=$EXPERIMENT_ID" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/amos_video_parity_cisd_v1_5/nautilus_raw_v1_5.py research/build_raw_bidask_catalog_duka.py > "results/ae-bt/$EXPERIMENT_ID/preflight/code_sha256.txt"
+
+      - name: Install pinned NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==$NAUTILUS_VERSION" pandas numpy pyarrow
+          python - <<'PY'
+          import nautilus_trader
+          print("nautilus_trader", nautilus_trader.__version__)
+          PY
+
+      - name: Restore XAUUSD 90d Raw BidAsk cache
+        id: raw-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Ensure exact 90d XAUUSD Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
+            python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD && ok=1 || true
+            python - <<'PY' && true || ok=0
+          import json,os
+          p=os.path.join(os.environ["RAW_CATALOG"],"catalog_manifest.json")
+          m=json.load(open(p))
+          assert m["start"]==os.environ["RAW_START"] and int(m["days"])==int(os.environ["RAW_DAYS"]) and m["symbols"]==["XAUUSD"]
+          PY
+          fi
+          if [ "$ok" -ne 1 ]; then
+            rm -rf "$RAW_CATALOG"
+            for n in 1 2 3; do
+              python research/build_raw_bidask_catalog_duka.py --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG" --workers "$RAW_WORKERS" --symbols XAUUSD --fresh && break || true
+              rm -rf "$RAW_CATALOG"; sleep $((n*10))
+            done
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json"
+          find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' | sort > "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_inventory.txt"
+
+      - name: Save verified cache
+        if: steps.raw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.RAW_CATALOG }}
+          key: ${{ env.RAW_CACHE_KEY }}
+
+      - name: Run CORE on Nautilus Raw BidAsk
+        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --variant CORE --risk-pct 0.35
+
+      - name: Run VIDEO_OR on Nautilus Raw BidAsk
+        run: python -m research.amos_video_parity_cisd_v1_5.nautilus_raw_v1_5 --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --variant VIDEO_OR --risk-pct 0.35
+
+      - name: Build comparison
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path("results/ae-bt")/os.environ["EXPERIMENT_ID"]
+          core=json.load(open(p/"result_CORE.json")); video=json.load(open(p/"result_VIDEO_OR.json"))
+          out={"experiment_id":os.environ["EXPERIMENT_ID"],"CORE":core["overall"],"VIDEO_OR":video["overall"],
+               "VIDEO_OR_by_route":video["by_route"],"promotion_gate":{"WR_min":40,"PF_min":1.2,"MaxDD_max":5.0}}
+          for k in ("CORE","VIDEO_OR"):
+            x=out[k];x["pass"]=bool(x["WR_pct"]>=40 and x["PF_R"]>=1.2 and x["MaxFloatingDD_pct"]<=5)
+          (p/"comparison.json").write_text(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          PY
+
+      - name: Upload immutable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nautilus-amos-vp15-raw90d-${{ env.EXPERIMENT_ID }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

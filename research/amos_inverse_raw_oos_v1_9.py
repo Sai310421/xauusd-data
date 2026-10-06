@@ -14,7 +14,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
-from nautilus_trader.persistence.catalog import ParquetDataCatalog\nfrom nautilus_trader.model.data import QuoteTick
+from nautilus_trader.persistence.catalog import ParquetDataCatalog
+from nautilus_trader.model.data import QuoteTick
 
 FEATURES=["rr_to_session_target","acc_eff","acc_range_atr","bars_from_sweep","hour_sin","hour_cos",
 "m15_body_atr","m15_range_atr","m15_close_pos","m15_efficiency","m15_prev4_eff",

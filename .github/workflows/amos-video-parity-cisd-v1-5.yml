@@ -1,0 +1,26 @@
+name: AMOS Video Parity CISD v1.5
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_5/**'
+      - '.github/workflows/amos-video-parity-cisd-v1-5.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  video-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas numpy
+      - run: python research/amos_video_parity_cisd_v1_5/video_cisd_bt.py --data csv/XAUUSD/XAUUSD_M1_2026Q1Q2.csv --out results/amos-video-parity-cisd-v1-5
+      - name: Print KPI
+        run: cat results/amos-video-parity-cisd-v1-5/video_parity_kpi.csv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-video-parity-cisd-v1-5
+          path: results/amos-video-parity-cisd-v1-5/

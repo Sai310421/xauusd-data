@@ -89,7 +89,9 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--out",required=True);a=ap.parse_args()
  out=Path(a.out);out.mkdir(parents=True,exist_ok=True);src=out/"signal_source"
  subprocess.run([sys.executable,"research/amos_raw_mss_plus_audit_v1_11.py","--catalog",a.catalog,"--out",str(src)],check=True)
- c=pd.read_csv(src/"completed_candidates.csv");c["entry_time"]=pd.to_datetime(c.entry_time);c["entry_ns"]=c.entry_time.astype("int64")
+ c=pd.read_csv(src/"completed_candidates.csv");c["entry_time"]=pd.to_datetime(c.entry_time)
+ # Explicit nanoseconds: pandas datetime internal resolution can be us in newer versions.
+ c["entry_ns"]=c["entry_time"].map(lambda x:int(pd.Timestamp(x).value))
  cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD")
  raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)))

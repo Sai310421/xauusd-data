@@ -407,10 +407,11 @@ def run_one(inst,ticks,pursuit_enabled,point_size):
     st=HybridRawTickG75(HybridCfg(instrument_id=inst.id,pursuit_enabled=pursuit_enabled,point_size=point_size))
     eng.add_strategy(st);eng.run()
     out=st.summary()
+    samples=list(st.equity_samples)
     eng.dispose()
-    return out,st.equity_samples
+    return out,samples
 
-def run(catalog_path,out_dir):
+def run(catalog_path,out_dir,scenario):
     global SIGNAL
     cat=ParquetDataCatalog(str(catalog_path))
     inst=next((x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD"),None)
@@ -424,13 +425,13 @@ def run(catalog_path,out_dir):
     except Exception:
         point_size=0.01
 
-    control,eq0=run_one(inst,ticks,False,point_size)
-    g75,eq1=run_one(inst,ticks,True,point_size)
-
-    common={
+    pursuit_enabled=(scenario=="g75")
+    result,samples=run_one(inst,ticks,pursuit_enabled,point_size)
+    payload={
         "verification_level":"NAUTILUS_RAW_BIDASK_TICK_V040_EXACT_G75",
         "engine":"NautilusTrader BacktestEngine",
         "nautilus_version":getattr(nautilus_trader,"__version__","unknown"),
+        "scenario":scenario,
         "raw_ticks":len(ticks),
         "ohlc_execution_used":False,
         "intrabar_ohlc_path_used":False,
@@ -438,6 +439,7 @@ def run(catalog_path,out_dir):
         "signal_generation":"M1/M5/M15 indicator state is causally aggregated from the same Raw QuoteTicks; those bars generate signals only and are never used as execution prices or intrabar paths.",
         "point_size":point_size,
         "g75_source_parity":{
+            "enabled":pursuit_enabled,
             "trigger_distance":0.12,"add_distance":0.025,"reversal_distance":0.20,
             "max_layers":10,"lot":0.01,"max_spread_points":100,
             "trigger_add_price":"Ask long / Bid short",
@@ -446,48 +448,21 @@ def run(catalog_path,out_dir):
             "first_trigger_returns_before_adds":True
         },
         "dd_governor":{"soft_cut_pct":9.5,"hard_stop_pct":10.0},
+        **result,
     }
-    result={"meta":common,"control_parent_only":control,"g75_exact":g75}
-
     out=Path(out_dir);out.mkdir(parents=True,exist_ok=True)
-    (out/"result.json").write_text(json.dumps(result,indent=2,default=str),encoding="utf-8")
-    pd.DataFrame(eq0,columns=["ts_event","equity","dd_pct","parent_n","pursuit_n"]).to_csv(out/"equity_parent_only.csv",index=False)
-    pd.DataFrame(eq1,columns=["ts_event","equity","dd_pct","parent_n","pursuit_n"]).to_csv(out/"equity_g75_exact.csv",index=False)
-
-    delta_return=round(g75["return_pct"]-control["return_pct"],3)
-    delta_dd=round(g75["max_equity_dd_pct"]-control["max_equity_dd_pct"],3)
-    lines=["# XAUUSD Hybrid v0.40 Exact G75 — Nautilus Raw Bid/Ask Tick","",
-        "- OHLC execution: **NOT USED**",
-        "- Intrabar OHLC path: **NOT USED**",
-        f"- Raw QuoteTicks: {len(ticks):,}",
-        f"- Point size: {point_size}",
-        "- Parent-only control and exact G75 overlay use the identical raw tick stream.","",
-        "## Parent-only control",
-        f"- Return: {control['return_pct']}%",
-        f"- MaxDD: {control['max_equity_dd_pct']}%",
-        f"- PF / WR: {control['basket_profit_factor']} / {control['basket_win_rate_pct']}%",
-        f"- Entry cycles: {control['entry_cycles']} | coverage {control['entry_days']}/{control['trading_days']} ({control['entry_day_coverage_pct']}%)","",
-        "## Exact G75 overlay",
-        f"- Return: {g75['return_pct']}%",
-        f"- MaxDD: {g75['max_equity_dd_pct']}%",
-        f"- PF / WR: {g75['basket_profit_factor']} / {g75['basket_win_rate_pct']}%",
-        f"- Entry cycles: {g75['entry_cycles']} | coverage {g75['entry_days']}/{g75['trading_days']} ({g75['entry_day_coverage_pct']}%)",
-        f"- G75 layers: {g75['pursuit_layers_opened']}",
-        f"- Reversal exits: {g75['pursuit_reversal_exits']}",
-        f"- G75 realized P/L: {g75['pursuit_realized_pnl']}",
-        f"- Spread-blocked pursuit attempts: {g75['pursuit_spread_blocked']}","",
-        "## Overlay delta",
-        f"- Return delta vs parent-only: {delta_return} percentage points",
-        f"- MaxDD delta vs parent-only: {delta_dd} percentage points",
-        f"- Avg / max raw spread: {g75['avg_raw_spread']} / {g75['max_raw_spread']}",
-        f"- Risk halted: {g75['risk_halted']} | {g75['risk_reason']}",
-        f"- Exit counts: {g75['exit_counts']}"]
-    (out/"REPORT.md").write_text("\n".join(lines),encoding="utf-8")
-    print(json.dumps(result,indent=2,default=str))
+    (out/f"{scenario}.json").write_text(json.dumps(payload,indent=2,default=str),encoding="utf-8")
+    pd.DataFrame(samples,columns=["ts_event","equity","dd_pct","parent_n","pursuit_n"]).to_csv(out/f"equity_{scenario}.csv",index=False)
+    print(json.dumps(payload,indent=2,default=str))
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--out",default="bt_results/xau_hybrid_v040_exact_g75_rawtick");ap.add_argument("--raw-bidask-only",action="store_true");a=ap.parse_args()
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--catalog",required=True)
+    ap.add_argument("--out",default="bt_results/xau_hybrid_v040_exact_g75_rawtick")
+    ap.add_argument("--scenario",choices=["parent","g75"],required=True)
+    ap.add_argument("--raw-bidask-only",action="store_true")
+    a=ap.parse_args()
     if not a.raw_bidask_only:raise SystemExit("--raw-bidask-only is mandatory")
-    run(a.catalog,a.out)
+    run(a.catalog,a.out,a.scenario)
 
 if __name__=="__main__":main()

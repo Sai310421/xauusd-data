@@ -6,7 +6,7 @@ Classic V/A, QM Buy/Sell, OCL Buy/Sell.
 Raw XAUUSD Bid/Ask QuoteTicks from Nautilus Parquet catalog. No OHLC input/fallback.
 """
 from __future__ import annotations
-import argparse, json, math, importlib.util
+import argparse, json, math, importlib.util, sys
 from decimal import Decimal
 from pathlib import Path
 import numpy as np, pandas as pd
@@ -21,7 +21,7 @@ from nautilus_trader.model.enums import AccountType, OmsType, BookType
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
 spec=importlib.util.spec_from_file_location("v19",Path(__file__).with_name("m1_linepoi_m5_g75_overlap_v19.py"))
-v19=importlib.util.module_from_spec(spec);spec.loader.exec_module(v19)
+v19=importlib.util.module_from_spec(spec);sys.modules["v19"]=v19;spec.loader.exec_module(v19)
 
 INITIAL=1000.0
 

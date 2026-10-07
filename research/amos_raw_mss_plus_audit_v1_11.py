@@ -90,7 +90,7 @@ def main():
   if bull:
    states[1]={"sweep_i":i,"extreme":float(r.low),"mss_ref":float(z.high.iloc[max(0,i-3):i].max()),"cisd_i":None,"mss_i":None,"disp_seen":False};c["sweep"]+=1
   if bear:
-   states[-1]={"sweep_i":i,"extreme":float(r.high),"mss_ref":float(z.low.iloc[max(0,i-3):i].min()),"cisd_i":None,"mss_i":None};c["sweep"]+=1
+   states[-1]={"sweep_i":i,"extreme":float(r.high),"mss_ref":float(z.low.iloc[max(0,i-3):i].min()),"cisd_i":None,"mss_i":None,"disp_seen":False};c["sweep"]+=1
   for side in (1,-1):
    s=states[side]
    if not s:continue
@@ -111,7 +111,9 @@ def main():
     if i-s["mss_i"]>4:reset["timeout_DISP_POI"]+=1;states[side]=None
     continue
    if float(r.disp)<.65:continue
-   c["displacement"]+=1
+   if not s.get("disp_seen",False):
+    c["displacement"]+=1
+    s["disp_seen"]=True
    zone=poi_zone(z,i,side)
    if zone is None:continue
    lo,hi,kind=zone;c["mss_plus"]+=1;poi[kind]+=1

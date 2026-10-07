@@ -1,0 +1,100 @@
+name: AMOS Video Parity CISD v1.9 Raw CISD Refresh
+on:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_video_parity_cisd_v1_9/video_context_matrix_raw.py'
+      - '.github/workflows/amos-video-parity-cisd-v1-9-raw-cisd-refresh.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  CATALOG: catalog/amos_complete_external_raw
+  CACHE_KEY: amos-complete-external-xauusd-20260225-20260526-v2-normalized
+jobs:
+  raw-shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: feb_mar
+            start: '2026-02-25T00:00:00Z'
+            end: '2026-03-31T23:59:59.999999999Z'
+          - shard: apr
+            start: '2026-04-01T00:00:00Z'
+            end: '2026-04-30T23:59:59.999999999Z'
+          - shard: may
+            start: '2026-05-01T00:00:00Z'
+            end: '2026-05-26T23:59:59.999999999Z'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CATALOG }}
+          key: ${{ env.CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: |
+          OUT="results/amos-video-parity-cisd-v1-9/${{ matrix.shard }}"
+          python research/amos_video_parity_cisd_v1_9/video_context_matrix_raw.py             --catalog "${CATALOG}" --out "$OUT"             --start "${{ matrix.start }}" --end "${{ matrix.end }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-v1-9-${{ matrix.shard }}
+          path: results/amos-video-parity-cisd-v1-9/${{ matrix.shard }}/
+  aggregate:
+    needs: raw-shard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: amos-v1-9-*
+          path: shards
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install pandas
+      - run: |
+          python - <<'PY'
+          import json,math
+          from pathlib import Path
+          import pandas as pd
+          variants=['CORE','MACRO','PDA_VOL','VIDEO_OR']; trades=[]; stages={}
+          for p in Path('shards').rglob('trades.csv'):
+              if p.stat().st_size:
+                  d=pd.read_csv(p)
+                  if not d.empty:trades.append(d)
+          for p in Path('shards').rglob('stages.json'):
+              x=json.loads(p.read_text())
+              for r,v in x.items():
+                  z=stages.setdefault(r,{})
+                  for k,n in v.items():z[k]=z.get(k,0)+int(n)
+          d=pd.concat(trades,ignore_index=True) if trades else pd.DataFrame(); rows=[]
+          for v in variants:
+              q=d[d.variant==v].copy() if not d.empty else pd.DataFrame()
+              if not q.empty and 'entry_time' in q:q=q.sort_values('entry_time')
+              rs=q.R.astype(float).tolist() if not q.empty else [];eq=pk=100.;dd=0.;gp=gl=0.
+              for r in rs:
+                  if r>0:gp+=r
+                  else:gl-=r
+                  eq*=max(.0001,1+.35*r/100);pk=max(pk,eq);dd=max(dd,100*(pk-eq)/pk)
+              rows.append({'variant':v,'N':len(rs),'wins':sum(r>0 for r in rs),
+                  'WR_pct':100*sum(r>0 for r in rs)/len(rs) if rs else 0.,
+                  'PF_R':gp/gl if gl else (math.inf if gp else 0.),'sum_R':sum(rs),
+                  'Return_pct':eq-100,'MaxDD_pct':dd,'freq_gate_N60':len(rs)>=60,
+                  'quality_gate':bool(rs) and 100*sum(r>0 for r in rs)/len(rs)>=40 and (gp/gl if gl else 999)>=1.2 and dd<=5})
+          out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_9_RAW_CISD_REFRESH_90D','ote_used':False,
+               'criteria':{'N_min':60,'WR_min':40,'PF_min':1.2,'DD_max':5},'variants':rows,'stages':stages}
+          Path('aggregate').mkdir(exist_ok=True)
+          Path('aggregate/summary.json').write_text(json.dumps(out,indent=2))
+          pd.DataFrame(rows).to_csv('aggregate/variant_kpi.csv',index=False)
+          if not d.empty:d.to_csv('aggregate/trades.csv',index=False)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-v1-9-aggregate
+          path: aggregate/

@@ -152,4 +152,5 @@ def main():
     }
     (out/"result.json").write_text(json.dumps(result,indent=2,default=str),encoding="utf-8")
     print(json.dumps(result,indent=2,default=str))
-if __name__=="__main__":main()\n# workflow trigger: v1.23 clear-target validation
+if __name__=="__main__":main()
+# workflow trigger: v1.23 clear-target validation

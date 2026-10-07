@@ -88,7 +88,7 @@ def main():
     reset["timeout_"+wait]+=1;states[side]=None
   bull=bool(r.low<r.swing_lo and r.close>r.swing_lo);bear=bool(r.high>r.swing_hi and r.close<r.swing_hi)
   if bull:
-   states[1]={"sweep_i":i,"extreme":float(r.low),"mss_ref":float(z.high.iloc[max(0,i-3):i].max()),"cisd_i":None,"mss_i":None};c["sweep"]+=1
+   states[1]={"sweep_i":i,"extreme":float(r.low),"mss_ref":float(z.high.iloc[max(0,i-3):i].max()),"cisd_i":None,"mss_i":None,"disp_seen":False};c["sweep"]+=1
   if bear:
    states[-1]={"sweep_i":i,"extreme":float(r.high),"mss_ref":float(z.low.iloc[max(0,i-3):i].min()),"cisd_i":None,"mss_i":None};c["sweep"]+=1
   for side in (1,-1):

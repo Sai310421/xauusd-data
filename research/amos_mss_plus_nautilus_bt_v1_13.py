@@ -14,7 +14,7 @@ import numpy as np,pandas as pd,nautilus_trader
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.backtest.config import BacktestEngineConfig
 from nautilus_trader.config import LoggingConfig,RiskEngineConfig
-from nautilus_trader.model import Money
+from nautilus_trader.model import Money,Quantity
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.enums import AccountType,OmsType,OrderSide,BookType
@@ -22,6 +22,21 @@ from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
+
+def fpx(x):return float(x.as_double()) if hasattr(x,"as_double") else float(x)
+def ensure_executable_l1(raw_ticks,depth_units=1000):
+ """Preserve raw Bid/Ask prices and timestamps; replace zero quote sizes only.
+ Dukascopy cache carries zero L1 sizes, which Nautilus cannot fill against.
+ """
+ depth=Quantity.from_int(depth_units);out=[];replaced=0
+ for t in raw_ticks:
+  bs=fpx(t.bid_size);az=fpx(t.ask_size)
+  if bs<=0 or az<=0:
+   out.append(QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,
+      bid_size=depth if bs<=0 else t.bid_size,ask_size=depth if az<=0 else t.ask_size,
+      ts_event=t.ts_event,ts_init=t.ts_init));replaced+=1
+  else:out.append(t)
+ return out,replaced
 
 class Cfg(StrategyConfig,frozen=True):
  instrument_id:InstrumentId
@@ -94,19 +109,22 @@ def main():
  c["entry_ns"]=c["entry_time"].map(lambda x:int(pd.Timestamp(x).value))
  cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD")
  raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
+ ticks,replaced=ensure_executable_l1(raw,1000)
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,
                base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"))
- eng.add_instrument(inst);eng.add_data(raw);st=MSSPlusNative(Cfg(instrument_id=inst.id),c);eng.add_strategy(st);eng.run()
+ eng.add_instrument(inst);eng.add_data(ticks);st=MSSPlusNative(Cfg(instrument_id=inst.id),c);eng.add_strategy(st);eng.run()
  tr=trades(eng.trader.generate_positions_report());start=pd.Timestamp(int(raw[0].ts_event),unit="ns");end=pd.Timestamp(int(raw[-1].ts_event),unit="ns");days=max((end-start).total_seconds()/86400,1)
  result={"version":"v1.13","verification_level":"NAUTILUS_BACKTESTENGINE_RAW_BIDASK_NATIVE_ORDERS",
   "engine":"NautilusTrader BacktestEngine","nautilus_version":getattr(nautilus_trader,"__version__","unknown"),
-  "data":{"raw_ticks":len(raw),"start":str(start),"end":str(end),"ohlc_synthetic_intrabar":False},
+  "data":{"raw_ticks":len(raw),"start":str(start),"end":str(end),"ohlc_synthetic_intrabar":False,
+          "raw_prices_timestamps_unchanged":True,"zero_l1_sizes_replaced":replaced,"synthetic_l1_depth_units":1000},
   "strategy":{"gate":"corrected prior MSS+ v1.11","sequence":["Sweep","CISD","MSS","Displacement","POI(FVG/IFVG/BPR)","Volume","Equilibrium","Pullback"],
               "candidate_count":len(c),"execution":"native market orders on Raw QuoteTicks","position_policy":"one active trade at a time / NETTING",
               "size":"1 XAU unit ~= 0.01 standard lot","initial_equity_USD":1000,"leverage":2000,"TP_R":1.5,"SL":"structural sweep extreme","timeout_min":60},
   "orders":{"submitted":st.submitted,"skipped_busy":st.skipped_busy,"bad_risk":st.bad_risk},
   "metrics":kpi(tr,1000.,days),
-  "limitations":["Observed raw Bid/Ask spread is included natively; no extra broker commission or synthetic slippage is added.","Signals are causally precomputed from the same raw tick catalog by frozen v1.11 before BacktestEngine execution; order/portfolio accounting is native Nautilus.","One-active-trade policy intentionally prevents netting of overlapping opposite signals."]}
+  "limitations":["Observed raw Bid/Ask spread is included natively; no extra broker commission or synthetic slippage is added.",
+                 "Dukascopy cached QuoteTicks have zero L1 sizes; zero sizes are replaced with 1000 execution-only depth units. Raw prices/timestamps are unchanged.","Signals are causally precomputed from the same raw tick catalog by frozen v1.11 before BacktestEngine execution; order/portfolio accounting is native Nautilus.","One-active-trade policy intentionally prevents netting of overlapping opposite signals."]}
  pd.DataFrame(tr).to_csv(out/"trades.csv",index=False);(out/"summary.json").write_text(json.dumps(result,indent=2),encoding="utf-8");print(json.dumps(result,indent=2));eng.dispose()
 if __name__=="__main__":main()

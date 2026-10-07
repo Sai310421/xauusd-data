@@ -139,7 +139,11 @@ def main():
    elif s["stage"]=="pullback":
     lo,hi=sorted(s["eq"])
     if b.high>=lo and b.low<=hi:
-     c["pullback"]+=1;c["completed_sequence"]+=1;completed.append(j);break
+     c["pullback"]+=1;c["completed_sequence"]+=1
+     completed.append({"signal_bar_time":str(b.datetime),"entry_time":str(pd.Timestamp(b.datetime)+pd.Timedelta(minutes=1)),
+                       "dir":int(s["side"]),"stop":float(s["se"]),"poi_type":str(s["zone"][2]),
+                       "mss_plus_time":str(z.iloc[s["i"]].datetime)})
+     break
     if s["age"]>8:reset["timeout_pullback"]+=1;break
 
  order=["sweep","cisd","mss","displacement","mss_plus","volume","equilibrium","pullback"]
@@ -154,5 +158,6 @@ def main():
   "counts":dict(c),"survival":survival,"poi_type_counts":dict(poi),"reset_reasons":dict(reset),
   "note":"Diagnostic only; no ML threshold tuning and no production entry promotion."}
  pd.DataFrame(events).to_csv(out/"mss_plus_events.csv",index=False)
+ pd.DataFrame(completed).to_csv(out/"completed_candidates.csv",index=False)
  (out/"result.json").write_text(json.dumps(result,indent=2),encoding="utf-8");print(json.dumps(result,indent=2))
 if __name__=="__main__":main()

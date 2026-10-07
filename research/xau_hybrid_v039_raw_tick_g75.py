@@ -163,7 +163,7 @@ class HybridCfg(StrategyConfig, frozen=True):
 class HybridRawTickG75(Strategy):
     def __init__(self,config:HybridCfg):
         super().__init__(config)
-        self.state="SEARCH";self.range_locked=False;self.rh=np.nan;self.rl=np.nan;self.req=np.nan
+        self.hybrid_state="SEARCH";self.range_locked=False;self.rh=np.nan;self.rl=np.nan;self.req=np.nan
         self.crt_dir=0;self.crt_score=0;self.crt_start=None;self.cycle_dir=0;self.legs=[False]*5
         self.parent=[];self.pursuit=[];self.balance=config.initial_balance;self.peak=config.initial_balance;self.maxdd=0.0;self.halted=False
         self.last_bid=None;self.last_ask=None;self.tick_i=0;self.current_dd=0.0
@@ -220,7 +220,7 @@ class HybridRawTickG75(Strategy):
         self.range_locked=False;self.rh=self.rl=self.req=np.nan;self.crt_dir=0;self.crt_score=0;self.crt_start=None;self.cycle_dir=0;self.legs=[False]*5
         self.recovery_armed=False;self.recovery_armed_time=None;self.basket_open_time=None
         self.pursuit_triggered=False;self.pursuit_done=False;self.pursuit_dir=0;self.pursuit_anchor=0.0;self.pursuit_last_add=0.0;self.pursuit_best=0.0;self.cycle_pursuit_realized=0.0
-        self.state="SEARCH";return pnl
+        self.hybrid_state="SEARCH";return pnl
 
     def process_pursuit(self,bid,ask,t):
         if not P["EnableG75Pursuit"] or self.pursuit_done or not self.parent or self.pursuit_dir==0:return
@@ -263,19 +263,19 @@ class HybridRawTickG75(Strategy):
         expansion=lambda d:d!=0 and r5.adx>P["ADX_Trend"] and r5.adx>prev_adx and r5.atr_ratio>1.0
         trend_end=r5.adx<P["ADX_Range"] and r5.er20<0.25 and r5.atr_ratio<P["ATR_RangeRatio"]
 
-        if self.state=="SEARCH":
+        if self.hybrid_state=="SEARCH":
             cd=(self.last_cycle_time is None or (t-self.last_cycle_time).total_seconds()>=P["DirectCooldownMinutes"]*60)
             trig=False
             if ddirect>0:trig=bool(row1.stoch_reclaim_up) or bool(row1.stoch50_up) or bool(row1.m1_break_up)
             elif ddirect<0:trig=bool(row1.stoch_reclaim_dn) or bool(row1.stoch50_dn) or bool(row1.m1_break_dn)
             if P["DirectEntryEnabled"] and ddirect and cd and r5.adx>=P["DirectADXMin"] and r5.er20>=P["DirectERMin"] and trig and not bool(r5.range_state):
                 self.cycle_dir=ddirect;self.crt_dir=ddirect;self.legs=[False]*5;self.open_leg(ddirect,0,bid,ask,t)
-                if self.legs[0]:self.state="TREND";return
+                if self.legs[0]:self.hybrid_state="TREND";return
             if bool(r5.range_state) and bool(r5.range_width_ok):
-                self.rh=float(r5.range_hi);self.rl=float(r5.range_lo);self.req=float(r5.range_eq);self.range_locked=True;self.state="RANGE";return
+                self.rh=float(r5.range_hi);self.rl=float(r5.range_lo);self.req=float(r5.range_eq);self.range_locked=True;self.hybrid_state="RANGE";return
             if dhtf and expansion(dhtf) and r5.er20>=P["TrendERMin"]:
-                self.cycle_dir=dhtf;self.crt_dir=dhtf;self.legs=[False]*5;self.state="TREND"
-        elif self.state=="RANGE":
+                self.cycle_dir=dhtf;self.crt_dir=dhtf;self.legs=[False]*5;self.hybrid_state="TREND"
+        elif self.hybrid_state=="RANGE":
             cd=(self.last_cycle_time is None or (t-self.last_cycle_time).total_seconds()>=P["RangeEntryCooldownMinutes"]*60)
             if P["RangeEntryEnabled"] and self.range_locked and not self.parent and cd and r5.adx<=P["RangeEntryADXMax"]:
                 half=max((self.rh-self.rl)/2.0,1e-9);z=(price-self.req)/half
@@ -287,23 +287,23 @@ class HybridRawTickG75(Strategy):
                 b=float(r5.atr14)*P["SweepATRBuffer"]
                 if r5.low<self.rl-b and r5.close>self.rl:sweep=1
                 elif r5.high>self.rh+b and r5.close<self.rh:sweep=-1
-            if sweep:self.crt_dir=sweep;self.crt_start=t;self.crt_score=25;self.state="TRANSITION"
-        elif self.state=="TRANSITION":
+            if sweep:self.crt_dir=sweep;self.crt_start=t;self.crt_score=25;self.hybrid_state="TRANSITION"
+        elif self.hybrid_state=="TRANSITION":
             if self.crt_start is None or (t-self.crt_start).total_seconds()>P["CRTTimeoutMinutes"]*60:
-                self.crt_dir=0;self.crt_score=0;self.range_locked=False;self.state="SEARCH";return
+                self.crt_dir=0;self.crt_score=0;self.range_locked=False;self.hybrid_state="SEARCH";return
             z=detect_m5_features(m5,mi,self.crt_dir)
             self.crt_score=25+20*z["dis"]+15*z["cisd"]+10*z["br"]+10*z["ifvg"]+5*z["bpr"]+5*z["fvg"]+5*bool(r5.adx_expanding)+5*(r5.atr_ratio>1.0)
             if (self.crt_dir>0 and bool(r15.rsi_reclaim_up)) or (self.crt_dir<0 and bool(r15.rsi_reclaim_dn)):self.crt_score+=5
             eqbreak=(r5.close>self.req) if self.crt_dir>0 else (r5.close<self.req)
-            if self.crt_score>=P["CRTThreshold"] and eqbreak:self.cycle_dir=self.crt_dir;self.legs=[False]*5;self.state="EXPANSION"
-        elif self.state=="EXPANSION":
+            if self.crt_score>=P["CRTThreshold"] and eqbreak:self.cycle_dir=self.crt_dir;self.legs=[False]*5;self.hybrid_state="EXPANSION"
+        elif self.hybrid_state=="EXPANSION":
             if self.crt_dir==0:return
             if not self.legs[0]:
                 initial=((self.crt_dir>0 and (bool(r15.rsi_reclaim_up) or bool(row1.stoch_reclaim_up))) or (self.crt_dir<0 and (bool(r15.rsi_reclaim_dn) or bool(row1.stoch_reclaim_dn))) or (macd_aligned(r15,self.crt_dir) and ((bool(row1.m1_break_up) if self.crt_dir>0 else bool(row1.m1_break_dn)) or expansion(self.crt_dir))))
                 if initial or self.crt_score>=P["CRTThreshold"]:self.open_leg(self.crt_dir,0,bid,ask,t)
                 if not self.legs[0]:return
-            if expansion(self.crt_dir):self.state="TREND"
-        elif self.state=="TREND":
+            if expansion(self.crt_dir):self.hybrid_state="TREND"
+        elif self.hybrid_state=="TREND":
             d=self.cycle_dir
             if d:
                 initial=((d>0 and (bool(r15.rsi_reclaim_up) or bool(row1.stoch_reclaim_up))) or (d<0 and (bool(r15.rsi_reclaim_dn) or bool(row1.stoch_reclaim_dn))) or (macd_aligned(r15,d) and ((bool(row1.m1_break_up) if d>0 else bool(row1.m1_break_dn)) or expansion(d))))
@@ -311,7 +311,7 @@ class HybridRawTickG75(Strategy):
                 if not self.legs[1] and ((d>0 and bool(row1.stoch_reclaim_up)) or (d<0 and bool(row1.stoch_reclaim_dn))):self.open_leg(d,1,bid,ask,t)
             if trend_end:
                 if P["CloseOnTrendEnd"] and self.parent:self.close_basket(bid,ask,"TREND_END")
-                else:self.crt_dir=0;self.crt_score=0;self.range_locked=False;self.cycle_dir=0;self.legs=[False]*5;self.state="SEARCH"
+                else:self.crt_dir=0;self.crt_score=0;self.range_locked=False;self.cycle_dir=0;self.legs=[False]*5;self.hybrid_state="SEARCH"
 
     def on_quote_tick(self,tick:QuoteTick):
         self.tick_i+=1;bid=fnum(tick.bid_price);ask=fnum(tick.ask_price);self.last_bid=bid;self.last_ask=ask

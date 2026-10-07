@@ -1,0 +1,42 @@
+name: AMOS MSS Plus Raw Outcome v1.12
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/amos-checklist-parity-v1-2]
+    paths:
+      - 'research/amos_mss_plus_raw_outcome_v1_12.py'
+      - '.github/workflows/amos-mss-plus-raw-outcome-v1-12.yml'
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+jobs:
+  raw-outcome:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+          fail-on-cache-miss: true
+      - run: python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Rebuild corrected MSS+ candidates
+        run: python research/amos_raw_mss_plus_audit_v1_11.py --catalog "$RAW_CATALOG" --out results/v1-11-source
+      - name: Raw BidAsk outcome
+        run: python research/amos_mss_plus_raw_outcome_v1_12.py --catalog "$RAW_CATALOG" --candidates results/v1-11-source/completed_candidates.csv --out results/amos-mss-plus-raw-outcome-v1-12
+      - run: cat results/amos-mss-plus-raw-outcome-v1-12/result.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amos-mss-plus-raw-outcome-v1-12
+          path: |
+            results/v1-11-source/
+            results/amos-mss-plus-raw-outcome-v1-12/
+          retention-days: 90

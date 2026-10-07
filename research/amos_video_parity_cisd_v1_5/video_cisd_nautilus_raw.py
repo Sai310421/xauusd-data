@@ -39,8 +39,8 @@ class VideoCISDRaw(Strategy):
  def route_at(self,t):
   j=t.tz_convert('Asia/Tokyo');m=j.hour*60+j.minute
   if 540<=m<600:return 'ASIA'
-  if 960<=m<1080:return 'LONDON'
-  if m>=1380 or m<60:return 'NY'
+  if 960<=m<1020:return 'LONDON'
+  if 1380<=m<1440:return 'NY'
   return None
  def build_range(self,route,t):
   j=t.tz_convert('Asia/Tokyo');day=j.normalize();xs=[]
@@ -121,6 +121,13 @@ class VideoCISDRaw(Strategy):
    if hit is not None:self.rs.append(hit);self.trades.append({**p,'exit':str(ts),'R':hit});self.pos=None
   if self.pos and self.pos.get('pending'):
    p=self.pos;entry=ask if p['di']>0 else bid;sl=p['sl_ref']-p['atr']*.05 if p['di']>0 else p['sl_ref']+p['atr']*.05
+   spread=ask-bid
+   risk=abs(entry-sl)
+   # Execution validity gate: reject stops that are effectively inside transaction cost.
+   # This does not alter the video signal sequence; it only blocks non-executable geometry.
+   if risk <= max(spread*2.0, 1e-9):
+    self.pos=None
+    return
    # target uses completed bars only
    self.di=p['di'];self.acc_hi=p['acc_hi'];self.acc_lo=p['acc_lo']
    z=self.target(len(self.bars)-1,entry,sl)
@@ -145,6 +152,6 @@ def main():
  eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
  eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
  eng.add_instrument(inst);eng.add_data(raw);st=VideoCISDRaw(Cfg(instrument_id=inst.id));eng.add_strategy(st);eng.run();eng.end()
- out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_6_NAUTILUS_RAW_BIDASK_TARGET_PRESERVED','raw_ticks':len(raw),'ohlc_resample_used_for_execution':False,'signal_bars':'M15 built causally from raw midpoint quotes','execution':'next QuoteTick Bid/Ask after closed M15 signal','initial_usd':1000,'leverage':2000,'query_start':a.start,'query_end':a.end,**metrics(st.rs)}
+ out={'verification':'AMOS_VIDEO_PARITY_CISD_V1_7_NAUTILUS_RAW_EXACT_AMD_WINDOWS_EXECUTION_GATE','raw_ticks':len(raw),'ohlc_resample_used_for_execution':False,'signal_bars':'M15 built causally from raw midpoint quotes','execution':'next QuoteTick Bid/Ask after closed M15 signal','initial_usd':1000,'leverage':2000,'query_start':a.start,'query_end':a.end,**metrics(st.rs)}
  p=Path(a.out);p.mkdir(parents=True,exist_ok=True);(p/'summary.json').write_text(json.dumps(out,indent=2));pd.DataFrame(st.trades).to_csv(p/'trades.csv',index=False);print(json.dumps(out,indent=2))
 if __name__=='__main__':main()

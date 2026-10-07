@@ -62,57 +62,51 @@ def eval_quotes(raw):
 # Synthetic generator adapted from the user's RandomChart_Nautilus_v1.
 def make_random_quotes(seed:int,vol_mult:float,days:int=7,ticks_per_minute:int=20,
                        initial_price:float=2000.0,point:float=0.01,spread_points:float=20.0):
-    from nautilus_trader.model.data import QuoteTick
-    from nautilus_trader.model.identifiers import InstrumentId
-    from nautilus_trader.model.objects import Price, Quantity
+    """Generate synthetic Bid/Ask rows with the exact raw interface used by v1.25."""
     rng=random.Random(seed or 1)
     def normal():
         u1=max(rng.random(),1e-12);u2=rng.random()
         return math.sqrt(-2.0*math.log(u1))*math.cos(2.0*math.pi*u2)
-    # Same fallback calibration intent as uploaded generator: 8 points at price 2000.
     sigma=((8.0*point)/max(initial_price,1.0))*max(vol_mult,0.0)
     range_ratio=2.0*((8.0*point)/max(initial_price,1.0))*max(vol_mult,0.0)
     end=datetime(2026,10,8,0,0,tzinfo=timezone.utc)
     start=end-timedelta(days=days)
-    iid=InstrumentId.from_str("XAUUSD.SIM")
-    q=[];prev=initial_price
+    rows=[];prev=initial_price
     minute_count=int((end-start).total_seconds()//60)
     spread=max(spread_points,0.0)*point
     n=max(4,int(ticks_per_minute))
     for mi in range(minute_count):
         ts0=start+timedelta(minutes=mi)
         o=prev
-        c=max(100.0,o*math.exp(normal()*sigma-0.5*sigma*sigma))
-        body_ratio=abs(c-o)/max(o,1.0)
+        cc=max(100.0,o*math.exp(normal()*sigma-0.5*sigma*sigma))
+        body_ratio=abs(cc-o)/max(o,1.0)
         target_range=max(range_ratio*0.35,body_ratio)
         extra=abs(normal())*target_range*0.65*0.75
-        h=max(o,c)+(target_range+extra)*o*0.25
-        l=max(100.0,min(o,c)-(target_range+extra)*o*0.25)
-        anchors=[o,h,l,c] if rng.random()<0.5 else [o,l,h,c]
-        lens=[max(1,n//3),max(1,n//3)];lens.append(max(1,n-sum(lens)))
+        h=max(o,cc)+(target_range+extra)*o*0.25
+        l=max(100.0,min(o,cc)-(target_range+extra)*o*0.25)
+        anchors=[o,h,l,cc] if rng.random()<0.5 else [o,l,h,cc]
+        lens=[max(1,n//3),max(1,n//3)]
+        lens.append(max(1,n-sum(lens)))
         mids=[]
         for ix,m in enumerate(lens):
-            a,b=anchors[ix],anchors[ix+1]
+            aa,bb=anchors[ix],anchors[ix+1]
             for j in range(m):
                 frac=(j+1)/m
-                base=a+(b-a)*frac
+                base=aa+(bb-aa)*frac
                 noise=normal()*max(abs(h-l),1e-9)*0.015*(1-abs(2*frac-1))
                 mids.append(min(h,max(l,base+noise)))
         mids=mids[:n]
-        if mids:mids[-1]=c
+        if mids:mids[-1]=cc
         for i,mid in enumerate(mids):
             ms=int(i*60000/n)
             ts=ts0+timedelta(milliseconds=ms)
             bid=round((mid-spread/2)/point)*point
             ask=round(max(mid+spread/2,bid+point)/point)*point
-            ns=int(ts.timestamp()*1_000_000_000)
-            q.append(QuoteTick(instrument_id=iid,
-                 bid_price=Price(Decimal(str(round(bid,2))),precision=2),
-                 ask_price=Price(Decimal(str(round(ask,2))),precision=2),
-                 bid_size=Quantity.from_str("1"),ask_size=Quantity.from_str("1"),
-                 ts_event=ns,ts_init=ns))
-        prev=c
-    return q
+            t=pd.Timestamp(ts).tz_convert(None)
+            rows.append({"datetime":t,"ns":int(t.value),
+                         "bid":float(round(bid,2)),"ask":float(round(ask,2))})
+        prev=cc
+    return pd.DataFrame(rows,columns=["datetime","ns","bid","ask"]).sort_values("ns").reset_index(drop=True)
 
 def main():
     ap=argparse.ArgumentParser()

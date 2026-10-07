@@ -3,7 +3,7 @@
 
 Middle architecture: shared core + parallel lanes + re-merge.
 - Real lane: Dukascopy Raw Bid/Ask, authoritative promotion KPI.
-- Random lane: synthetic M1 -> synthetic QuoteTick stress, fragility only.
+- Random lane: synthetic M1 -> synthetic Bid/Ask DataFrame stress, fragility only.
 - Same candidate definitions and inverse KPI scorer on both lanes.
 - M1 only. No M5/M15/M30/G75. No fixed RR. No HTF target.
 

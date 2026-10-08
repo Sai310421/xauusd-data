@@ -1,0 +1,85 @@
+name: PR122 Math Supervisor Raw BidAsk 21D
+
+on:
+  push:
+    branches:
+      - research/pr122-regression-raw-21d
+    paths:
+      - 'research/pr122_math_supervisor_nautilus_raw_21d.py'
+      - 'research/vendor/pr122/**'
+      - '.github/workflows/pr122-math-supervisor-raw-21d.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  OUT: results/ae-bt/pr122-${{ github.run_id }}
+
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax preflight
+        run: |
+          python -m py_compile research/vendor/pr122/ae_math_supervisor_v1.py
+          python -m py_compile research/pr122_math_supervisor_nautilus_raw_21d.py
+      - name: Install NautilusTrader
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Ensure verified Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Run PR122 8-lane regression
+        run: python -m research.pr122_math_supervisor_nautilus_raw_21d --catalog "$RAW_CATALOG" --out "$OUT"
+      - name: Verify contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$OUT/summary.json"
+          test -s "$OUT/kpi.csv"
+          python - <<'PY'
+          import json, os
+          x=json.load(open(os.environ["OUT"]+"/summary.json"))
+          assert x["event_sequence_parity"] is True
+          assert x["wr5"]["status"]=="INVALID"
+          assert len(x["rows"])==8
+          assert {r["lane"] for r in x["rows"]}=={"baseline","kelly","recovery","wasserstein","mpc","kelly_recovery","kelly_recovery_mpc","full"}
+          print(json.dumps(x["rows"],indent=2))
+          PY
+      - name: Save provenance
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$OUT/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" > "$OUT/preflight/github_run.txt"
+          sha256sum research/pr122_math_supervisor_nautilus_raw_21d.py > "$OUT/preflight/harness_sha256.txt" || true
+          sha256sum research/vendor/pr122/ae_math_supervisor_v1.py > "$OUT/preflight/pr122_module_sha256.txt" || true
+          cp research/vendor/pr122/PROVENANCE.json "$OUT/preflight/PR122_PROVENANCE.json"
+          cp "$RAW_CATALOG/catalog_manifest.json" "$OUT/preflight/catalog_manifest.json" || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr122-raw-21d-${{ github.run_id }}
+          path: ${{ env.OUT }}/
+          if-no-files-found: error
+          retention-days: 90

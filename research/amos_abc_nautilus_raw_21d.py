@@ -37,7 +37,7 @@ class Cfg(StrategyConfig,frozen=True):
     engine:str
 class Base(Strategy):
     def __init__(self,cfg):
-        super().__init__(cfg);self.p=PARAMS[cfg.engine];self.b=deque(maxlen=240);self.side=None;self.entry=None;self.qty=0.;self.stop=None;self.tp=None;self.entry_ts=None;self.realized=0.;self.peak=INITIAL;self.max_fdd=0.;self.max_exp=0.;self.max_age=0.;self.day=None;self.day_eq=INITIAL;self.n_entries=0;self.adds=0;self.last_add=None
+        super().__init__(cfg);self.p=PARAMS[cfg.engine];self.b=deque(maxlen=240);self.side=None;self.entry=None;self.qty=0.;self.stop_px=None;self.tp=None;self.entry_ts=None;self.realized=0.;self.peak=INITIAL;self.max_fdd=0.;self.max_exp=0.;self.max_age=0.;self.day=None;self.day_eq=INITIAL;self.n_entries=0;self.adds=0;self.last_add=None
     @staticmethod
     def f(x):return float(x.as_double()) if hasattr(x,"as_double") else float(x)
     def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id);self.subscribe_bars(self.config.bar_type)
@@ -94,16 +94,16 @@ class Base(Strategy):
         if q<=0:return False
         instr=self.cache.instrument(self.config.instrument_id);os=OrderSide.BUY if side=="BUY" else OrderSide.SELL
         self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=os,quantity=instr.make_qty(Decimal(str(q)))))
-        self.side=side;self.entry=px;self.qty=q;self.stop=stop;self.tp=px+self.p["rr"]*r if side=="BUY" else px-self.p["rr"]*r;self.entry_ts=ts;self.n_entries+=1;self.max_exp=max(self.max_exp,q);self.last_add=px;return True
+        self.side=side;self.entry=px;self.qty=q;self.stop_px=stop;self.tp=px+self.p["rr"]*r if side=="BUY" else px-self.p["rr"]*r;self.entry_ts=ts;self.n_entries+=1;self.max_exp=max(self.max_exp,q);self.last_add=px;return True
     def add(self,px):
         q=max(1.0,float(math.floor(min(self.p["max_lot"]*100,self.qty/max(1,self.adds+1)))));instr=self.cache.instrument(self.config.instrument_id);os=OrderSide.BUY if self.side=="BUY" else OrderSide.SELL
         self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=os,quantity=instr.make_qty(Decimal(str(q)))))
         t=self.qty+q;self.entry=(self.entry*self.qty+px*q)/t;self.qty=t;self.adds+=1;self.last_add=px;self.max_exp=max(self.max_exp,self.qty)
     def exit(self,px,ts):
-        pnl=(px-self.entry)*self.qty if self.side=="BUY" else (self.entry-px)*self.qty;self.realized+=pnl;self.max_age=max(self.max_age,(ts-self.entry_ts)/1e9);self.close_all_positions(self.config.instrument_id);self.side=None;self.entry=None;self.qty=0.;self.stop=None;self.tp=None;self.entry_ts=None;self.adds=0;self.last_add=None
+        pnl=(px-self.entry)*self.qty if self.side=="BUY" else (self.entry-px)*self.qty;self.realized+=pnl;self.max_age=max(self.max_age,(ts-self.entry_ts)/1e9);self.close_all_positions(self.config.instrument_id);self.side=None;self.entry=None;self.qty=0.;self.stop_px=None;self.tp=None;self.entry_ts=None;self.adds=0;self.last_add=None
     def manage(self,bid,ask,ts):
         if self.side is None:return
-        px=bid if self.side=="BUY" else ask;hit=(px<=self.stop or px>=self.tp) if self.side=="BUY" else (px>=self.stop or px<=self.tp)
+        px=bid if self.side=="BUY" else ask;hit=(px<=self.stop_px or px>=self.tp) if self.side=="BUY" else (px>=self.stop_px or px<=self.tp)
         if hit:self.exit(px,ts)
     def on_stop(self):self.close_all_positions(self.config.instrument_id)
 class A(Base):

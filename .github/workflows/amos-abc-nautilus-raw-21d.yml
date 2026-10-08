@@ -59,6 +59,8 @@ jobs:
           set -euo pipefail
           test -s "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/summary.json"
           test -f "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/trades.csv"
+          test -f "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/virtual_trades.csv"
+          test -s "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/virtual_summary.json"
           python - <<'PY'
           import json,os
           e=os.environ["ENGINE"]
@@ -69,7 +71,9 @@ jobs:
           assert x["account"]["initial_usd"]==1000.0
           assert x["account"]["leverage"]==2000
           assert x["wr5"]["status"]=="INVALID"
-          print(json.dumps(x["metrics"],indent=2))
+          assert x["virtual_entry"]["mode"]=="SHADOW_ONLY_NO_ORDERS"
+          assert "metrics" in x["virtual_entry"]
+          print(json.dumps({"live":x["metrics"],"virtual":x["virtual_entry"]},indent=2))
           PY
         env:
           ENGINE: ${{ matrix.engine }}

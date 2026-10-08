@@ -1,0 +1,10 @@
+{
+  "source_repo": "Sai310421/my-ea-factory-ICT",
+  "source_pr": 122,
+  "source_branch": "feat/ae-math-supervisor-v1",
+  "source_head_sha": "007b5810ab3e7838ea9a6a0c8ef6d0b2e33004c4",
+  "source_module_blob_sha": "ef9854794725c1cc21ffe7cea78184e8334c4d30",
+  "source_config_blob_sha": "6b2c1d3fce56ae95326cf917788988890008487e",
+  "copied_at_utc": "2026-10-08",
+  "purpose": "Raw BidAsk Nautilus regression only; no profitability claim."
+}

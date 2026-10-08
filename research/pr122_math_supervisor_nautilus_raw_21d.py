@@ -126,16 +126,25 @@ class PR122Lane(Strategy):
             zero_multiplier_rate=float((arr[:,0]<=1e-12).mean()) if len(arr) else 0.0)
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--out",required=True);a=ap.parse_args()
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--catalog",required=True)
+    ap.add_argument("--out",required=True)
+    ap.add_argument("--lane",choices=LANES)
+    a=ap.parse_args()
     cat=ParquetDataCatalog(a.catalog);inst=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD")
     raw=cat.query_quote_ticks(identifiers=[inst.id.value]);ticks=[x for x in raw if START.value<=int(x.ts_event)<END_EXCL.value]
     if not ticks:raise SystemExit("INVALID:no ticks")
-    out=Path(a.out);out.mkdir(parents=True,exist_ok=True);rows=[]
-    for lane in LANES:
+    out=Path(a.out);out.mkdir(parents=True,exist_ok=True)
+    lanes=[a.lane] if a.lane else list(LANES)
+    rows=[]
+    for lane in lanes:
         eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)))
         eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(INITIAL,USD)],default_leverage=Decimal("2000"))
         eng.add_instrument(inst);eng.add_data(ticks)
-        bt=BarType.from_str(f"{inst.id.value}-1-MINUTE-BID-INTERNAL");st=PR122Lane(Cfg(instrument_id=inst.id,bar_type=bt,lane=lane));eng.add_strategy(st);eng.run();rows.append(st.summary());eng.dispose()
+        bt=BarType.from_str(f"{inst.id.value}-1-MINUTE-BID-INTERNAL");st=PR122Lane(Cfg(instrument_id=inst.id,bar_type=bt,lane=lane));eng.add_strategy(st);eng.run();row=st.summary();rows.append(row);eng.dispose()
+        (out/f"{lane}.json").write_text(json.dumps(row,indent=2))
+    if a.lane:
+        print(json.dumps(rows[0],indent=2));return
     hashes={r["event_hash"] for r in rows};parity=len(hashes)==1
     result=dict(verification_level="PR122_RAW_BIDASK_NAUTILUS_21D_V1",nautilus_version=getattr(nautilus_trader,"__version__","unknown"),period={"start":str(START),"end_exclusive":str(END_EXCL),"trading_days":21},initial_usd=INITIAL,leverage=2000,raw_ticks=len(ticks),frozen_core={"trigger":TRIGGER,"add":ADD,"reversal":REVERSAL,"max_layers":MAX_LAYERS},event_sequence_parity=parity,rows=rows,wr5={"status":"INVALID","present":["raw_bidask_spread","mark_to_market_dd","event_sequence_hash"],"missing":["broker_commission","slippage","execution_delay","swap_if_relevant","cashback","verified_native_margin_path","wfo","monte_carlo"]},limitations=["Supervisor ledger supports fractional size multipliers virtually; native market-order execution parity is a later gate.","Supervisor inputs use only previously closed cycle returns; no future information.","No profitability promotion permitted while WR5 INVALID."])
     (out/"summary.json").write_text(json.dumps(result,indent=2));pd.DataFrame(rows).to_csv(out/"kpi.csv",index=False);print(json.dumps(result,indent=2))

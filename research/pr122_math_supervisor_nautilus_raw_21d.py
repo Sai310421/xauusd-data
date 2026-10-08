@@ -20,6 +20,11 @@ from research.vendor.pr122.ae_math_supervisor_v1 import (
     WassersteinConfig, MPCConfig, AEState, MPCAction,
 )
 
+if not hasattr(ParquetDataCatalog,"query_quote_ticks"):
+    def _query_quote_ticks(self,identifiers=None,start=None,end=None):
+        return self.query(data_cls=QuoteTick,identifiers=identifiers,start=start,end=end)
+    ParquetDataCatalog.query_quote_ticks=_query_quote_ticks
+
 INITIAL=1000.0
 START=pd.Timestamp("2026-07-27T00:00:00Z")
 END_EXCL=pd.Timestamp("2026-08-25T00:00:00Z")

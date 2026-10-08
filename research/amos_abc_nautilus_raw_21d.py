@@ -50,9 +50,9 @@ class Base(Strategy):
     def on_start(self):self.subscribe_quote_ticks(self.config.instrument_id);self.subscribe_bars(self.config.bar_type)
     def on_bar(self,bar:Bar):self.b.append(dict(o=self.f(bar.open),h=self.f(bar.high),l=self.f(bar.low),c=self.f(bar.close),ts=int(bar.ts_event)));self.signal_bar()
     def signal_bar(self):pass
-    def virtual_arm(self,side,atr,ts,regime,features):
+    def virtual_arm(self,side,atr,ts,regime,features,variant="relaxed_live"):
         if atr is None or atr<=0:return
-        self.v_armed.append(dict(side=side,atr=float(atr),signal_ts=int(ts),regime=str(regime),features=dict(features)))
+        self.v_armed.append(dict(side=side,atr=float(atr),signal_ts=int(ts),regime=str(regime),features=dict(features),variant=str(variant)))
         if len(self.v_armed)>128:self.v_armed=self.v_armed[-128:]
     def virtual_open_armed(self,bid,ask,ts):
         if not self.v_armed:return
@@ -65,7 +65,7 @@ class Base(Strategy):
             side=a["side"];entry=ask if side=="BUY" else bid;r=self.p["stop_atr"]*a["atr"]
             if r<=0:continue
             self.v_seq+=1
-            self.v_active.append(dict(id=self.v_seq,side=side,entry=entry,stop=entry-r if side=="BUY" else entry+r,tp=entry+self.p["rr"]*r if side=="BUY" else entry-self.p["rr"]*r,risk=r,entry_ts=ts,signal_ts=a["signal_ts"],regime=a["regime"],features=a["features"],entry_spread_points=spread,mfe=0.,mae=0.))
+            self.v_active.append(dict(id=self.v_seq,side=side,entry=entry,stop=entry-r if side=="BUY" else entry+r,tp=entry+self.p["rr"]*r if side=="BUY" else entry-self.p["rr"]*r,risk=r,entry_ts=ts,signal_ts=a["signal_ts"],regime=a["regime"],features=a["features"],variant=a.get("variant","relaxed_live"),entry_spread_points=spread,mfe=0.,mae=0.))
         self.v_armed=keep
     def virtual_manage(self,bid,ask,ts):
         self.virtual_open_armed(bid,ask,ts)
@@ -214,7 +214,11 @@ class C(Base):
             if z>=self.vp["entry_z"] and z<p["reversal_z"] and mp>=self.vp["mom_min_points"]:vs="BUY"
             elif z<=-self.vp["entry_z"] and z>-p["reversal_z"] and mp<=-self.vp["mom_min_points"]:vs="SELL"
             if vs:
-                self.virtual_arm(vs,a,ts,"tick_microtrend",dict(z=z,mom_points=mp,ewma_sd=sd));self.virtual_open_armed(bid,ask,ts);self.v_last_entry=ts
+                feat=dict(z=z,mom_points=mp,ewma_sd=sd)
+                self.virtual_arm(vs,a,ts,"tick_microtrend",feat,variant="momentum")
+                contra="SELL" if vs=="BUY" else "BUY"
+                self.virtual_arm(contra,a,ts,"tick_microtrend",feat,variant="contrarian")
+                self.virtual_open_armed(bid,ask,ts);self.v_last_entry=ts
         if self.side is not None or ts-self.last_entry<p["cooldown_sec"]*1e9 or not self.guard(bid,ask,ts):return
         s=None
         if z>=p["entry_z"] and z<p["reversal_z"] and mp>=p["mom_min_points"]:s="BUY"

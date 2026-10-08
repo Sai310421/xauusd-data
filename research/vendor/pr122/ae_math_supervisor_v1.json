@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "mode": "external_sizing_supervisor",
+  "frozen_core_signal_mutation": false,
+  "kelly": {
+    "enabled": true,
+    "lambda_risk": 2.0,
+    "max_fraction": 1.0,
+    "grid_points": 400,
+    "min_wealth_relative": 1e-6
+  },
+  "recovery": {
+    "enabled": true,
+    "model": "drifted_brownian_first_passage_v1",
+    "ruin_level": 0.0,
+    "recovery_level": 1.0,
+    "min_probability": 0.50,
+    "full_probability": 0.80
+  },
+  "wasserstein": {
+    "enabled": true,
+    "model": "W1_linear_unconstrained_support",
+    "rho": 0.05,
+    "min_robust_edge": 0.0,
+    "full_robust_edge": 0.002
+  },
+  "mpc": {
+    "enabled": true,
+    "horizon": 4,
+    "discount": 0.98,
+    "dd_penalty": 2.0,
+    "debt_penalty": 1.0,
+    "inventory_penalty": 0.25,
+    "cost_penalty": 1.0
+  },
+  "margin": {
+    "hard_min_margin_level": 500.0,
+    "soft_margin_level": 650.0
+  },
+  "promotion_gates": {
+    "require_raw_tick": true,
+    "require_realistic_spread_commission_slippage": true,
+    "require_oos": true,
+    "require_wfo": true,
+    "require_monte_carlo": true,
+    "reject_if_frozen_core_event_sequence_changes": true,
+    "compare_monthly_return": true,
+    "compare_pf": true,
+    "compare_max_dd": true,
+    "compare_ruin_probability": true,
+    "compare_recovery_time": true,
+    "compare_min_margin_level": true
+  }
+}

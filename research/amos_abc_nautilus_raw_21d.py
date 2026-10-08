@@ -27,9 +27,9 @@ START=pd.Timestamp("2026-07-27T00:00:00Z")
 END_EXCL=pd.Timestamp("2026-08-25T00:00:00Z")
 TRADING_DAYS=21
 PARAMS={
-"A":dict(risk_pct=.25,max_dd_pct=4.,max_daily_dd_pct=2.,max_spread_points=35.,max_lot=.10,bands_period=30,band_dev=2.2,rsi_period=14,adx_period=14,atr_period=14,max_adx=20.,min_z=2.,buy_rsi_max=32.,sell_rsi_min=68.,max_mid_slope_atr=.12,stop_atr=1.55,rr=1.15),
-"B":dict(risk_pct=.25,max_dd_pct=4.,max_daily_dd_pct=2.,max_spread_points=35.,max_lot=.10,fast_ema=20,slow_ema=80,adx_period=14,atr_period=14,breakout=40,adx_min=25.,min_atr_exp=1.05,min_breakout_atr=.10,stop_atr=1.65,rr=3.,trigger=.12,add=.025,max_adds=3),
-"C":dict(risk_pct=.06,max_dd_pct=15.,max_daily_dd_pct=5.,max_spread_points=35.,max_lot=.05,atr_period=14,warmup_ticks=400,ewma_alpha=.025,entry_z=1.10,mom_alpha=.18,mom_min_points=.35,cooldown_sec=8,stop_atr=.60,rr=.85,reversal_z=2.50),
+"A":dict(risk_pct=1.00,max_dd_pct=4.,max_daily_dd_pct=2.,max_spread_points=35.,max_lot=.10,bands_period=30,band_dev=2.2,rsi_period=14,adx_period=14,atr_period=14,max_adx=20.,min_z=2.,buy_rsi_max=32.,sell_rsi_min=68.,max_mid_slope_atr=.12,stop_atr=1.55,rr=1.15),
+"B":dict(risk_pct=1.00,max_dd_pct=4.,max_daily_dd_pct=2.,max_spread_points=35.,max_lot=.10,fast_ema=20,slow_ema=80,adx_period=14,atr_period=14,breakout=40,adx_min=25.,min_atr_exp=1.05,min_breakout_atr=.10,stop_atr=1.65,rr=3.,trigger=.12,add=.025,max_adds=3),
+"C":dict(risk_pct=.50,max_dd_pct=15.,max_daily_dd_pct=5.,max_spread_points=35.,max_lot=.05,atr_period=14,warmup_ticks=400,ewma_alpha=.025,entry_z=1.10,mom_alpha=.18,mom_min_points=.35,cooldown_sec=8,stop_atr=.60,rr=.85,reversal_z=2.50),
 }
 class Cfg(StrategyConfig,frozen=True):
     instrument_id:InstrumentId
@@ -87,7 +87,7 @@ class Base(Strategy):
         return (ask-bid)/.01<=self.p["max_spread_points"]
     def size(self,entry,stop):
         cash=max(0.,INITIAL+self.realized)*self.p["risk_pct"]/100;dist=abs(entry-stop);q=min(self.p["max_lot"]*100,cash/dist if dist else 0)
-        return max(0.,math.floor(q*100)/100)
+        return max(0.,float(math.floor(q)))
     def enter(self,side,px,atr,ts):
         if self.side is not None:return False
         r=self.p["stop_atr"]*atr;stop=px-r if side=="BUY" else px+r;q=self.size(px,stop)
@@ -96,7 +96,7 @@ class Base(Strategy):
         self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=os,quantity=instr.make_qty(Decimal(str(q)))))
         self.side=side;self.entry=px;self.qty=q;self.stop=stop;self.tp=px+self.p["rr"]*r if side=="BUY" else px-self.p["rr"]*r;self.entry_ts=ts;self.n_entries+=1;self.max_exp=max(self.max_exp,q);self.last_add=px;return True
     def add(self,px):
-        q=max(.01,min(self.p["max_lot"]*100,self.qty/max(1,self.adds+1)));instr=self.cache.instrument(self.config.instrument_id);os=OrderSide.BUY if self.side=="BUY" else OrderSide.SELL
+        q=max(1.0,float(math.floor(min(self.p["max_lot"]*100,self.qty/max(1,self.adds+1)))));instr=self.cache.instrument(self.config.instrument_id);os=OrderSide.BUY if self.side=="BUY" else OrderSide.SELL
         self.submit_order(self.order_factory.market(instrument_id=self.config.instrument_id,order_side=os,quantity=instr.make_qty(Decimal(str(q)))))
         t=self.qty+q;self.entry=(self.entry*self.qty+px*q)/t;self.qty=t;self.adds+=1;self.last_add=px;self.max_exp=max(self.max_exp,self.qty)
     def exit(self,px,ts):

@@ -181,7 +181,7 @@ class B(Base):
         c=self.arr("c");f1=self.ema(c,p["fast_ema"]);f2=self.ema(c[:-1],p["fast_ema"]);s1=self.ema(c,p["slow_ema"]);s2=self.ema(c[:-1],p["slow_ema"]);adx=self.adx(p["adx_period"]);a1=self.atr(p["atr_period"])
         if any(x is None for x in (f1,f2,s1,s2,adx,a1)) or a1<=0:return
         save=self.b;self.b=deque(list(self.b)[:-1],maxlen=240);a2=self.atr(p["atr_period"]);self.b=save
-        if a2 is None:return
+        if a2 is None or a2<=0:return
         atr_exp=a1/a2;prior=list(self.b)[:-1][-p["breakout"]:];hi=max(x["h"] for x in prior);lo=min(x["l"] for x in prior);last=c[-1];ts=int(self.b[-1]["ts"])
         up=f1>s1 and f1>f2 and s1>=s2;dn=f1<s1 and f1<f2 and s1<=s2;feat=dict(adx=adx,atr_exp=atr_exp,breakout_up_atr=(last-hi)/a1,breakout_dn_atr=(lo-last)/a1)
         if adx>=v["adx_min"] and atr_exp>=v["min_atr_exp"]:

@@ -47,7 +47,19 @@ jobs:
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
       - name: Run AMOS A/B/C 21 business-day Raw BidAsk BT
-        run: python -m research.amos_abc_nautilus_raw_21d --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          for e in A B C; do
+            python -m research.amos_abc_nautilus_raw_21d --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --engine "$e" --raw-bidask-only
+          done
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path("results/ae-bt")/os.environ["EXPERIMENT_ID"]
+          merged={e:json.load(open(root/e/"summary.json")) for e in ("A","B","C")}
+          (root/"summary_all.json").write_text(json.dumps(merged,indent=2))
+          PY
       - name: Verify required evidence
         shell: bash
         run: |

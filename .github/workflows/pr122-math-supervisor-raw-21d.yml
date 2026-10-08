@@ -21,10 +21,14 @@ env:
   RAW_DAYS: '30'
   RAW_WORKERS: '12'
   RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
-  OUT: results/ae-bt/pr122-${{ github.run_id }}
+  ROOT_OUT: results/ae-bt/pr122-${{ github.run_id }}
 
 jobs:
-  bt:
+  lane:
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [baseline, kelly, recovery, wasserstein, mpc, kelly_recovery, kelly_recovery_mpc, full]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -49,37 +53,54 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run PR122 8-lane regression
-        run: python -m research.pr122_math_supervisor_nautilus_raw_21d --catalog "$RAW_CATALOG" --out "$OUT"
-      - name: Verify contract
+      - name: Run lane
+        run: python -m research.pr122_math_supervisor_nautilus_raw_21d --catalog "$RAW_CATALOG" --out "$ROOT_OUT/${{ matrix.lane }}" --lane "${{ matrix.lane }}"
+      - name: Verify lane evidence
         shell: bash
         run: |
           set -euo pipefail
-          test -s "$OUT/summary.json"
-          test -s "$OUT/kpi.csv"
-          python - <<'PY'
-          import json, os
-          x=json.load(open(os.environ["OUT"]+"/summary.json"))
-          assert x["event_sequence_parity"] is True
-          assert x["wr5"]["status"]=="INVALID"
-          assert len(x["rows"])==8
-          assert {r["lane"] for r in x["rows"]}=={"baseline","kelly","recovery","wasserstein","mpc","kelly_recovery","kelly_recovery_mpc","full"}
-          print(json.dumps(x["rows"],indent=2))
-          PY
-      - name: Save provenance
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p "$OUT/preflight"
-          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" > "$OUT/preflight/github_run.txt"
-          sha256sum research/pr122_math_supervisor_nautilus_raw_21d.py > "$OUT/preflight/harness_sha256.txt" || true
-          sha256sum research/vendor/pr122/ae_math_supervisor_v1.py > "$OUT/preflight/pr122_module_sha256.txt" || true
-          cp research/vendor/pr122/PROVENANCE.json "$OUT/preflight/PR122_PROVENANCE.json"
-          cp "$RAW_CATALOG/catalog_manifest.json" "$OUT/preflight/catalog_manifest.json" || true
+          test -s "$ROOT_OUT/${{ matrix.lane }}/${{ matrix.lane }}.json"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr122-raw-21d-${{ github.run_id }}
-          path: ${{ env.OUT }}/
+          name: pr122-lane-${{ matrix.lane }}-${{ github.run_id }}
+          path: results/ae-bt/pr122-${{ github.run_id }}/${{ matrix.lane }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    needs: lane
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr122-lane-*-${{ github.run_id }}
+          path: merged
+          merge-multiple: true
+      - name: Aggregate and enforce event parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,glob,csv,os
+          files=glob.glob("merged/*.json")
+          rows=[json.load(open(p)) for p in files]
+          required={"baseline","kelly","recovery","wasserstein","mpc","kelly_recovery","kelly_recovery_mpc","full"}
+          assert {r["lane"] for r in rows}==required, (len(rows), [r["lane"] for r in rows])
+          hashes={r["event_hash"] for r in rows}
+          assert len(hashes)==1, hashes
+          order=["baseline","kelly","recovery","wasserstein","mpc","kelly_recovery","kelly_recovery_mpc","full"]
+          rows=sorted(rows,key=lambda r:order.index(r["lane"]))
+          out={"verification_level":"PR122_RAW_BIDASK_NAUTILUS_21D_V1","event_sequence_parity":True,"wr5_status":"INVALID","rows":rows}
+          os.makedirs("final",exist_ok=True)
+          json.dump(out,open("final/summary.json","w"),indent=2)
+          with open("final/kpi.csv","w",newline="") as fh:
+              w=csv.DictWriter(fh,fieldnames=list(rows[0].keys()));w.writeheader();w.writerows(rows)
+          print(json.dumps(out,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr122-aggregate-${{ github.run_id }}
+          path: final/
           if-no-files-found: error
           retention-days: 90

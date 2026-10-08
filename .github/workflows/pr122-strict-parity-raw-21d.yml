@@ -1,0 +1,113 @@
+name: PR122 Strict G75 Baseline Parity 21D
+
+on:
+  push:
+    branches:
+      - research/pr122-regression-raw-21d
+    paths:
+      - 'research/pr122_strict_parity_raw_21d.py'
+      - 'research/vendor/pr122/**'
+      - '.github/workflows/pr122-strict-parity-raw-21d.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  ROOT_OUT: results/ae-bt/pr122-strict-${{ github.run_id }}
+
+jobs:
+  parity:
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [baseline, kelly, recovery, wasserstein, mpc, kelly_recovery, kelly_recovery_mpc, full]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax preflight
+        run: |
+          python -m py_compile research/vendor/pr122/ae_math_supervisor_v1.py
+          python -m py_compile research/pr122_strict_parity_raw_21d.py
+      - name: Install NautilusTrader
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Guard Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
+      - name: Run strict parity lane
+        run: |
+          python research/pr122_strict_parity_raw_21d.py             --catalog "$RAW_CATALOG"             --out "$ROOT_OUT/${{ matrix.lane }}"             --lane "${{ matrix.lane }}"
+      - name: Verify strict parity evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          P="$ROOT_OUT/${{ matrix.lane }}/${{ matrix.lane }}.json"
+          test -s "$P"
+          python - "$P" <<'PY'
+          import json,sys
+          x=json.load(open(sys.argv[1]))
+          assert x["core_parity"] is True
+          assert x["wr5_status"]=="INVALID"
+          print(json.dumps({"lane":x["lane"],"core_parity":x["core_parity"],"trusted":x["trusted_strict_baseline"],"shadow":x["shadow_economics"]},indent=2))
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr122-strict-${{ matrix.lane }}-${{ github.run_id }}
+          path: results/ae-bt/pr122-strict-${{ github.run_id }}/${{ matrix.lane }}/
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    needs: parity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pr122-strict-*-${{ github.run_id }}
+          path: merged
+          merge-multiple: true
+      - name: Aggregate strict parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob,json,os,csv
+          rows=[json.load(open(p)) for p in glob.glob("merged/*.json")]
+          assert len(rows)==8
+          assert all(x["core_parity"] for x in rows)
+          hashes={x["trusted_strict_baseline"]["event_hash"] for x in rows}
+          assert len(hashes)==1
+          order=["baseline","kelly","recovery","wasserstein","mpc","kelly_recovery","kelly_recovery_mpc","full"]
+          rows=sorted(rows,key=lambda x:order.index(x["lane"]))
+          os.makedirs("final",exist_ok=True)
+          json.dump({"verification_level":"PR122_STRICT_G75_PARITY_21D","core_parity_all":True,"trusted_event_hash":next(iter(hashes)),"wr5_status":"INVALID","rows":rows},open("final/summary.json","w"),indent=2)
+          with open("final/shadow_kpi.csv","w",newline="") as f:
+              fields=list(rows[0]["shadow_economics"].keys());w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows([x["shadow_economics"] for x in rows])
+          print(json.dumps([{"lane":x["lane"],**x["shadow_economics"]} for x in rows],indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr122-strict-aggregate-${{ github.run_id }}
+          path: final/
+          if-no-files-found: error
+          retention-days: 90

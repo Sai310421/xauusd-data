@@ -1,0 +1,22 @@
+name: AMOS TripleEngine Raw Tick Gate
+on:
+  workflow_dispatch:
+    inputs:
+      raw_tick_path:
+        description: CSV path with timestamp,bid,ask
+        required: true
+        default: data/XAUUSD_raw_ticks.csv
+jobs:
+  rawtick:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run RAW tick virtual-entry baseline
+        run: python amos_triple_engine_v2/raw_tick_runner.py --ticks "${{ inputs.raw_tick_path }}" --out amos_triple_engine_v2/raw_tick_kpi.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amos-tripleengine-rawtick-kpi
+          path: amos_triple_engine_v2/raw_tick_kpi.json

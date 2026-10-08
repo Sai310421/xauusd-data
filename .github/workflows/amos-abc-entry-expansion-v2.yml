@@ -1,0 +1,91 @@
+name: AMOS ABC Entry Expansion V2 Raw BidAsk 21D
+
+on:
+  push:
+    branches:
+      - research/amos-abc-entry-expansion-v2
+    paths:
+      - 'research/amos_abc_nautilus_raw_21d_v2_entries.py'
+      - '.github/workflows/amos-abc-entry-expansion-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: amos-abc-v2-${{ github.run_id }}
+
+jobs:
+  bt:
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [A, B, C]
+    name: BT ${{ matrix.engine }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax preflight
+        run: python -m py_compile research/amos_abc_nautilus_raw_21d_v2_entries.py
+      - name: Install pinned NautilusTrader
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Ensure verified Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Run engine
+        run: python -m research.amos_abc_nautilus_raw_21d_v2_entries --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --engine "${{ matrix.engine }}" --raw-bidask-only
+      - name: Verify evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/summary.json"
+          test -f "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/trades.csv"
+          python - <<'PY'
+          import json,os
+          e=os.environ["ENGINE"]
+          p=f"results/ae-bt/{os.environ['EXPERIMENT_ID']}/{e}/summary.json"
+          x=json.load(open(p))
+          assert x["ohlc_resample_used"] is False
+          assert x["period"]["trading_days"]==21
+          assert x["account"]["initial_usd"]==1000.0
+          assert x["account"]["leverage"]==2000
+          assert x["wr5"]["status"]=="INVALID"
+          assert isinstance(x["entry_family_counts"],dict)
+          print(json.dumps({"families":x["entry_family_counts"],"metrics":x["metrics"]},indent=2))
+          PY
+        env:
+          ENGINE: ${{ matrix.engine }}
+      - name: Save provenance
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" "engine=${{ matrix.engine }}" > "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight/github_run.txt"
+          sha256sum research/amos_abc_nautilus_raw_21d_v2_entries.py > "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight/strategy_sha256.txt" || true
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight/catalog_manifest.json" || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-abc-v2-${{ matrix.engine }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/${{ matrix.engine }}/
+          if-no-files-found: error
+          retention-days: 90

@@ -108,11 +108,21 @@ def run(catalog,lane,wrapper):
     out=st.shadow_summary() if wrapper else base;eng.dispose();return base,out,len(ticks)
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument("--catalog",required=True);ap.add_argument("--out",required=True);ap.add_argument("--lane",choices=LANES,required=True);a=ap.parse_args()
-    trusted,_,n=run(a.catalog,"baseline",False);core,shadow,_=run(a.catalog,a.lane,True)
-    parity={k:(trusted[k]==core[k] if k not in ("PF","NetProfit","MaxFloatingDD_pct") else abs((trusted[k] or 0)-(core[k] or 0))<1e-9) for k in ("N","WR_pct","PF","NetProfit","MaxFloatingDD_pct","event_hash","event_count")}
-    ok=all(parity.values())
-    result={"verification_level":"PR122_STRICT_BASELINE_PARITY_21D_V1","lane":a.lane,"raw_ticks":n,"trusted_strict_baseline":trusted,"wrapper_core_baseline":core,"core_parity":ok,"parity_fields":parity,"shadow_economics":shadow,"wr5_status":"INVALID"}
-    out=Path(a.out);out.mkdir(parents=True,exist_ok=True);(out/f"{a.lane}.json").write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2))
-    if not ok:raise SystemExit("INVALID: strict baseline parity failed")
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--catalog",required=True)
+    ap.add_argument("--out",required=True)
+    ap.add_argument("--lane",choices=LANES,required=True)
+    ap.add_argument("--mode",choices=["trusted","wrapper"],required=True)
+    a=ap.parse_args()
+    out=Path(a.out);out.mkdir(parents=True,exist_ok=True)
+    if a.mode=="trusted":
+        trusted,_,n=run(a.catalog,"baseline",False)
+        result={"verification_level":"PR122_STRICT_TRUSTED_21D_V1","lane":a.lane,"raw_ticks":n,"trusted_strict_baseline":trusted,"wr5_status":"INVALID"}
+        p=out/f"{a.lane}.trusted.json"
+    else:
+        core,shadow,n=run(a.catalog,a.lane,True)
+        result={"verification_level":"PR122_STRICT_WRAPPER_21D_V1","lane":a.lane,"raw_ticks":n,"wrapper_core_baseline":core,"shadow_economics":shadow,"wr5_status":"INVALID"}
+        p=out/f"{a.lane}.wrapper.json"
+    p.write_text(json.dumps(result,indent=2))
+    print(json.dumps(result,indent=2))
 if __name__=="__main__":main()

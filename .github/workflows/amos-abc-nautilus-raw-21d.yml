@@ -24,6 +24,11 @@ env:
 
 jobs:
   bt:
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [A, B, C]
+    name: BT ${{ matrix.engine }}
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -46,54 +51,40 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
-      - name: Run AMOS A/B/C 21 business-day Raw BidAsk BT
+      - name: Run engine
+        run: python -m research.amos_abc_nautilus_raw_21d --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --engine "${{ matrix.engine }}" --raw-bidask-only
+      - name: Verify evidence
         shell: bash
         run: |
           set -euo pipefail
-          for e in A B C; do
-            python -m research.amos_abc_nautilus_raw_21d --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --engine "$e" --raw-bidask-only
-          done
+          test -s "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/summary.json"
+          test -f "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/trades.csv"
           python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root=Path("results/ae-bt")/os.environ["EXPERIMENT_ID"]
-          merged={e:json.load(open(root/e/"summary.json")) for e in ("A","B","C")}
-          (root/"summary_all.json").write_text(json.dumps(merged,indent=2))
-          PY
-      - name: Verify required evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s "results/ae-bt/$EXPERIMENT_ID/summary_all.json"
-          for e in A B C; do
-            test -s "results/ae-bt/$EXPERIMENT_ID/$e/summary.json"
-            test -f "results/ae-bt/$EXPERIMENT_ID/$e/trades.csv"
-          done
-          python - <<'PY'
-          import json, os
-          p=f"results/ae-bt/{os.environ['EXPERIMENT_ID']}/summary_all.json"
+          import json,os
+          e=os.environ["ENGINE"]
+          p=f"results/ae-bt/{os.environ['EXPERIMENT_ID']}/{e}/summary.json"
           x=json.load(open(p))
-          assert set(x)=={'A','B','C'}
-          for k,v in x.items():
-              assert v['ohlc_resample_used'] is False
-              assert v['period']['trading_days']==21
-              assert v['account']['initial_usd']==1000.0
-              assert v['account']['leverage']==2000
-              assert v['wr5']['status']=='INVALID'
-          print(json.dumps({k:v['metrics'] for k,v in x.items()},indent=2))
+          assert x["ohlc_resample_used"] is False
+          assert x["period"]["trading_days"]==21
+          assert x["account"]["initial_usd"]==1000.0
+          assert x["account"]["leverage"]==2000
+          assert x["wr5"]["status"]=="INVALID"
+          print(json.dumps(x["metrics"],indent=2))
           PY
+        env:
+          ENGINE: ${{ matrix.engine }}
       - name: Save provenance
         if: always()
         shell: bash
         run: |
-          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
-          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
-          sha256sum research/amos_abc_nautilus_raw_21d.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt" || true
-          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" "engine=${{ matrix.engine }}" > "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight/github_run.txt"
+          sha256sum research/amos_abc_nautilus_raw_21d.py > "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight/strategy_sha256.txt" || true
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/preflight/catalog_manifest.json" || true
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amos-abc-nautilus-21d-${{ github.run_id }}
-          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          name: amos-abc-21d-${{ matrix.engine }}-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/${{ matrix.engine }}/
           if-no-files-found: error
           retention-days: 90

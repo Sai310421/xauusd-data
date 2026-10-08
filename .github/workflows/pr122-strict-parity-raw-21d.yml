@@ -36,16 +36,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Syntax preflight
         run: |
           python -m py_compile research/vendor/pr122/ae_math_supervisor_v1.py
           python -m py_compile research/pr122_strict_parity_raw_21d.py
+
       - name: Install NautilusTrader
         run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy
+
       - uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
+
       - name: Guard Raw BidAsk catalog
         shell: bash
         run: |
@@ -53,22 +57,62 @@ jobs:
           chmod +x research/ensure_raw_bidask_catalog.sh
           research/ensure_raw_bidask_catalog.sh
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
-      - name: Run strict parity lane
+
+      - name: Run trusted strict baseline
         run: |
-          python research/pr122_strict_parity_raw_21d.py             --catalog "$RAW_CATALOG"             --out "$ROOT_OUT/${{ matrix.lane }}"             --lane "${{ matrix.lane }}"
+          python research/pr122_strict_parity_raw_21d.py \
+            --catalog "$RAW_CATALOG" \
+            --out "$ROOT_OUT/${{ matrix.lane }}" \
+            --lane "${{ matrix.lane }}" \
+            --mode trusted
+
+      - name: Run wrapper lane
+        run: |
+          python research/pr122_strict_parity_raw_21d.py \
+            --catalog "$RAW_CATALOG" \
+            --out "$ROOT_OUT/${{ matrix.lane }}" \
+            --lane "${{ matrix.lane }}" \
+            --mode wrapper
+
       - name: Verify strict parity evidence
         shell: bash
         run: |
           set -euo pipefail
-          P="$ROOT_OUT/${{ matrix.lane }}/${{ matrix.lane }}.json"
-          test -s "$P"
-          python - "$P" <<'PY'
+          T="$ROOT_OUT/${{ matrix.lane }}/${{ matrix.lane }}.trusted.json"
+          W="$ROOT_OUT/${{ matrix.lane }}/${{ matrix.lane }}.wrapper.json"
+          test -s "$T"
+          test -s "$W"
+          python - "$T" "$W" <<'PY'
           import json,sys
-          x=json.load(open(sys.argv[1]))
-          assert x["core_parity"] is True
-          assert x["wr5_status"]=="INVALID"
-          print(json.dumps({"lane":x["lane"],"core_parity":x["core_parity"],"trusted":x["trusted_strict_baseline"],"shadow":x["shadow_economics"]},indent=2))
+          t=json.load(open(sys.argv[1]))
+          w=json.load(open(sys.argv[2]))
+          a=t["trusted_strict_baseline"]
+          b=w["wrapper_core_baseline"]
+          fields=("N","WR_pct","PF","NetProfit","MaxFloatingDD_pct","event_hash","event_count")
+          def eq(x,y):
+              if x is None or y is None:
+                  return x is y
+              if isinstance(x,(int,str)) or isinstance(y,(int,str)):
+                  return x==y
+              return abs(float(x)-float(y))<1e-9
+          parity={k:eq(a[k],b[k]) for k in fields}
+          assert all(parity.values()), parity
+          out={
+              "verification_level":"PR122_STRICT_BASELINE_PARITY_21D_V2",
+              "lane":w["lane"],
+              "raw_ticks":w["raw_ticks"],
+              "trusted_strict_baseline":a,
+              "wrapper_core_baseline":b,
+              "core_parity":True,
+              "parity_fields":parity,
+              "shadow_economics":w["shadow_economics"],
+              "wr5_status":"INVALID"
+          }
+          p=sys.argv[2].replace(".wrapper.json",".json")
+          json.dump(out,open(p,"w"),indent=2)
+          print(json.dumps(out,indent=2))
           PY
+
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -86,25 +130,36 @@ jobs:
           pattern: pr122-strict-*-${{ github.run_id }}
           path: merged
           merge-multiple: true
+
       - name: Aggregate strict parity
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import glob,json,os,csv
-          rows=[json.load(open(p)) for p in glob.glob("merged/*.json")]
-          assert len(rows)==8
+          rows=[json.load(open(p)) for p in glob.glob("merged/*.json") if not p.endswith(".trusted.json") and not p.endswith(".wrapper.json")]
+          assert len(rows)==8, len(rows)
           assert all(x["core_parity"] for x in rows)
           hashes={x["trusted_strict_baseline"]["event_hash"] for x in rows}
           assert len(hashes)==1
           order=["baseline","kelly","recovery","wasserstein","mpc","kelly_recovery","kelly_recovery_mpc","full"]
           rows=sorted(rows,key=lambda x:order.index(x["lane"]))
           os.makedirs("final",exist_ok=True)
-          json.dump({"verification_level":"PR122_STRICT_G75_PARITY_21D","core_parity_all":True,"trusted_event_hash":next(iter(hashes)),"wr5_status":"INVALID","rows":rows},open("final/summary.json","w"),indent=2)
+          json.dump({
+              "verification_level":"PR122_STRICT_G75_PARITY_21D",
+              "core_parity_all":True,
+              "trusted_event_hash":next(iter(hashes)),
+              "wr5_status":"INVALID",
+              "rows":rows
+          },open("final/summary.json","w"),indent=2)
           with open("final/shadow_kpi.csv","w",newline="") as f:
-              fields=list(rows[0]["shadow_economics"].keys());w=csv.DictWriter(f,fieldnames=fields);w.writeheader();w.writerows([x["shadow_economics"] for x in rows])
+              fields=list(rows[0]["shadow_economics"].keys())
+              w=csv.DictWriter(f,fieldnames=fields)
+              w.writeheader()
+              w.writerows([x["shadow_economics"] for x in rows])
           print(json.dumps([{"lane":x["lane"],**x["shadow_economics"]} for x in rows],indent=2))
           PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: pr122-strict-aggregate-${{ github.run_id }}

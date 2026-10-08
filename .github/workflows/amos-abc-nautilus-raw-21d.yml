@@ -6,6 +6,7 @@ on:
       - research/amos-abc-nautilus-21d
     paths:
       - 'research/amos_abc_nautilus_raw_21d.py'
+      - 'research/virtual_entry_promoter.py'
       - '.github/workflows/amos-abc-nautilus-raw-21d.yml'
   workflow_dispatch:
 
@@ -77,6 +78,15 @@ jobs:
           PY
         env:
           ENGINE: ${{ matrix.engine }}
+      - name: Mine stable Virtual promotion candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/virtual_entry_promoter.py \
+            --engine "${{ matrix.engine }}" \
+            --virtual-trades "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/virtual_trades.csv" \
+            --out "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/promotion_candidates.json"
+          test -s "results/ae-bt/$EXPERIMENT_ID/${{ matrix.engine }}/promotion_candidates.json"
       - name: Save provenance
         if: always()
         shell: bash

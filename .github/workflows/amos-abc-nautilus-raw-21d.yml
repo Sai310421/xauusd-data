@@ -1,0 +1,87 @@
+name: AMOS ABC Nautilus Raw BidAsk 21D
+
+on:
+  push:
+    branches:
+      - research/amos-abc-nautilus-21d
+    paths:
+      - 'research/amos_abc_nautilus_raw_21d.py'
+      - '.github/workflows/amos-abc-nautilus-raw-21d.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  NAUTILUS_VERSION: '1.230.0'
+  RAW_CATALOG: catalog/raw_bidask
+  RAW_START: '2026-07-27'
+  RAW_DAYS: '30'
+  RAW_WORKERS: '12'
+  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  EXPERIMENT_ID: amos-abc-21d-${{ github.run_id }}
+
+jobs:
+  bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax preflight
+        run: python -m py_compile research/amos_abc_nautilus_raw_21d.py
+      - name: Install pinned NautilusTrader
+        run: python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+      - uses: actions/cache/restore@v4
+        with:
+          path: catalog/raw_bidask
+          key: ${{ env.RAW_CACHE_KEY }}
+      - name: Ensure verified Raw BidAsk catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x research/ensure_raw_bidask_catalog.sh
+          research/ensure_raw_bidask_catalog.sh
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG"
+      - name: Run AMOS A/B/C 21 business-day Raw BidAsk BT
+        run: python -m research.amos_abc_nautilus_raw_21d --catalog "$RAW_CATALOG" --experiment-id "$EXPERIMENT_ID" --raw-bidask-only
+      - name: Verify required evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "results/ae-bt/$EXPERIMENT_ID/summary_all.json"
+          for e in A B C; do
+            test -s "results/ae-bt/$EXPERIMENT_ID/$e/summary.json"
+            test -f "results/ae-bt/$EXPERIMENT_ID/$e/trades.csv"
+          done
+          python - <<'PY'
+          import json, os
+          p=f"results/ae-bt/{os.environ['EXPERIMENT_ID']}/summary_all.json"
+          x=json.load(open(p))
+          assert set(x)=={'A','B','C'}
+          for k,v in x.items():
+              assert v['ohlc_resample_used'] is False
+              assert v['period']['trading_days']==21
+              assert v['account']['initial_usd']==1000.0
+              assert v['account']['leverage']==2000
+              assert v['wr5']['status']=='INVALID'
+          print(json.dumps({k:v['metrics'] for k,v in x.items()},indent=2))
+          PY
+      - name: Save provenance
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "results/ae-bt/$EXPERIMENT_ID/preflight"
+          printf '%s\n' "run_id=${GITHUB_RUN_ID}" "git_sha=${GITHUB_SHA}" "nautilus_version=${NAUTILUS_VERSION}" > "results/ae-bt/$EXPERIMENT_ID/preflight/github_run.txt"
+          sha256sum research/amos_abc_nautilus_raw_21d.py > "results/ae-bt/$EXPERIMENT_ID/preflight/strategy_sha256.txt" || true
+          cp "$RAW_CATALOG/catalog_manifest.json" "results/ae-bt/$EXPERIMENT_ID/preflight/catalog_manifest.json" || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-abc-nautilus-21d-${{ github.run_id }}
+          path: results/ae-bt/${{ env.EXPERIMENT_ID }}/
+          if-no-files-found: error
+          retention-days: 90

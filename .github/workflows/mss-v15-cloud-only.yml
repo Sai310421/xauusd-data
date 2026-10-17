@@ -1,0 +1,146 @@
+name: MSS v1.51 Cloud-Only Raw Re-BT
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/mss-v15-cloud-only-v1
+    paths:
+      - 'research/mss_v15_nautilus_raw_signal_port.py'
+      - '.github/workflows/mss-v15-cloud-only.yml'
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+
+jobs:
+  build-raw-chunks:
+    name: raw-${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: c1
+            start: '2026-02-25'
+            days: 31
+          - name: c2
+            start: '2026-03-28'
+            days: 31
+          - name: c3
+            start: '2026-04-28'
+            days: 29
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas pyarrow
+      - name: Build immutable XAUUSD Raw BidAsk chunk
+        run: |
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "${{ matrix.start }}" --days "${{ matrix.days }}" \
+            --catalog "catalog/${{ matrix.name }}" --workers 12 \
+            --symbols XAUUSD --fresh
+          python research/raw_bidask_catalog_guard.py \
+            --catalog "catalog/${{ matrix.name }}" --symbols XAUUSD
+      - name: Upload raw chunk
+        uses: actions/upload-artifact@v4
+        with:
+          name: mss151-raw-${{ matrix.name }}
+          path: catalog/${{ matrix.name }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  rebtest-v151:
+    name: v1.51-91d-raw-rebt
+    needs: build-raw-chunks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas pyarrow
+      - name: Download all raw chunks
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mss151-raw-*
+          path: chunks
+      - name: Merge disjoint Raw BidAsk catalogs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import shutil, json, hashlib
+          roots=sorted(Path("chunks").glob("mss151-raw-*"))
+          if len(roots)!=3: raise SystemExit(f"INVALID chunks={len(roots)}")
+          out=Path("catalog/mss151_91d"); out.mkdir(parents=True,exist_ok=True)
+          manifests=[]
+          for root in roots:
+              m=json.loads((root/"catalog_manifest.json").read_text())
+              if m.get("status")!="COMPLETE" or m.get("data_kind")!="RAW_BIDASK":
+                  raise SystemExit(f"INVALID chunk {root}: {m.get('status')}")
+              manifests.append(m)
+              for p in root.rglob("*"):
+                  if not p.is_file() or p.name=="catalog_manifest.json": continue
+                  rel=p.relative_to(root); dst=out/rel; dst.parent.mkdir(parents=True,exist_ok=True)
+                  if dst.exists():
+                      # Identical instrument metadata may repeat across chunks.
+                      if dst.read_bytes()==p.read_bytes(): continue
+                      dst=dst.with_name(dst.stem+"_"+root.name+dst.suffix)
+                  shutil.copy2(p,dst)
+          h=hashlib.sha256()
+          for p in sorted(out.rglob("*")):
+              if p.is_file():
+                  h.update(str(p.relative_to(out)).encode()); h.update(p.read_bytes())
+          manifest={"status":"COMPLETE","data_kind":"RAW_BIDASK","source":"Dukascopy BI5 QuoteTick Bid/Ask",
+                    "symbol":"XAUUSD","start":"2026-02-25","days":91,"end_exclusive":"2026-05-27",
+                    "chunks":[{"start":m["start"],"days":m["days"],"sha256":m.get("catalog_sha256"),
+                               "ticks":m["stats"]["XAUUSD"]["ticks"]} for m in manifests],
+                    "merged_sha256":h.hexdigest(),"source_version":"MSS v1.51",
+                    "source_commit":"ebaaf46338e53665e7ab0443b2241a6079a8000c",
+                    "source_blob":"466dcfc343b86a34de200332117d03f41cc1e97d"}
+          (out/"mss151_dataset_manifest.json").write_text(json.dumps(manifest,indent=2))
+          print(json.dumps(manifest,indent=2))
+          PY
+      - name: Static compile v1.51 research port
+        run: python -m py_compile research/mss_v15_nautilus_raw_signal_port.py
+      - name: Run v1.51 91d Raw BidAsk signal re-BT
+        run: |
+          mkdir -p results/mss-v151-rebt
+          python research/mss_v15_nautilus_raw_signal_port.py \
+            --catalog catalog/mss151_91d --symbol XAUUSD \
+            --out results/mss-v151-rebt/signal_gate.json
+          cp catalog/mss151_91d/mss151_dataset_manifest.json results/mss-v151-rebt/
+      - name: Fail closed on provenance and WR5
+        run: |
+          python - <<'PY'
+          import json
+          x=json.load(open("results/mss-v151-rebt/signal_gate.json"))
+          assert x["raw_ticks"]>0 and x["m15_bars"]>0
+          assert x["source_version"]=="1.51"
+          assert x["source_git_commit"]=="ebaaf46338e53665e7ab0443b2241a6079a8000c"
+          assert x["source_git_blob"]=="466dcfc343b86a34de200332117d03f41cc1e97d"
+          assert x["wr5_status"]=="INVALID"
+          assert len(x["strategy_counts"])==15
+          print("MEASURED signal gate complete. WR5 intentionally INVALID pending execution/cost evidence.")
+          PY
+      - name: Upload measured evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mss-v151-91d-raw-rebt-${{ github.run_id }}
+          path: results/mss-v151-rebt
+          if-no-files-found: error
+          retention-days: 90

@@ -6,3 +6,5 @@ python research/build_raw_bidask_catalog_duka.py --start "${BT_START:-2026-10-19
 python research/raw_bidask_catalog_guard.py --catalog catalog/raw_bidask --symbols XAUUSD
 python research/amos_abc_nautilus_rawtick_bt.py --catalog catalog/raw_bidask --out results/amos-abc/rawtick-kpi.json
 test -s results/amos-abc/rawtick-kpi.json
+
+python research/validate_abc_rawtick_kpi.py --input results/amos-abc/rawtick-kpi.json

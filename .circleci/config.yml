@@ -1,0 +1,27 @@
+version: 2.1
+jobs:
+  abc-nautilus-rawtick:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: Build NautilusTrader container
+          command: docker build -f ci/nautilus/Dockerfile -t amos-nautilus-abc .
+      - run:
+          name: Run genuine Bid Ask Raw Tick BT
+          no_output_timeout: 30m
+          command: |
+            mkdir -p results/amos-abc
+            docker run --rm -e BT_START=2026-10-19 -e BT_DAYS=1 -v "$PWD/results/amos-abc:/workspace/results/amos-abc" amos-nautilus-abc
+      - store_artifacts:
+          path: results/amos-abc
+          destination: abc-nautilus-rawtick
+workflows:
+  abc-nautilus-rawtick:
+    jobs:
+      - abc-nautilus-rawtick:
+          filters:
+            branches:
+              only: research/amos-abc-nautilus-rawtick-20261023

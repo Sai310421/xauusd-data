@@ -20,6 +20,7 @@ from nautilus_trader.model import Money
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.enums import AccountType, OmsType
+from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.trading.strategy import Strategy
@@ -51,7 +52,7 @@ def signals(bars):
     return out
 
 class Config(StrategyConfig,frozen=True):
-    instrument_id:object
+    instrument_id:InstrumentId
     hold_bars:int=5
     units_per_lot:float=100.0
     lot:float=0.01

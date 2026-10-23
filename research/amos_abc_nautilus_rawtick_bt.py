@@ -148,6 +148,8 @@ def main():
     inst=next(x for x in cat.instruments() if x.id.symbol.value.replace('/','')=='XAUUSD')
     raw=cat.query(data_cls=QuoteTick,identifiers=[inst.id.value])
     if not raw:raise SystemExit('No QuoteTicks: refusing synthetic OHLC fallback')
+    if len(raw)<1000:raise SystemExit('Insufficient Raw QuoteTicks for ABC smoke BT')
+    if len({int(t.ts_event) for t in raw[:min(1000,len(raw))]})<100:raise SystemExit('QuoteTick timestamps appear degenerate')
     eng=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level='ERROR'),risk_engine=RiskEngineConfig(bypass=True)))
     eng.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,
                   base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))

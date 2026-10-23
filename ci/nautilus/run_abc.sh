@@ -8,3 +8,6 @@ python research/amos_abc_nautilus_rawtick_bt.py --catalog catalog/raw_bidask --o
 test -s results/amos-abc/rawtick-kpi.json
 
 python research/validate_abc_rawtick_kpi.py --input results/amos-abc/rawtick-kpi.json
+
+# Separate formal matching gate; does not replace virtual baseline.
+python research/amos_abc_nautilus_native_matching.py --catalog catalog/raw_bidask --out results/amos-abc/native-matching.json

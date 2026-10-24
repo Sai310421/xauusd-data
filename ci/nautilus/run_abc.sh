@@ -12,4 +12,7 @@ test -s results/amos-abc/rawtick-kpi.json
 STEP=validate_virtual; echo "AMOS_STEP_START $STEP"; python -u research/validate_abc_rawtick_kpi.py --input results/amos-abc/rawtick-kpi.json
 
 # Separate formal matching gate; does not replace virtual baseline.
-STEP=native_matching; echo "AMOS_STEP_START $STEP"; python -u research/amos_abc_nautilus_native_matching.py --catalog catalog/raw_bidask --out results/amos-abc/native-matching.json
+for edge in A01 B01 C01; do
+  STEP="native_matching_${edge}"; echo "AMOS_STEP_START $STEP"
+  python -u research/amos_abc_nautilus_native_matching.py --catalog catalog/raw_bidask --edge "$edge" --out "results/amos-abc/native-matching-${edge}.json"
+done

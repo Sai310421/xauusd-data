@@ -20,6 +20,11 @@ jobs:
           when: always
           command: |
             python3 -c 'import json,pathlib; p=pathlib.Path("results/amos-abc/rawtick-kpi.json"); assert p.is_file(), "KPI missing"; d=json.loads(p.read_text()); assert d.get("raw_ticks",0)>=1000; print(json.dumps(d,indent=2))'
+      - run:
+          name: Publish Native Fill evidence to GitHub PR (separate gate)
+          when: always
+          command: |
+            python3 ci/nautilus/publish_evidence.py
       - store_artifacts:
           path: results/amos-abc
           destination: abc-nautilus-rawtick

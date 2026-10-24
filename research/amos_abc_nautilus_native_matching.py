@@ -97,6 +97,7 @@ class NativeEdge(Strategy):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", required=True)
+    ap.add_argument("--edge", choices=("A01", "B01", "C01"), required=True)
     ap.add_argument("--out", default="results/amos-abc/native-matching.json")
     args = ap.parse_args()
     catalog = ParquetDataCatalog(args.catalog)
@@ -124,7 +125,7 @@ def main():
         "limitation": "Raw Bid/Ask prices and timestamps unchanged; missing quote sizes replaced with 1 for L1 matching. Broker slippage/latency not calibrated.",
         "edges": {},
     }
-    for edge in ("A01", "B01", "C01"):
+    for edge in (args.edge,):
         engine = BacktestEngine(config=BacktestEngineConfig(
             logging=LoggingConfig(log_level="ERROR"),
             risk_engine=RiskEngineConfig(bypass=True),

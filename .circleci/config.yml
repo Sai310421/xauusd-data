@@ -9,15 +9,7 @@ jobs:
       - run:
           name: Preflight GitHub evidence publisher credentials
           command: |
-            python3 - <<'PY'
-            import os,sys
-            names=("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN")
-            found=[name for name in names if os.environ.get(name)]
-            if not found:
-                print("EVIDENCE_AUTH_MISSING: configure GH_RESULTS_TOKEN in CircleCI Project Settings > Environment Variables; skipping expensive BT")
-                sys.exit(2)
-            print("EVIDENCE_AUTH_PRESENT: "+found[0]+" (value hidden); write permission checked at publish")
-            PY
+            python3 -c 'import os,sys; names=("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN"); found=[n for n in names if os.environ.get(n)]; print("EVIDENCE_AUTH_PRESENT: "+found[0] if found else "EVIDENCE_AUTH_MISSING: configure GH_RESULTS_TOKEN in CircleCI Project Settings > Environment Variables"); sys.exit(0 if found else 2)'
       - run:
           name: Build NautilusTrader container
           command: docker build -f ci/nautilus/Dockerfile -t amos-nautilus-abc .

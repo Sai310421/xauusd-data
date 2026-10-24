@@ -17,9 +17,9 @@ REPO="Sai310421/xauusd-data"
 PR=30
 
 def main():
-    token=os.environ.get("GH_RESULTS_TOKEN","")
+    token=next((os.environ.get(key,"") for key in ("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN") if os.environ.get(key)), "")
     if not token:
-        print("EVIDENCE_PUBLISH_BLOCKED: GH_RESULTS_TOKEN missing (configure once in CircleCI)",flush=True)
+        print("EVIDENCE_PUBLISH_BLOCKED: no GH_RESULTS_TOKEN, GITHUB_TOKEN or GH_TOKEN found in CircleCI job environment",flush=True)
         return 2
     evidence={}
     for name in FILES:

@@ -14,7 +14,7 @@ jobs:
           no_output_timeout: 30m
           command: |
             mkdir -p results/amos-abc
-            docker run --rm -e BT_START=2026-10-19 -e BT_DAYS=1 -v "$PWD/results/amos-abc:/workspace/results/amos-abc" amos-nautilus-abc
+            docker run --rm -e BT_MODE=SMOKE_1D -e BT_START=2026-10-19 -e BT_DAYS=1 -v "$PWD/results/amos-abc:/workspace/results/amos-abc" amos-nautilus-abc
       - run:
           name: Verify exported KPI and print A01 B01 C01 metrics
           when: always

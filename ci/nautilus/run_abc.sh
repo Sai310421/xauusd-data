@@ -19,6 +19,7 @@ Path("results/amos-abc/run-manifest.json").write_text(json.dumps(manifest,indent
 PY
 STEP=build_catalog; echo "AMOS_STEP_START $STEP"; python -u research/build_raw_bidask_catalog_duka.py --start "${BT_START:-2026-10-19}" --days "$BT_DAYS" --catalog catalog/raw_bidask --symbols XAUUSD --workers 8 --fresh
 STEP=guard; echo "AMOS_STEP_START $STEP"; python -u research/raw_bidask_catalog_guard.py --catalog catalog/raw_bidask --symbols XAUUSD
+STEP=quote_quality; echo "AMOS_STEP_START $STEP"; python -u research/validate_raw_quote_ticks.py --catalog catalog/raw_bidask --symbol XAUUSD --out results/amos-abc/rawtick-input-quality.json
 STEP=virtual_bt; echo "AMOS_STEP_START $STEP"; python -u research/amos_abc_nautilus_rawtick_bt.py --catalog catalog/raw_bidask --out results/amos-abc/rawtick-kpi.json
 test -s results/amos-abc/rawtick-kpi.json
 

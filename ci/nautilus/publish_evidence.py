@@ -17,10 +17,12 @@ REPO="Sai310421/xauusd-data"
 PR=30
 
 def main():
-    token=next((os.environ.get(key,"") for key in ("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN") if os.environ.get(key)), "")
+    token_name=next((key for key in ("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN") if os.environ.get(key)), None)
+    token=os.environ.get(token_name,"") if token_name else ""
     if not token:
         print("EVIDENCE_PUBLISH_BLOCKED: no GH_RESULTS_TOKEN, GITHUB_TOKEN or GH_TOKEN found in CircleCI job environment",flush=True)
         return 2
+    print(f"EVIDENCE_AUTH_SOURCE: {token_name} (value hidden)",flush=True)
     evidence={}
     for name in FILES:
         path=ROOT/name
@@ -55,7 +57,9 @@ def main():
         except (ValueError,TypeError):
             reason="non-JSON error response"
         print(f"EVIDENCE_PUBLISH_FAILED: GitHub HTTP {exc.code}; reason={reason}",flush=True)
-        print("EVIDENCE_AUTH_HINT: check token repo access, Issues write permission, and selected credential name",flush=True)
+        accepted=exc.headers.get("X-Accepted-GitHub-Permissions","not supplied")
+        print(f"EVIDENCE_ACCEPTED_PERMISSIONS: {accepted[:200]}",flush=True)
+        print("EVIDENCE_AUTH_HINT: verify effective token permissions for PR timeline comments",flush=True)
         return 1
     except Exception as exc:
         print(f"EVIDENCE_PUBLISH_FAILED: {type(exc).__name__}",flush=True)

@@ -1,4 +1,5 @@
 version: 2.1
+# Re-run after CircleCI GH_RESULTS_TOKEN provisioning; evidence publication remains a separate gate.
 jobs:
   abc-nautilus-rawtick:
     machine:

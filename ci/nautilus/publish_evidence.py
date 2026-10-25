@@ -48,7 +48,14 @@ def main():
         with urllib.request.urlopen(req,timeout=30) as response:
             result=json.load(response)
     except urllib.error.HTTPError as exc:
-        print(f"EVIDENCE_PUBLISH_FAILED: GitHub HTTP {exc.code}",flush=True)
+        raw=exc.read(4096).decode("utf-8","replace")
+        try:
+            detail=json.loads(raw)
+            reason=str(detail.get("message","unknown"))[:250]
+        except (ValueError,TypeError):
+            reason="non-JSON error response"
+        print(f"EVIDENCE_PUBLISH_FAILED: GitHub HTTP {exc.code}; reason={reason}",flush=True)
+        print("EVIDENCE_AUTH_HINT: check token repo access, Issues write permission, and selected credential name",flush=True)
         return 1
     except Exception as exc:
         print(f"EVIDENCE_PUBLISH_FAILED: {type(exc).__name__}",flush=True)

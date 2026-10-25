@@ -1,0 +1,42 @@
+version: 2.1
+# Re-run after GitHub fine-grained token repository and Issues write permissions update; evidence publication remains a separate gate.
+jobs:
+  abc-nautilus-rawtick:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: medium
+    steps:
+      - checkout
+      - run:
+          name: Preflight GitHub evidence publisher credentials
+          command: |
+            python3 -c 'import os,sys; names=("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN"); found=[n for n in names if os.environ.get(n)]; print("EVIDENCE_AUTH_PRESENT: "+found[0] if found else "EVIDENCE_AUTH_MISSING: configure GH_RESULTS_TOKEN in CircleCI Project Settings > Environment Variables"); sys.exit(0 if found else 2)'
+      - run:
+          name: Build NautilusTrader container
+          command: docker build -f ci/nautilus/Dockerfile -t amos-nautilus-abc .
+      - run:
+          name: Run genuine Bid Ask Raw Tick BT
+          no_output_timeout: 30m
+          command: |
+            mkdir -p results/amos-abc
+            docker run --rm -e BT_MODE=SMOKE_1D -e BT_START=2026-10-19 -e BT_DAYS=1 -v "$PWD/results/amos-abc:/workspace/results/amos-abc" amos-nautilus-abc
+      - run:
+          name: Verify exported KPI and print A01 B01 C01 metrics
+          when: always
+          command: |
+            python3 -c 'import json,pathlib; p=pathlib.Path("results/amos-abc/rawtick-kpi.json"); assert p.is_file(), "KPI missing"; d=json.loads(p.read_text()); assert d.get("raw_ticks",0)>=1000; print(json.dumps(d,indent=2))'
+      - run:
+          name: Publish Native Fill evidence to GitHub PR (separate gate)
+          when: always
+          command: |
+            python3 ci/nautilus/publish_evidence.py
+      - store_artifacts:
+          path: results/amos-abc
+          destination: abc-nautilus-rawtick
+workflows:
+  abc-nautilus-rawtick:
+    jobs:
+      - abc-nautilus-rawtick:
+          filters:
+            branches:
+              only: research/amos-abc-nautilus-rawtick-20261023

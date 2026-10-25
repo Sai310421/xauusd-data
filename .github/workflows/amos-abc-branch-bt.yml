@@ -1,0 +1,36 @@
+name: AMOS ABC Raw Tick on branch push
+on:
+  push:
+    branches: [research/amos-abc-nautilus-rawtick-20261023]
+    paths:
+      - '.github/workflows/amos-abc-branch-bt.yml'
+      - 'research/amos_abc_nautilus_rawtick_bt.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  abc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install previously verified dependencies
+        run: python -m pip install 'nautilus_trader==1.230.0' pandas numpy
+      - name: Build genuine Dukascopy Raw Bid Ask catalog
+        run: python research/build_raw_bidask_catalog_duka.py --start 2026-10-19 --days 1 --catalog catalog/raw_bidask --symbols XAUUSD --workers 8 --fresh
+      - name: Validate source data
+        run: python research/raw_bidask_catalog_guard.py --catalog catalog/raw_bidask --symbols XAUUSD
+      - name: Run A01 B01 C01
+        run: python research/amos_abc_nautilus_rawtick_bt.py --catalog catalog/raw_bidask --out results/amos-abc/rawtick-kpi.json
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: abc-rawtick-${{ github.run_id }}
+          path: |
+            results/amos-abc/rawtick-kpi.json
+            catalog/raw_bidask/catalog_manifest.json
+          if-no-files-found: warn

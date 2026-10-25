@@ -27,12 +27,14 @@ class PublisherTests(unittest.TestCase):
                     "CIRCLE_SHA1": "a" * 40, "CIRCLE_BUILD_URL": "https://app.circleci.com/jobs/123",
                     "EVIDENCE_BT_STATUS": "PASS"}
         self.comments = []
+        self.fallback_comments = []
         self.calls = []
         self.failure = None
 
     def server(self, req, **kwargs):
         path = req.full_url.removeprefix("https://api.github.com")
         method = req.get_method()
+        comments = self.fallback_comments if "/issues/31/comments" in path else self.comments
         self.calls.append((method, path))
         self.assertEqual(req.get_header("Authorization"), "Bearer " + self.env["GH_RESULTS_TOKEN"])
         if self.failure and self.failure[0](method, path):
@@ -47,17 +49,18 @@ class PublisherTests(unittest.TestCase):
             return Response({"pull_request": {}})
         if "?per_page=" in path:
             page = int(path.rsplit("=", 1)[1])
-            return Response(self.comments[(page-1)*100:page*100])
+            return Response(comments[(page-1)*100:page*100])
         if method in ("POST", "PATCH"):
             body = json.loads(req.data)["body"]
             if method == "POST":
-                comment = {"id": len(self.comments) + 1, "user": {"id": 7}}
-                self.comments.append(comment)
+                comment = {"id": len(comments) + (1000 if comments is self.fallback_comments else 1), "user": {"id": 7}}
+                comments.append(comment)
             else:
-                comment = next(c for c in self.comments if c["id"] == int(path.rsplit("/", 1)[1]))
-            comment.update(body=body, html_url=f"https://github.com/{p.REPO}/pull/30#issuecomment-{comment['id']}")
+                comment = next(c for c in self.comments + self.fallback_comments if c["id"] == int(path.rsplit("/", 1)[1]))
+            target = 31 if comment["id"] >= 1000 else 30
+            comment.update(body=body, html_url=f"https://github.com/{p.REPO}/issues/{target}#issuecomment-{comment['id']}")
             return Response(comment)
-        return Response(next(c for c in self.comments if c["id"] == int(path.rsplit("/", 1)[1])))
+        return Response(next(c for c in self.comments + self.fallback_comments if c["id"] == int(path.rsplit("/", 1)[1])))
 
     def run_main(self, args=None):
         out = io.StringIO()
@@ -256,6 +259,29 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(caught.exception.details["category"], "COMMENT_SCAN_LIMIT")
         self.assertEqual(api.call_count, 100)
         self.assertTrue(all(len(c.args) == 2 for c in api.call_args_list))
+
+    def test_issue_fallback_verifies_issue_write_but_keeps_pr_failed(self):
+        self.failure = (lambda m, x: m == "POST" and "/issues/30/" in x, 403,
+                        {"X-Accepted-GitHub-Permissions": "issues=write; pull_requests=write"},
+                        "Resource not accessible by personal access token")
+        code, status = self.run_main()
+        self.assertEqual((code, status["publication"]), (1, "FAILED"))
+        self.assertEqual(status["fallback_publication"], "CREATED")
+        self.assertEqual(status["fallback_write_access"], "VERIFIED")
+        self.assertIn("/issues/31#issuecomment-", status["fallback_comment_url"])
+        self.assertEqual(len(self.fallback_comments), 1)
+        self.assertIn('"rawtick-kpi.json"', self.fallback_comments[0]["body"])
+        self.assertEqual(self.run_main()[1]["fallback_publication"], "UNCHANGED")
+        self.assertEqual(len(self.fallback_comments), 1)
+
+    def test_issue_fallback_denied_is_recorded(self):
+        self.failure = (lambda m, x: m == "POST", 403, {},
+                        "Resource not accessible by personal access token")
+        code, status = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertEqual(status["fallback_error"]["http_status"], 403)
+        self.assertEqual(status["fallback_error"]["endpoint"], f"/repos/{p.REPO}/issues/31/comments")
+        self.assertTrue((self.root / "evidence-bundle.json").is_file())
 
 
 if __name__ == "__main__":

@@ -123,10 +123,10 @@ def collect(root, env):
                  "input_problems": problems, "evidence": evidence}, env)
 
 
-def publish(token, author_id, body, marker):
+def publish(token, author_id, body, marker, target=PR):
     # Fail closed if the bounded scan cannot establish absence of a duplicate.
     for page in range(1, 101):
-        comments = request(token, f"/repos/{REPO}/issues/{PR}/comments?per_page=100&page={page}")
+        comments = request(token, f"/repos/{REPO}/issues/{target}/comments?per_page=100&page={page}")
         if not isinstance(comments, list):
             raise PublishError("INVALID_API_RESPONSE")
         for comment in comments:
@@ -137,9 +137,21 @@ def publish(token, author_id, body, marker):
                     token, f"/repos/{REPO}/issues/comments/{int(comment['id'])}",
                     "PATCH", {"body": body})
         if len(comments) < 100:
-            return "CREATED", request(token, f"/repos/{REPO}/issues/{PR}/comments",
+            return "CREATED", request(token, f"/repos/{REPO}/issues/{target}/comments",
                                       "POST", {"body": body})
     raise PublishError("COMMENT_SCAN_LIMIT")
+
+
+def verify_comment(token, result, body, target=PR):
+    url = result.get("html_url", "")
+    if not re.fullmatch(
+        rf"https://github\.com/Sai310421/xauusd-data/(?:issues|pull)/{target}#issuecomment-\d+", url
+    ):
+        raise PublishError("INVALID_COMMENT_RESPONSE")
+    stored = request(token, f"/repos/{REPO}/issues/comments/{int(result['id'])}")
+    if stored.get("body") != body:
+        raise PublishError("COMMENT_VERIFICATION_FAILED")
+    return url
 
 
 def main(argv=None, *, root=ROOT, env=None):
@@ -183,19 +195,35 @@ def main(argv=None, *, root=ROOT, env=None):
             if len(body) > 60000:
                 raise PublishError("PAYLOAD_TOO_LARGE")
             action, result = publish(token, author_id, body, marker)
-            url = result.get("html_url", "")
-            if not re.fullmatch(
-                r"https://github\.com/Sai310421/xauusd-data/(?:issues|pull)/30#issuecomment-\d+", url
-            ):
-                raise PublishError("INVALID_COMMENT_RESPONSE")
-            stored = request(token, f"/repos/{REPO}/issues/comments/{int(result['id'])}")
-            if stored.get("body") != body:
-                raise PublishError("COMMENT_VERIFICATION_FAILED")
+            url = verify_comment(token, result, body)
             status.update(publication=action, comment_url=url,
                           write_access="NOT_TESTED_UNCHANGED" if action == "UNCHANGED" else "VERIFIED")
             code = 0 if payload["evidence_complete"] else 2
     except PublishError as exc:
         status.update(publication="BLOCKED" if options.preflight_only else "FAILED", **exc.details)
+        if (not options.preflight_only and exc.details.get("category") == "ACCESS_FORBIDDEN"
+                and exc.details.get("method") in ("POST", "PATCH")):
+            # Issue #31 explicitly requests a GitHub investigation report. Use the
+            # SAME credential; this is both a useful fallback and an access test.
+            # A successful Issue write never changes the failed PR gate to PASS.
+            try:
+                fallback_body = (marker + "\n### Issue #31: PR #30 publication denied\n"
+                                 "Automatic CI evidence fallback; original PR publication remains FAILED.\n"
+                                 "https://github.com/Sai310421/xauusd-data/pull/30\n\n```json\n"
+                                 + json.dumps(safe({"failure": exc.details, **payload}, env),
+                                              indent=2, ensure_ascii=True) + "\n```")
+                save("evidence-fallback-comment.json", {"body": fallback_body})
+                if len(fallback_body) > 60000:
+                    raise PublishError("PAYLOAD_TOO_LARGE")
+                fallback_action, fallback_result = publish(
+                    token, author_id, fallback_body, marker, target=31)
+                fallback_url = verify_comment(token, fallback_result, fallback_body, target=31)
+                status.update(fallback_publication=fallback_action, fallback_comment_url=fallback_url,
+                              fallback_write_access="NOT_TESTED_UNCHANGED" if fallback_action == "UNCHANGED" else "VERIFIED")
+            except PublishError as fallback_exc:
+                status["fallback_error"] = fallback_exc.details
+            except (KeyError, TypeError, ValueError, AttributeError):
+                status["fallback_error"] = {"category": "INVALID_API_RESPONSE"}
     except (KeyError, TypeError, ValueError, AttributeError):
         status.update(publication="FAILED", category="INVALID_API_RESPONSE")
     status["exit_code"] = code

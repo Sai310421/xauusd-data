@@ -21,6 +21,9 @@ remains an external dependency; offline development can proceed independently.
 - [Original CircleCI job](https://app.circleci.com/workflow/a9677845-acfb-4592-b7fb-7a0b450e1cb3/job/ea0a175c-31df-495a-8c89-baa1f53d72e2).
 - Opening that job in the available browser redirects to CircleCI login with
   "Your session has expired". GitHub sign-in also needs an interactive login.
+  This initially blocked browser inspection, but is **no longer a read blocker**:
+  the public v2 workflow API exposed the actual `circleci/...` project slug, and
+  v1.1 job details/logs and v2 artifacts work with that slug without credentials.
 - An unauthenticated CircleCI v1.1 project-build-list request returned HTTP 404;
   that does not prove the project is absent. No CircleCI process credential is
   available. GitHub CLI has a working *local OAuth* session, which is a different
@@ -33,9 +36,16 @@ remains an external dependency; offline development can proceed independently.
   was observed `pending`, with `serial-start=success`. This is execution evidence,
   not a successful BT or publication result. Subsequent commit/run results are
   recorded on the Draft PR and Issue #31.
-- The original 403 reason is recorded in Issue #31. Its actual selected variable,
-  `X-Accepted-GitHub-Permissions`, request ID, PAT repository grants and effective
-  Issues/Pull requests permissions have **not** yet been observed from CircleCI.
+- Original job **20**: BT and KPI verification steps succeeded; comment step failed
+  with exit 1. Actual log: `EVIDENCE_AUTH_SOURCE: GH_RESULTS_TOKEN`;
+  `GitHub HTTP 403; reason=Resource not accessible by personal access token`;
+  `EVIDENCE_ACCEPTED_PERMISSIONS: issues=write; pull_requests=write`.
+- Initial repair job **22**: 27 offline unit tests passed on CircleCI; the live
+  read preflight passed. Its available credential sources are exactly
+  `["GH_RESULTS_TOKEN"]`; token-source precedence therefore does not explain that
+  job's failure. The token's actual fine-grained grants remain unobserved.
+- GitHub API read confirms PR #30 is open/unlocked, with no active lock reason;
+  repository interaction limit is null. These restrictions do not explain denial.
 
 The endpoint is correct: GitHub documents PR timeline comments under the issue
 comment endpoint. The documented permission alternatives are Issues write OR
@@ -70,6 +80,12 @@ denial.
   `evidence-comment.json` when available and `evidence-publish-status.json` with
   separate BT/publication fields. Missing/invalid JSON is explicit partial evidence
   and keeps the publication gate nonzero, even if that partial comment is posted.
+- If the primary PR comment write is forbidden, use the same credential to save
+  a substantive evidence/diagnostic report to Issue #31 (requested reporting
+  destination), with the same deduplication/readback. This tests Issue write access
+  without switching tokens or making disposable probe comments. A successful
+  Issue fallback leaves the PR publication gate **FAILED**. It distinguishes
+  resource-specific write denial from complete inability to write in the repo.
 - Include the original seven JSON results, commit SHA, CircleCI job URL, workflow
   and build number. No raw ticks are posted.
 - Scan paginated comments by commit marker and authenticated author; create,
@@ -94,7 +110,7 @@ Executed locally with Python 3.11:
 
 ```
 python -m unittest discover -s ci/nautilus -p test_publish_evidence.py -v
-Ran 27 tests ... OK
+Ran 29 tests ... OK
 ```
 
 Tests cover missing/invalid credentials, selection precedence and explicit source,
@@ -102,7 +118,8 @@ Tests cover missing/invalid credentials, selection precedence and explicit sourc
 repository, creation/readback, unchanged duplicate, rerun PATCH, other-author
 protection, paginated duplicate, missing/invalid JSON, oversized fallback, network
 failure, secret redaction before truncation, invalid SHA, failed readback, denied
-PATCH and scan-limit behavior. All API and BT evidence fixtures are simulated.
+PATCH, scan-limit behavior, successful/denied Issue #31 fallback and fallback
+deduplication. All API and BT evidence fixtures are simulated.
 This is not a measured Raw Tick backtest or a real GitHub-write test.
 
 PyYAML 6.0.3 parsed `.circleci/config.yml`; workflow structure assertions and
@@ -114,12 +131,12 @@ locally. No trading, data, strategy, KPI or live-order code is changed.
 The Draft PR and Issue #31 comments carry the repair commit SHA and real CI status
 once submitted. Do not close Issue #31 on offline tests alone.
 
-Next required evidence: read the original and repair jobs' sanitized auth source,
-HTTP category, accepted-permissions/request headers and BT output; verify the
+Next required evidence: read the final repair job's HTTP category,
+accepted-permissions/request headers, same-token Issue fallback and BT output; verify the
 selected PAT's actual repository/owner/grants or access restriction based on those
 observations; repair only the demonstrated issue; rerun and verify an inline
-comment on PR #30. Browser login to the existing CircleCI account is sufficient
-to inspect logs; no token reissue or manual log download is requested.
+comment on PR #30. Public API reads now work; no browser login, token reissue or
+manual log download is requested for this investigation.
 
 Authentication options, if a credential problem is established:
 

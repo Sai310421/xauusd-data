@@ -1,5 +1,5 @@
 version: 2.1
-# Re-run after GitHub fine-grained token repository and Issues write permissions update; evidence publication remains a separate gate.
+# BT and evidence publication are independent gates; artifacts survive either failure.
 jobs:
   abc-nautilus-rawtick:
     machine:
@@ -8,9 +8,13 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Test evidence publisher (mock GitHub API)
+          command: python3 -m unittest discover -s ci/nautilus -p 'test_publish_evidence.py' -v
+      - run:
           name: Preflight GitHub evidence publisher credentials
           command: |
-            python3 -c 'import os,sys; names=("GH_RESULTS_TOKEN","GITHUB_TOKEN","GH_TOKEN"); found=[n for n in names if os.environ.get(n)]; print("EVIDENCE_AUTH_PRESENT: "+found[0] if found else "EVIDENCE_AUTH_MISSING: configure GH_RESULTS_TOKEN in CircleCI Project Settings > Environment Variables"); sys.exit(0 if found else 2)'
+            # Record auth failure without preventing the independent Raw Tick run.
+            python3 ci/nautilus/publish_evidence.py --preflight-only || echo 'EVIDENCE_PREFLIGHT_BLOCKED: see evidence-preflight.json; final publish gate remains required'
       - run:
           name: Build NautilusTrader container
           command: docker build -f ci/nautilus/Dockerfile -t amos-nautilus-abc .
@@ -19,7 +23,12 @@ jobs:
           no_output_timeout: 30m
           command: |
             mkdir -p results/amos-abc
-            docker run --rm -e BT_MODE=SMOKE_1D -e BT_START=2026-10-19 -e BT_DAYS=1 -v "$PWD/results/amos-abc:/workspace/results/amos-abc" amos-nautilus-abc
+            if docker run --rm -e BT_MODE=SMOKE_1D -e BT_START=2026-10-19 -e BT_DAYS=1 -v "$PWD/results/amos-abc:/workspace/results/amos-abc" amos-nautilus-abc; then
+              echo 'export EVIDENCE_BT_STATUS=PASS' >> "$BASH_ENV"
+            else
+              echo 'export EVIDENCE_BT_STATUS=FAIL' >> "$BASH_ENV"
+              exit 1
+            fi
       - run:
           name: Verify exported KPI and print A01 B01 C01 metrics
           when: always
@@ -37,6 +46,9 @@ workflows:
   abc-nautilus-rawtick:
     jobs:
       - abc-nautilus-rawtick:
+          serial-group: << pipeline.project.slug >>/evidence-pr-30
           filters:
             branches:
-              only: research/amos-abc-nautilus-rawtick-20261023
+              only:
+                - research/amos-abc-nautilus-rawtick-20261023
+                - fix/issue-31-evidence-publisher

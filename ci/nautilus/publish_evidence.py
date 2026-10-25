@@ -191,7 +191,8 @@ def main(argv=None, *, root=ROOT, env=None):
             stored = request(token, f"/repos/{REPO}/issues/comments/{int(result['id'])}")
             if stored.get("body") != body:
                 raise PublishError("COMMENT_VERIFICATION_FAILED")
-            status.update(publication=action, comment_url=url, write_access="VERIFIED")
+            status.update(publication=action, comment_url=url,
+                          write_access="NOT_TESTED_UNCHANGED" if action == "UNCHANGED" else "VERIFIED")
             code = 0 if payload["evidence_complete"] else 2
     except PublishError as exc:
         status.update(publication="BLOCKED" if options.preflight_only else "FAILED", **exc.details)

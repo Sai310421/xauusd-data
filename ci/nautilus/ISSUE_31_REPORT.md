@@ -26,6 +26,13 @@ remains an external dependency; offline development can proceed independently.
   available. GitHub CLI has a working *local OAuth* session, which is a different
   credential from the unknown CircleCI PAT and has not been copied into CI.
 - PR #30 had zero timeline comments when queried during this investigation.
+- Draft repair PR: [#32](https://github.com/Sai310421/xauusd-data/pull/32), based on
+  PR #30's research branch. Initial repair commit
+  `7a18abbf2f791c57f236333c88e503bd6ed25d23` triggered a real CircleCI job;
+  [repair job](https://app.circleci.com/workflow/2ab51210-73e7-4833-bd92-07b985084a1d/job/0b77c5e8-19d3-4f40-b604-3bb8a8862d91)
+  was observed `pending`, with `serial-start=success`. This is execution evidence,
+  not a successful BT or publication result. Subsequent commit/run results are
+  recorded on the Draft PR and Issue #31.
 - The original 403 reason is recorded in Issue #31. Its actual selected variable,
   `X-Accepted-GitHub-Permissions`, request ID, PAT repository grants and effective
   Issues/Pull requests permissions have **not** yet been observed from CircleCI.
@@ -67,6 +74,8 @@ denial.
   and build number. No raw ticks are posted.
 - Scan paginated comments by commit marker and authenticated author; create,
   update on rerun or skip unchanged content, then read back the stored body.
+  An unchanged comment records `write_access=NOT_TESTED_UNCHANGED`, since reading
+  an older comment does not establish the current token's write permission.
   Fail closed at the scan bound. CircleCI serializes the configured jobs in one
   group to prevent competing POSTs; standalone concurrent invocations are not an
   atomic GitHub upsert.

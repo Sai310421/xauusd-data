@@ -146,7 +146,9 @@ class PublisherTests(unittest.TestCase):
     def test_duplicate_unchanged_no_second_post(self):
         self.run_main()
         self.calls.clear()
-        self.assertEqual(self.run_main()[1]["publication"], "UNCHANGED")
+        status = self.run_main()[1]
+        self.assertEqual(status["publication"], "UNCHANGED")
+        self.assertEqual(status["write_access"], "NOT_TESTED_UNCHANGED")
         self.assertFalse(any(m in ("POST", "PATCH") for m, _ in self.calls))
         self.assertEqual(len(self.comments), 1)
 

@@ -1,0 +1,9 @@
+[project]
+name = "rage-dch"
+version = "0.2.0"
+description = "AMOS RAGE dual compound hedge research. Live trading off. Hypothesis unproven."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.unittest]
+# python -m unittest discover -s tests

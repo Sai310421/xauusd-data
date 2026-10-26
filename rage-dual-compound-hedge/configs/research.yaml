@@ -1,23 +1,26 @@
-# RAGE Dual Compound Hedge research config
-# Live Trading: OFF
+# Live trading off. Targets are hypotheses, not results.
+live_trading: false
+instrument: XAUUSD
+data_kind: RAW_BIDASK
+ohlc_proxy: false
 
 target:
   main_monthly: 0.10
   hedge_monthly: 0.10
-
-instrument: XAUUSD
-data_kind: RAW_BIDASK
-ohlc_proxy: false
+  note: "geometric monthly growth of realized net returns, not a guaranteed month"
 
 validation:
   raw_tick_required: true
   min_quote_ticks: 1000
   paired_monte_carlo: true
+  independent_shuffle: false
 
-gates:
-  - formula
-  - implementation
-  - raw_tick
-  - oos_wfo
-  - monte_carlo
-  - hypothesis
+formula:
+  baseline: v1-original
+  candidate: v2-budget-split
+  vol_unit: annualized_fraction
+
+main_candidates_not_executed:
+  - research/ae_allweather_nautilus_raw_ab_v9_drmpc.py
+  - research/armada_nautilus_raw_cell.py
+  - research/bigplayer_rawtick_5tf_21d_bt.py

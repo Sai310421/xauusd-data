@@ -1,0 +1,23 @@
+# RAGE Dual Compound Hedge research config
+# Live Trading: OFF
+
+target:
+  main_monthly: 0.10
+  hedge_monthly: 0.10
+
+instrument: XAUUSD
+data_kind: RAW_BIDASK
+ohlc_proxy: false
+
+validation:
+  raw_tick_required: true
+  min_quote_ticks: 1000
+  paired_monte_carlo: true
+
+gates:
+  - formula
+  - implementation
+  - raw_tick
+  - oos_wfo
+  - monte_carlo
+  - hypothesis

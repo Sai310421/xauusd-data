@@ -1,0 +1,158 @@
+{
+  "title": "AMOS RAGE DCH RESEARCH REPORT",
+  "live_trading": false,
+  "formula_version_baseline": "v1-original",
+  "formula_version_candidate": "v2-budget-split",
+  "raw_tick_count": null,
+  "raw_tick_span": null,
+  "nautilus_native_fills": 0,
+  "main_monthly_net": null,
+  "hedge_monthly_net": null,
+  "total_monthly_net": null,
+  "max_floating_dd": null,
+  "simultaneous_loss_rate_market": null,
+  "protection_shortfall_market": null,
+  "oos_wfo": null,
+  "monte_carlo_market": null,
+  "structural_note": "If 30% of the hedge book is locked and that lock costs 1% a month, the free 70% must earn more than 10% for the whole hedge book to compound at 10%. Required free-sleeve monthly edge at that point: 0.147143. ProtectiveHedge does not supply this edge.",
+  "structural_required_edge": [
+    {
+      "locked_fraction": 0.0,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.10000000000000009
+    },
+    {
+      "locked_fraction": 0.05,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.10578947368421066
+    },
+    {
+      "locked_fraction": 0.1,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.11222222222222222
+    },
+    {
+      "locked_fraction": 0.15,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.11941176470588255
+    },
+    {
+      "locked_fraction": 0.2,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.12750000000000017
+    },
+    {
+      "locked_fraction": 0.25,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.13666666666666671
+    },
+    {
+      "locked_fraction": 0.3,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.14714285714285746
+    },
+    {
+      "locked_fraction": 0.35,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.1592307692307693
+    },
+    {
+      "locked_fraction": 0.4,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.17333333333333356
+    },
+    {
+      "locked_fraction": 0.45,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.18999999999999995
+    },
+    {
+      "locked_fraction": 0.5,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.2100000000000002
+    },
+    {
+      "locked_fraction": 0.55,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.2344444444444449
+    },
+    {
+      "locked_fraction": 0.6,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.2650000000000001
+    },
+    {
+      "locked_fraction": 0.65,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.3042857142857147
+    },
+    {
+      "locked_fraction": 0.7,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.3566666666666669
+    },
+    {
+      "locked_fraction": 0.75,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.4300000000000006
+    },
+    {
+      "locked_fraction": 0.8,
+      "cost_rate": 0.01,
+      "required_monthly_edge_on_free_sleeve": 0.5400000000000007
+    }
+  ],
+  "hypothesis": {
+    "MAIN_10_PERCENT_COMPOUND": "BLOCKED",
+    "HEDGE_10_PERCENT_COMPOUND": "BLOCKED",
+    "SIMULTANEOUS_LOSS_CONTROL": "CONDITIONAL",
+    "PROTECTION_COVERAGE": "CONDITIONAL",
+    "PORTFOLIO_POSITIVE_GROWTH": "BLOCKED",
+    "OOS_REPRODUCIBILITY": "BLOCKED",
+    "MONTE_CARLO_ROBUSTNESS": "CONDITIONAL"
+  },
+  "hypothesis_why": {
+    "MAIN_10_PERCENT_COMPOUND": "No raw bid/ask fill log. Existing ae_/armada_/bigplayer_ scripts were not executed.",
+    "HEDGE_10_PERCENT_COMPOUND": "No hedge alpha is implemented. A pure offset sleeve pays costs and cannot be the 10% engine.",
+    "SIMULTANEOUS_LOSS_CONTROL": "Paired-block method exists and keeps the common shock. Market paths were not resampled.",
+    "PROTECTION_COVERAGE": "Scenario optimizer and shortfall accounting exist. Coverage on XAUUSD ticks was not measured.",
+    "PORTFOLIO_POSITIVE_GROWTH": "Blocked with the two compound gates. Identity P_total = P_A + P_R + P_I - C is implemented only.",
+    "OOS_REPRODUCIBILITY": "Walk-forward splitter is tested on index ranges. No unused market window was scored.",
+    "MONTE_CARLO_ROBUSTNESS": "Independent shuffling is rejected in code. Robustness on real paired returns is blocked."
+  },
+  "structural_overlay": {
+    "label": "SYNTHETIC_STRUCTURAL_NOT_MARKET",
+    "paths": 400,
+    "months": 24,
+    "seed": 7,
+    "mu_main": 0.0,
+    "sigma": 0.04,
+    "beta": 1.0,
+    "cost": 0.002,
+    "mean_geom_main": -0.0004895307313298191,
+    "mean_geom_hedge": -0.0030476449796736833,
+    "paths_main_ge_target": 0,
+    "paths_hedge_ge_target": 0,
+    "simultaneous_loss_rate": 0.022395833333333334,
+    "mean_shortfall_when_main_below_bound": 0.0,
+    "loss_bound": 0.03
+  },
+  "structural_v1_intensity": {
+    "label": "SYNTHETIC_V1_INTENSITY_NOT_MARKET",
+    "paths": 400,
+    "months": 24,
+    "seed": 7,
+    "mu_main": 0.0,
+    "sigma": 0.04,
+    "beta": null,
+    "cost": 0.002,
+    "mean_geom_main": -0.0004895307313298191,
+    "mean_geom_hedge": -0.0016217357559040436,
+    "paths_main_ge_target": 0,
+    "paths_hedge_ge_target": 0,
+    "simultaneous_loss_rate": 0.4286458333333335,
+    "mean_shortfall_when_main_below_bound": 0.023576069054179128,
+    "loss_bound": 0.03
+  },
+  "structural_overlay_reading": "Perfect beta=1 overlay with zero main alpha: large monthly losses are offset and the hedge book still compounds below zero because of cost. v1 intensity is a much smaller ratio, so the same shocks leave a protection shortfall. Neither study is a market measurement."
+}

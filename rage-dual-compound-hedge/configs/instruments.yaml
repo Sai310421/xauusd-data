@@ -1,0 +1,8 @@
+# Assumptions, not a broker certificate.
+XAUUSD:
+  quote_ccy: USD
+  price_unit: USD_per_oz
+  # Many MT5 symbols use 100 oz per standard lot. Confirm before any sizing study.
+  assumed_oz_per_standard_lot: 100
+  vol_unit: annualized_fraction
+  spread_is_a_cost: true

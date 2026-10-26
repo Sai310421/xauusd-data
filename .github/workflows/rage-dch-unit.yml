@@ -1,0 +1,22 @@
+name: rage-dch-unit
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "rage-dual-compound-hedge/**"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: unit tests only
+        working-directory: rage-dual-compound-hedge
+        run: PYTHONPATH=src:. python -m unittest discover -s tests -v
+      - name: report must not mark the hypothesis passed
+        working-directory: rage-dual-compound-hedge
+        run: PYTHONPATH=src:. python scripts/build_report.py

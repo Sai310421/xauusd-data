@@ -1,0 +1,6 @@
+# Research governor defaults. Not a live risk server.
+max_drawdown: 0.20
+loss_bound_currency: 2000
+q_max: 50
+max_gross_oz: 30
+locked_capital_is_not_free_alpha: true

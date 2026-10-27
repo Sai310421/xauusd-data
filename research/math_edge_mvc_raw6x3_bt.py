@@ -17,9 +17,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import nautilus_trader
-from nautilus_trader.backtest import BacktestEngine
-from nautilus_trader.common import LogLevel
-from nautilus_trader.config import BacktestEngineConfig, LoggerConfig, RiskEngineConfig
+from nautilus_trader.backtest.engine import BacktestEngine
+from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, RiskEngineConfig
 from nautilus_trader.model import BarType, Money, Venue
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, QuoteTick
@@ -31,6 +30,11 @@ from nautilus_trader.trading.strategy import Strategy
 
 from research.math_edge_candidates import empirical_joint_box, ae_safe_edge
 from research.minimumspike_raw6x3_bt import PARAMS, TF_MIN, TRADE_SIZE, extract_trades, metrics
+
+if not hasattr(ParquetDataCatalog, 'query_quote_ticks'):
+    def _query_quote_ticks(self, identifiers=None, start=None, end=None):
+        return self.query(data_cls=QuoteTick, identifiers=identifiers, start=start, end=end)
+    ParquetDataCatalog.query_quote_ticks = _query_quote_ticks
 
 SIM = Venue('SIM')
 
@@ -137,7 +141,9 @@ class MVCStrategy(Strategy):
 
     def on_quote_tick(self,tick:QuoteTick):
         bid=self._f(tick.bid_price); ask=self._f(tick.ask_price)
-        if self.armed is not None and self.entry_ref is None and self.portfolio.is_net_flat(self.config.instrument_id):
+        net_flat = (not self.portfolio.is_net_long(self.config.instrument_id)
+                    and not self.portfolio.is_net_short(self.config.instrument_id))
+        if self.armed is not None and self.entry_ref is None and net_flat:
             scale=self._edge_scale()
             if scale<=0:
                 self.blocked+=1; self.armed=None; return
@@ -175,12 +181,12 @@ def run_arm(catalog, inst_by_plain, symbols, tfs, days, edge):
         if not ticks: raise SystemExit(f'no raw QuoteTicks: {symbol}')
         for tf in tfs:
             m=TF_MIN[tf]
-            engine=BacktestEngine(config=BacktestEngineConfig(trader_id=f"{'E' if edge else 'B'}-{symbol}-{tf}",logging=LoggerConfig(stdout_level=LogLevel.ERROR),risk_engine=RiskEngineConfig(bypass=True)))
+            engine=BacktestEngine(config=BacktestEngineConfig(trader_id=f"{'E' if edge else 'B'}-{symbol}-{tf}",logging=LoggingConfig(log_level='ERROR', bypass_logging=True),risk_engine=RiskEngineConfig(bypass=True)))
             engine.add_venue(venue=SIM,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal('2000'))
             engine.add_instrument(inst); engine.add_data(ticks)
             bt=BarType.from_str(f'{inst.id.value}-{m}-MINUTE-BID-INTERNAL')
             s=MVCStrategy(MVCConfig(instrument_id=inst.id,bar_type=bt,trade_size=TRADE_SIZE[symbol],tf_minutes=m,edge_enabled=edge))
-            engine.add_strategy(s); engine.run(); r=engine.generate_positions_report(); tt=extract_trades(r,symbol,tf); trades.extend(tt)
+            engine.add_strategy(s); engine.run(); r=engine.trader.generate_positions_report(); tt=extract_trades(r,symbol,tf); trades.extend(tt)
             cells[f'{symbol}:{tf}']={**metrics(tt,days=days),'signals_submitted':s.entries,'blocked':s.blocked,'mean_size_scale':float(np.mean(s.scales)) if s.scales else None,'raw_ticks':len(ticks)}
             engine.dispose()
     trades.sort(key=lambda z:(z['ts_closed'],z['symbol'],z['tf']))

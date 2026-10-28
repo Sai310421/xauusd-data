@@ -65,6 +65,8 @@ class MVCStrategy(Strategy):
         self.entries = 0
         self.blocked = 0
         self.scales = []
+        self.min_bid = self.max_bid = None
+        self.excursions = []
 
     @staticmethod
     def _f(x):
@@ -158,8 +160,11 @@ class MVCStrategy(Strategy):
             order=self.order_factory.market(instrument_id=self.config.instrument_id,order_side=OrderSide.BUY,quantity=q)
             self.submit_order(order)
             p=self.armed; self.entry_ref=ask; self.stop_ref=p['low']-PARAMS['guard_ext']*p['atr']; self.tp_ref=ask+PARAMS['tp_atr']*p['atr']
+            self.min_bid=bid; self.max_bid=bid
             self.trail_ref=None; self.hold_bars=0; self.exit_pending=False; self.entries+=1; self.scales.append(scale); self.armed=None; return
         if self.entry_ref is None or self.exit_pending:return
+        self.min_bid=min(self.min_bid,bid) if self.min_bid is not None else bid
+        self.max_bid=max(self.max_bid,bid) if self.max_bid is not None else bid
         atr=(self.tp_ref-self.entry_ref)/PARAMS['tp_atr']
         if bid>=self.entry_ref+PARAMS['trail_act']*atr:
             nt=bid-PARAMS['trail_dist']*atr; self.trail_ref=nt if self.trail_ref is None else max(self.trail_ref,nt)
@@ -168,12 +173,17 @@ class MVCStrategy(Strategy):
             self.close_all_positions(self.config.instrument_id); self.exit_pending=True
 
     def on_position_closed(self,event):
-        self.entry_ref=self.stop_ref=self.tp_ref=self.trail_ref=None; self.hold_bars=0; self.exit_pending=False
+        if self.entry_ref is not None and self.min_bid is not None and self.max_bid is not None:
+            self.excursions.append({
+                'MAE_price': float(self.min_bid-self.entry_ref),
+                'MFE_price': float(self.max_bid-self.entry_ref),
+            })
+        self.entry_ref=self.stop_ref=self.tp_ref=self.trail_ref=None; self.min_bid=self.max_bid=None; self.hold_bars=0; self.exit_pending=False
     def on_stop(self):self.close_all_positions(self.config.instrument_id)
 
 
 def run_arm(catalog, inst_by_plain, symbols, tfs, days, edge):
-    trades=[]; cells={}; raw_counts={}
+    trades=[]; cells={}; raw_counts={}; excursions=[]
     for symbol in symbols:
         inst=inst_by_plain.get(symbol)
         if inst is None: raise SystemExit(f'instrument missing: {symbol}')
@@ -187,10 +197,13 @@ def run_arm(catalog, inst_by_plain, symbols, tfs, days, edge):
             bt=BarType.from_str(f'{inst.id.value}-{m}-MINUTE-BID-INTERNAL')
             s=MVCStrategy(MVCConfig(instrument_id=inst.id,bar_type=bt,trade_size=TRADE_SIZE[symbol],tf_minutes=m,edge_enabled=edge))
             engine.add_strategy(s); engine.run(); r=engine.trader.generate_positions_report(); tt=extract_trades(r,symbol,tf); trades.extend(tt)
-            cells[f'{symbol}:{tf}']={**metrics(tt,days=days),'signals_submitted':s.entries,'blocked':s.blocked,'mean_size_scale':float(np.mean(s.scales)) if s.scales else None,'raw_ticks':len(ticks)}
+            excursions.extend(s.excursions)
+            cells[f'{symbol}:{tf}']={**metrics(tt,days=days),'signals_submitted':s.entries,'native_fills':len(tt),'blocked':s.blocked,'mean_size_scale':float(np.mean(s.scales)) if s.scales else None,'MAE_price':float(np.mean([x['MAE_price'] for x in s.excursions])) if s.excursions else None,'MFE_price':float(np.mean([x['MFE_price'] for x in s.excursions])) if s.excursions else None,'raw_ticks':len(ticks)}
             engine.dispose()
     trades.sort(key=lambda z:(z['ts_closed'],z['symbol'],z['tf']))
-    return trades, metrics(trades,days=days), cells, raw_counts
+    aggregate=metrics(trades,days=days)
+    aggregate.update({'native_fills':len(trades),'MAE_price':float(np.mean([x['MAE_price'] for x in excursions])) if excursions else None,'MFE_price':float(np.mean([x['MFE_price'] for x in excursions])) if excursions else None})
+    return trades, aggregate, cells, raw_counts
 
 
 def main():

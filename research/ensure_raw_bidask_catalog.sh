@@ -5,10 +5,13 @@ CATALOG=${RAW_CATALOG:-catalog/raw_bidask}
 START=${RAW_START:-2026-07-27}
 DAYS=${RAW_DAYS:-30}
 WORKERS=${RAW_WORKERS:-12}
+# Space-separated list is intentional: it is forwarded as individual CLI
+# arguments, which lets a XAUUSD-only research run reuse this same factory.
+SYMBOLS=${RAW_SYMBOLS:-"XAUUSD EURUSD GBPUSD USDJPY AUDUSD USDCHF"}
 
 mkdir -p "$CATALOG"
 
-if python research/raw_bidask_catalog_guard.py --catalog "$CATALOG"; then
+if python research/raw_bidask_catalog_guard.py --catalog "$CATALOG" --symbols $SYMBOLS; then
   echo 'RAW_CATALOG_READY=cache_or_existing'
   exit 0
 fi
@@ -26,8 +29,9 @@ for attempt in 1 2 3; do
     --days "$DAYS" \
     --catalog "$CATALOG" \
     --workers "$WORKERS" \
+    --symbols $SYMBOLS \
     "${extra[@]}"; then
-    if python research/raw_bidask_catalog_guard.py --catalog "$CATALOG"; then
+    if python research/raw_bidask_catalog_guard.py --catalog "$CATALOG" --symbols $SYMBOLS; then
       ok=1
       break
     fi

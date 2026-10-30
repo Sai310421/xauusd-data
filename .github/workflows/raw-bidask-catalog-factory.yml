@@ -2,6 +2,19 @@ name: Raw BidAsk Catalog Factory
 
 on:
   workflow_dispatch:
+    inputs:
+      start:
+        description: UTC start date (inclusive)
+        required: true
+        default: '2026-07-27'
+      days:
+        description: Calendar days to materialize from Dukascopy BI5
+        required: true
+        default: '90'
+      symbols:
+        description: Space-separated symbols; XAUUSD is the normal research target
+        required: true
+        default: 'XAUUSD'
   push:
     paths:
       - 'bt_requests/raw6x3.request'
@@ -15,17 +28,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  group: raw-bidask-duka-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-${{ inputs.symbols || 'XAUUSD' }}-v3
   cancel-in-progress: false
 
 env:
   PYTHONPATH: ${{ github.workspace }}
   NAUTILUS_VERSION: '1.230.0'
   RAW_CATALOG: catalog/raw_bidask
-  RAW_START: '2026-07-27'
-  RAW_DAYS: '30'
+  RAW_START: ${{ inputs.start || '2026-07-27' }}
+  RAW_DAYS: ${{ inputs.days || '90' }}
   RAW_WORKERS: '12'
-  RAW_CACHE_KEY: raw-bidask-duka-6sym-2026-07-27-30d-v2
+  RAW_SYMBOLS: ${{ inputs.symbols || 'XAUUSD' }}
+  RAW_CACHE_KEY: raw-bidask-duka-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-${{ inputs.symbols || 'XAUUSD' }}-v3
   FACTORY_EVIDENCE: results/raw-factory/${{ github.run_id }}
 
 jobs:
@@ -49,6 +63,9 @@ jobs:
             "factory_run_id=${GITHUB_RUN_ID}" \
             "git_sha=${GITHUB_SHA}" \
             "cache_key=${RAW_CACHE_KEY}" \
+            "raw_start=${RAW_START}" \
+            "raw_days=${RAW_DAYS}" \
+            "raw_symbols=${RAW_SYMBOLS}" \
             "nautilus=${NAUTILUS_VERSION}" > "$FACTORY_EVIDENCE/run_identity.txt"
           sha256sum research/build_raw_bidask_catalog_duka.py research/raw_bidask_catalog_guard.py research/ensure_raw_bidask_catalog.sh > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
 

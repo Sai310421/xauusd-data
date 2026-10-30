@@ -52,7 +52,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
 
       - name: Prepare factory evidence
         shell: bash
@@ -94,6 +93,7 @@ jobs:
         shell: bash
         run: |
           set -u
+          mkdir -p "$FACTORY_EVIDENCE"
           if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
             cp "$RAW_CATALOG/catalog_manifest.json" "$FACTORY_EVIDENCE/catalog_manifest.json"
           else

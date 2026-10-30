@@ -8,27 +8,23 @@ on:
         required: true
         default: '2026-07-27'
       days:
-        description: Calendar days to materialize from Dukascopy BI5
+        description: Calendar days to materialize from public history
         required: true
         default: '90'
       symbols:
-        description: Space-separated symbols; XAUUSD is the normal research target
+        description: XAUUSD only for the public historical archive
         required: true
         default: 'XAUUSD'
   push:
     paths:
-      - 'bt_requests/raw6x3.request'
-      - 'bt_requests/math_edge_mvc.request'
-      - 'research/build_raw_bidask_catalog_duka.py'
-      - 'research/raw_bidask_catalog_guard.py'
-      - 'research/ensure_raw_bidask_catalog.sh'
+      - 'research/build_xauusd_github_bidask_catalog.py'
       - '.github/workflows/raw-bidask-catalog-factory.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: raw-bidask-duka-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-${{ inputs.symbols || 'XAUUSD' }}-v3
+  group: raw-bidask-github-duka-tail-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-v4
   cancel-in-progress: false
 
 env:
@@ -37,9 +33,7 @@ env:
   RAW_CATALOG: catalog/raw_bidask
   RAW_START: ${{ inputs.start || '2026-07-27' }}
   RAW_DAYS: ${{ inputs.days || '90' }}
-  RAW_WORKERS: '12'
-  RAW_SYMBOLS: ${{ inputs.symbols || 'XAUUSD' }}
-  RAW_CACHE_KEY: raw-bidask-duka-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-${{ inputs.symbols || 'XAUUSD' }}-v3
+  RAW_CACHE_KEY: raw-bidask-github-duka-tail-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-XAUUSD-v4
   FACTORY_EVIDENCE: results/raw-factory/${{ github.run_id }}
 
 jobs:
@@ -64,29 +58,34 @@ jobs:
             "cache_key=${RAW_CACHE_KEY}" \
             "raw_start=${RAW_START}" \
             "raw_days=${RAW_DAYS}" \
-            "raw_symbols=${RAW_SYMBOLS}" \
+            "source=github_archive_plus_duka_tail" \
             "nautilus=${NAUTILUS_VERSION}" > "$FACTORY_EVIDENCE/run_identity.txt"
-          sha256sum research/build_raw_bidask_catalog_duka.py research/raw_bidask_catalog_guard.py research/ensure_raw_bidask_catalog.sh > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
+          sha256sum research/build_xauusd_github_bidask_catalog.py research/build_raw_bidask_catalog_duka.py > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
 
       - name: Install pinned NautilusTrader
         run: |
           python -m pip install --upgrade pip
           python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
 
-      - name: Restore shared immutable Raw BidAsk catalog cache
+      - name: Restore immutable historical catalog cache
         id: raw-cache
         uses: actions/cache/restore@v4
         with:
           path: catalog/raw_bidask
           key: ${{ env.RAW_CACHE_KEY }}
 
-      - name: Ensure catalog (hit or bootstrap)
+      - name: Build from public GitHub history plus Dukascopy tail
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x research/ensure_raw_bidask_catalog.sh
-          research/ensure_raw_bidask_catalog.sh
-          echo "RAW_FACTORY_CACHE_HIT=${{ steps.raw-cache.outputs.cache-hit }}"
+          test "${{ inputs.symbols || 'XAUUSD' }}" = "XAUUSD"
+          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != "true" ]; then
+            python research/build_xauusd_github_bidask_catalog.py \
+              --start "$RAW_START" \
+              --days "$RAW_DAYS" \
+              --catalog "$RAW_CATALOG"
+          fi
+          python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
 
       - name: Capture verified catalog evidence
         if: always()
@@ -101,7 +100,7 @@ jobs:
           fi
           find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' 2>/dev/null | sort > "$FACTORY_EVIDENCE/catalog_inventory.txt" || true
 
-      - name: Save verified shared Raw BidAsk catalog cache
+      - name: Save immutable historical catalog cache
         if: steps.raw-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:

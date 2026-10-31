@@ -1,0 +1,78 @@
+{
+  "account": {
+    "starting_equity_usd": 1000,
+    "broker": "Exness Pro",
+    "symbol": "XAUUSD",
+    "min_margin_level_pct": 600,
+    "cashback": {
+      "provider": "TariTari",
+      "usd_per_completed_roundturn_lot": 6,
+      "count_virtual_cb_in_real_equity": false
+    }
+  },
+  "allocator": {
+    "shared_equity": true,
+    "A_CB": 0.35,
+    "B_TREND": 0.3,
+    "C_HIGH_WR": 0.35
+  },
+  "risk": {
+    "hard_dd_pct": 15,
+    "new_entry_stop_dd_pct": 14,
+    "max_consecutive_losses_global": 2
+  },
+  "virtual_entry": {
+    "enabled": true,
+    "rolling_trades": 120,
+    "min_pf": 1.2,
+    "min_ev_usd": 0,
+    "min_n": {
+      "A_CB": 35,
+      "B_TREND": 25,
+      "C_HIGH_WR": 40
+    },
+    "max_virtual_dd_pct": 8
+  },
+  "engines": {
+    "A_CB": [
+      "A1_TickFollow",
+      "A2_MicroReversion",
+      "A3_SpreadCompression",
+      "A4_TurnoverCycle",
+      "A5_G75Pursuit"
+    ],
+    "B_TREND": [
+      "B1_DonchianBreak",
+      "B2_ATRExpansion",
+      "B3_MSS_BOS",
+      "B4_SessionBreak",
+      "B5_G75Pursuit"
+    ],
+    "C_HIGH_WR": [
+      "C1_ZScoreMeanReversion",
+      "C2_BollingerReEntry",
+      "C3_RSIStochConfluence",
+      "C4_VWAPDeviation",
+      "C5_RegimeMicroReversion"
+    ]
+  },
+  "validation": {
+    "engine": "NautilusTrader",
+    "formal_data_policy": "RAW_BID_ASK_TICK_ONLY",
+    "reject_ohlc": true,
+    "days": 90,
+    "kpi": [
+      "N",
+      "WR",
+      "PF",
+      "RF",
+      "ReturnPct",
+      "MaxFloatingDDPct",
+      "GrossRoundTurnLots",
+      "CashbackUSD",
+      "CBInclusiveReturnPct",
+      "MinMarginLevelPct",
+      "EngineContribution"
+    ]
+  }
+}

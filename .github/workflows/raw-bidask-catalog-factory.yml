@@ -15,6 +15,11 @@ on:
         description: XAUUSD only for the public historical archive
         required: true
         default: 'XAUUSD'
+      allow_unlicensed_public_archive:
+        description: Explicitly acknowledge that source permission has been independently confirmed
+        type: boolean
+        required: true
+        default: false
   push:
     paths:
       - 'research/build_xauusd_github_bidask_catalog.py'
@@ -25,7 +30,7 @@ permissions:
 
 concurrency:
   group: raw-bidask-github-duka-tail-${{ inputs.start || '2026-07-27' }}-${{ inputs.days || '90' }}-v4
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   PYTHONPATH: ${{ github.workspace }}
@@ -43,11 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Prepare factory evidence
+      - name: License preflight
         shell: bash
         run: |
           set -euo pipefail
@@ -55,39 +56,31 @@ jobs:
           printf '%s\n' \
             "factory_run_id=${GITHUB_RUN_ID}" \
             "git_sha=${GITHUB_SHA}" \
-            "cache_key=${RAW_CACHE_KEY}" \
-            "raw_start=${RAW_START}" \
-            "raw_days=${RAW_DAYS}" \
-            "source=github_archive_plus_duka_tail" \
-            "nautilus=${NAUTILUS_VERSION}" > "$FACTORY_EVIDENCE/run_identity.txt"
-          sha256sum research/build_xauusd_github_bidask_catalog.py research/build_raw_bidask_catalog_duka.py > "$FACTORY_EVIDENCE/factory_code_sha256.txt"
+            "source=public_github_archive" \
+            "license_status=BLOCKED_UNVERIFIED" > "$FACTORY_EVIDENCE/run_identity.txt"
+          if [ "${{ inputs.allow_unlicensed_public_archive }}" != "true" ]; then
+            echo "BLOCKED: public archive has no repository license; confirm source permissions before use."
+            exit 78
+          fi
 
-      - name: Install pinned NautilusTrader
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
-
-      - name: Restore immutable historical catalog cache
-        id: raw-cache
-        uses: actions/cache/restore@v4
+      - uses: actions/setup-python@v5
+        if: ${{ inputs.allow_unlicensed_public_archive == true }}
         with:
-          path: catalog/raw_bidask
-          key: ${{ env.RAW_CACHE_KEY }}
+          python-version: '3.12'
 
       - name: Build from public GitHub history plus Dukascopy tail
+        if: ${{ inputs.allow_unlicensed_public_archive == true }}
         shell: bash
         run: |
           set -euo pipefail
           test "${{ inputs.symbols || 'XAUUSD' }}" = "XAUUSD"
-          if [ "${{ steps.raw-cache.outputs.cache-hit }}" != "true" ]; then
-            python research/build_xauusd_github_bidask_catalog.py \
-              --start "$RAW_START" \
-              --days "$RAW_DAYS" \
-              --catalog "$RAW_CATALOG"
-          fi
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}"
+          python research/build_xauusd_github_bidask_catalog.py \
+            --start "$RAW_START" --days "$RAW_DAYS" --catalog "$RAW_CATALOG"
           python research/raw_bidask_catalog_guard.py --catalog "$RAW_CATALOG" --symbols XAUUSD
 
-      - name: Capture verified catalog evidence
+      - name: Capture evidence
         if: always()
         shell: bash
         run: |
@@ -96,18 +89,11 @@ jobs:
           if [ -f "$RAW_CATALOG/catalog_manifest.json" ]; then
             cp "$RAW_CATALOG/catalog_manifest.json" "$FACTORY_EVIDENCE/catalog_manifest.json"
           else
-            printf '%s\n' '{"status":"MISSING","ohlc_resample_used":false}' > "$FACTORY_EVIDENCE/catalog_manifest.json"
+            printf '%s\n' '{"status":"BLOCKED_UNVERIFIED_LICENSE","ohlc_resample_used":false}' > "$FACTORY_EVIDENCE/catalog_manifest.json"
           fi
           find "$RAW_CATALOG" -type f -printf '%P %s bytes\n' 2>/dev/null | sort > "$FACTORY_EVIDENCE/catalog_inventory.txt" || true
 
-      - name: Save immutable historical catalog cache
-        if: steps.raw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: catalog/raw_bidask
-          key: ${{ env.RAW_CACHE_KEY }}
-
-      - name: Upload factory evidence
+      - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:

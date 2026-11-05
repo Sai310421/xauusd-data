@@ -1,0 +1,77 @@
+name: AMOS BBEMA Direction-Inversion Raw BidAsk BT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bt_requests/amos_bbema_direction_inversion_90d.request'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inversion:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ema_m1_inverse
+            timeframe: 1
+            variant: ema
+          - name: bb_rsi_m5_inverse
+            timeframe: 5
+            variant: bb
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' numpy pyarrow pandas
+      - name: Download Raw BidAsk data
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          pattern: xauusd-raw-bidask-20260225-90d-*
+          path: catalog/download
+      - name: Arrange catalog and configure inverse strategy
+        env:
+          TF: ${{ matrix.timeframe }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          for c in a b c d; do mv "catalog/download/xauusd-raw-bidask-20260225-90d-$c" "catalog/xauusd-90d-$c"; done
+          sed -i 's/deque(maxlen=320)/deque(maxlen=1000)/g' research/amos_bbema_rawtick_bt_v1.py
+          sed -i 's/side=1 if buy else -1/side=-1 if buy else 1/g' research/amos_bbema_rawtick_bt_v1.py
+          sed -i "s/5-MINUTE-BID-INTERNAL/$TF-MINUTE-BID-INTERNAL/g; s/M5 Nautilus/M$TF Nautilus/g" research/amos_bbema_rawtick_bt_v1.py
+          if [ "$VARIANT" = "ema" ]; then
+            sed -i 's/self.v=\[Variant("bb_rsi_divergence",True,False),Variant("ema_compression",False,True),Variant("combined_or",True,True)\]/self.v=[Variant("ema_compression_inverse",False,True)]/' research/amos_bbema_rawtick_bt_v1.py
+          else
+            sed -i 's/self.v=\[Variant("bb_rsi_divergence",True,False),Variant("ema_compression",False,True),Variant("combined_or",True,True)\]/self.v=[Variant("bb_rsi_divergence_inverse",True,False)]/' research/amos_bbema_rawtick_bt_v1.py
+            sed -i 's/rq>rz+1/rq>rz+1 and rq<=30/g; s/rq<rz-1/rq<rz-1 and rq>=70/g' research/amos_bbema_rawtick_bt_v1.py
+          fi
+          python -m py_compile research/amos_bbema_rawtick_bt_v1.py
+      - name: Run direction-inversion Raw BidAsk BT
+        env:
+          EXPERIMENT_ID: inverse-${{ matrix.name }}-${{ github.run_id }}
+        run: |
+          python research/amos_bbema_rawtick_bt_v1.py \
+            --catalog catalog/xauusd-90d-a --catalog catalog/xauusd-90d-b \
+            --catalog catalog/xauusd-90d-c --catalog catalog/xauusd-90d-d \
+            --experiment-id "$EXPERIMENT_ID" --lot 0.02 --contract-size 100
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-bbema-inverse-${{ matrix.name }}-${{ github.run_id }}
+          path: results/amos-bbema/
+          if-no-files-found: warn
+          retention-days: 90

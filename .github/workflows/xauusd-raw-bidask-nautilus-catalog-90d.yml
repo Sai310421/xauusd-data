@@ -1,0 +1,113 @@
+name: XAUUSD 90d Raw BidAsk Nautilus Catalog
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bt_requests/xauusd_raw_bidask_90d_20260225.request'
+
+permissions:
+  contents: read
+
+env:
+  NAUTILUS_VERSION: '1.230.0'
+
+jobs:
+  raw-bidask-catalog:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: a
+            start: '2026-02-25'
+            days: 23
+          - name: b
+            start: '2026-03-20'
+            days: 23
+          - name: c
+            start: '2026-04-12'
+            days: 23
+          - name: d
+            start: '2026-05-05'
+            days: 22
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Nautilus catalog dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - name: Restore Raw BidAsk catalog cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: catalog/xauusd-90d-${{ matrix.name }}
+          key: xauusd-raw-bidask-20260225-90d-${{ matrix.name }}-v1
+      - name: Build Nautilus QuoteTick catalog from Dukascopy BI5
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          python research/build_raw_bidask_catalog_duka.py \
+            --start "${{ matrix.start }}" \
+            --days "${{ matrix.days }}" \
+            --catalog "catalog/xauusd-90d-${{ matrix.name }}" \
+            --workers 12 \
+            --symbols XAUUSD \
+            --fresh
+      - name: Validate Raw BidAsk catalog
+        env:
+          CHUNK: ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+          root = Path("catalog") / f"xauusd-90d-{os.environ['CHUNK']}"
+          cat = ParquetDataCatalog(str(root))
+          instrument = next((x for x in cat.instruments() if x.id.symbol.value.replace("/", "") == "XAUUSD"), None)
+          assert instrument is not None, "XAUUSD instrument missing"
+          ticks = cat.query(data_cls=QuoteTick, identifiers=[instrument.id.value])
+          assert len(ticks) >= 1000, f"too few QuoteTicks: {len(ticks)}"
+          sample = ticks[::max(1, len(ticks)//100000)]
+          bid = np.array([float(t.bid_price) for t in sample])
+          ask = np.array([float(t.ask_price) for t in sample])
+          assert np.all(ask >= bid), "ask below bid"
+          result = {
+              "status": "COMPLETE",
+              "data_kind": "RAW_BIDASK",
+              "source": "Dukascopy BI5 QuoteTick Bid/Ask",
+              "ohlc_resample_used": False,
+              "chunk": os.environ["CHUNK"],
+              "instrument_id": instrument.id.value,
+              "ticks": len(ticks),
+              "first_ts_ns": int(ticks[0].ts_event),
+              "last_ts_ns": int(ticks[-1].ts_event),
+              "sampled_min_bid": float(bid.min()),
+              "sampled_max_ask": float(ask.max()),
+          }
+          out = root / "catalog_manifest.json"
+          out.write_text(json.dumps(result, indent=2))
+          print(json.dumps(result, indent=2))
+          PY
+      - name: Save Raw BidAsk catalog cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: catalog/xauusd-90d-${{ matrix.name }}
+          key: xauusd-raw-bidask-20260225-90d-${{ matrix.name }}-v1
+      - name: Persist Raw BidAsk catalog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xauusd-raw-bidask-20260225-90d-${{ matrix.name }}
+          path: catalog/xauusd-90d-${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 90

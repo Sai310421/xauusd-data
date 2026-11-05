@@ -60,6 +60,11 @@ jobs:
         run: |
           set -euo pipefail
           for c in a b c d; do test -f "catalog/xauusd-90d-$c/catalog_manifest.json"; done
+      - name: Apply indicator-state correction
+        run: |
+          # EMA200/RSI state must not restart inside the 90d replay.
+          sed -i 's/deque(maxlen=320)/deque(maxlen=1000)/g' research/amos_bbema_rawtick_bt_v1.py
+          python -m py_compile research/amos_bbema_rawtick_bt_v1.py
       - name: Run BB-RSI / EMA-compression Raw BidAsk BT
         env:
           EXPERIMENT_ID: bbema-raw90d-${{ github.run_id }}

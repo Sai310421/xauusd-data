@@ -1,0 +1,9 @@
+dataset_id=xauusd-raw-bidask-20260225-90d
+experiment=bbema_direction_inversion_v1
+legs=ema_compression_M1_inverse,bb_rsi_divergence_RSI30_70_M5_inverse
+signal_detection=original
+entry_direction=inverted
+stop=opposite_direction_structure_plus_0.25ATR14
+tp=2.0R
+execution=next QuoteTick ASK_BID
+ohlc_resample_used=false

@@ -8,3 +8,4 @@ sl=structure_plus_0.25ATR14
 tp=2.0R
 vwap_gate=excluded_initial_screening_pending_custom_indicator_port
 ohlc_resample_used=false
+run_revision=2_artifact_materialization

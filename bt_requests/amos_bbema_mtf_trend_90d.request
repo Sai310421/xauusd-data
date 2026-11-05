@@ -12,4 +12,4 @@ sl=structure_plus_0.25ATR14
 tp=2.0R
 execution=next_QuoteTick_ask_bid
 ohlc_resample_used=false
-retry=runner_log_capture
+retry=strategyconfig_dataclass_fix

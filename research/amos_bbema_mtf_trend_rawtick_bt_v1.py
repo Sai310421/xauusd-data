@@ -3,7 +3,6 @@
 from __future__ import annotations
 import argparse,json,math
 from collections import deque
-from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 import numpy as np
@@ -44,7 +43,6 @@ def prev(a,start,low,look):
  for i in range(start-1,max(3,start-look)-1,-1):
   if plow(a,i) if low else phigh(a,i):return i
  return None
-@dataclass
 class Cfg(StrategyConfig,frozen=True):
  instrument_id:object;mode:str;low_min:int;high_min:int
 class Gated(Strategy):

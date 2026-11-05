@@ -51,7 +51,7 @@ class NyOrbReclaim(Strategy):
         self.or_final = False
         self.compressed = False
         self.or_history = deque(maxlen=20)
-        self.state = "idle"
+        self.phase = "idle"
         self.side = 0
         self.pulled_back = False
         self.traded = False
@@ -85,7 +85,7 @@ class NyOrbReclaim(Strategy):
         self.day = local_day
         self.or_high = self.or_low = None
         self.or_final = self.compressed = False
-        self.state, self.side, self.pulled_back = "idle", 0, False
+        self.phase, self.side, self.pulled_back = "idle", 0, False
         self.traded = False
 
     def _on_m1_close(self, bar):
@@ -103,7 +103,7 @@ class NyOrbReclaim(Strategy):
             self.compressed = base is not None and width > 0 and width <= 0.85 * base
             self.or_history.append(width)
             self.or_final = True
-            self.state = "wait_break" if self.compressed and self.trend != 0 else "idle"
+            self.phase = "wait_break" if self.compressed and self.trend != 0 else "idle"
 
     def _finish(self, mark, why):
         x = self.active
@@ -129,7 +129,7 @@ class NyOrbReclaim(Strategy):
         self.active = {"side": side, "entry": entry, "stop": stop,
                        "take": entry + side * 2.0 * risk, "mae": 0.0, "mfe": 0.0}
         self.traded = True
-        self.state = "done"
+        self.phase = "done"
         self.signals += 1
 
     def _evaluate(self, bid, ask, ts):
@@ -143,20 +143,20 @@ class NyOrbReclaim(Strategy):
             if stopped or taken:
                 self._finish(mark, "TP" if taken else "SL")
             return
-        if not self.or_final or not self.compressed or self.traded or self.state == "idle":
+        if not self.or_final or not self.compressed or self.traded or self.phase == "idle":
             return
         dt = self._local(ts)
         minute = dt.hour * 60 + dt.minute
         if minute >= 11 * 60:
-            self.state = "done"
+            self.phase = "done"
             return
         width = self.or_high - self.or_low
-        if self.state == "wait_break":
+        if self.phase == "wait_break":
             if self.trend > 0 and bid >= self.or_high + 0.10 * width:
-                self.side, self.state = 1, "wait_pullback"
+                self.side, self.phase = 1, "wait_pullback"
             elif self.trend < 0 and ask <= self.or_low - 0.10 * width:
-                self.side, self.state = -1, "wait_pullback"
-        elif self.state == "wait_pullback":
+                self.side, self.phase = -1, "wait_pullback"
+        elif self.phase == "wait_pullback":
             if self.side > 0:
                 if bid <= self.or_high + 0.15 * width:
                     self.pulled_back = True

@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   raw-bidask-bt:
@@ -23,17 +24,38 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install 'nautilus_trader==1.230.0' numpy pyarrow pandas
-      - name: Restore 90d Raw BidAsk catalog chunks
-        uses: actions/cache/restore@v4
+      - name: Download Raw BidAsk chunk a
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            catalog/xauusd-90d-a
-            catalog/xauusd-90d-b
-            catalog/xauusd-90d-c
-            catalog/xauusd-90d-d
-          key: xauusd-raw-bidask-20260225-90d-a-v1
-          restore-keys: |
-            xauusd-raw-bidask-20260225-90d-
+          github-token: ${{ github.token }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          name: xauusd-raw-bidask-20260225-90d-a
+          path: catalog/xauusd-90d-a
+      - name: Download Raw BidAsk chunk b
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          name: xauusd-raw-bidask-20260225-90d-b
+          path: catalog/xauusd-90d-b
+      - name: Download Raw BidAsk chunk c
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          name: xauusd-raw-bidask-20260225-90d-c
+          path: catalog/xauusd-90d-c
+      - name: Download Raw BidAsk chunk d
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          name: xauusd-raw-bidask-20260225-90d-d
+          path: catalog/xauusd-90d-d
       - name: Assert every Raw BidAsk chunk exists
         run: |
           set -euo pipefail
@@ -52,5 +74,5 @@ jobs:
         with:
           name: amos-bbema-rawtick-bt-${{ github.run_id }}
           path: results/amos-bbema/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90

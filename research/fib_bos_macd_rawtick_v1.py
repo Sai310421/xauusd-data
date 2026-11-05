@@ -25,6 +25,7 @@ def iso(ts): return datetime.fromtimestamp(ts // NS, timezone.utc).isoformat()
 
 class Config(StrategyConfig, frozen=True):
     instrument_id: object
+    direction_mode: str = "normal"
 
 class FibBosMacd(Strategy):
     """All swing pivots are confirmed only after 3 subsequent completed bars."""
@@ -129,9 +130,14 @@ class FibBosMacd(Strategy):
 
     def _enter(self, bid, ask, ts):
         p, a = self.pending, self.pending["arm"]
-        side, width = p["side"], a["high"]-a["low"]
+        signal_side, width = p["side"], a["high"]-a["low"]
+        side = signal_side if self.config.direction_mode == "normal" else -signal_side
         entry = ask if side > 0 else bid
-        stop = a["high"]-.933*width if side > 0 else a["low"]+.933*width
+        if self.config.direction_mode == "normal":
+            stop = a["high"]-.933*width if side > 0 else a["low"]+.933*width
+        else:
+            # Contrarian stop is the BOS impulse endpoint (Fib 0.0), i.e. reversal invalidation.
+            stop = a["high"] if side < 0 else a["low"]
         risk = abs(entry-stop)
         self.pending = None; self.arm = None
         if risk <= 0: return
@@ -142,7 +148,7 @@ class FibBosMacd(Strategy):
     def _finish(self, mark, why, ts):
         x = self.active; move = (mark-x["entry"])*x["side"]
         self.trades.append({"signal_ts":iso(x["signal_ts"]), "entry_ts":iso(x["entry_ts"]), "exit_ts":iso(ts),
-          "side":"BUY" if x["side"]>0 else "SELL", "why":why, "entry":x["entry"], "stop":x["stop"],
+          "side":"BUY" if x["side"]>0 else "SELL", "signal_side":"BUY" if x["side"]>0 else "SELL", "why":why, "entry":x["entry"], "stop":x["stop"],
           "pnl_usd":move*2.0, "r":move/x["risk"], "mae_R":-x["mae"]/x["risk"], "mfe_R":x["mfe"]/x["risk"]})
         self.active = None
 
@@ -194,7 +200,7 @@ def l1(ticks):
     return out
 
 def main():
-    ap=argparse.ArgumentParser(); ap.add_argument("--catalog",action="append",required=True); ap.add_argument("--experiment-id",required=True); a=ap.parse_args()
+    ap=argparse.ArgumentParser(); ap.add_argument("--catalog",action="append",required=True); ap.add_argument("--experiment-id",required=True); ap.add_argument("--direction-mode", choices=["normal","inverse"], default="normal"); a=ap.parse_args()
     raw=[]; inst=None
     for root in a.catalog:
         cat=ParquetDataCatalog(root); i=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD"); inst=inst or i
@@ -202,11 +208,11 @@ def main():
     raw.sort(key=lambda x:x.ts_event)
     engine=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)))
     engine.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"))
-    engine.add_instrument(inst); engine.add_data(l1(raw)); s=FibBosMacd(Config(instrument_id=inst.id)); engine.add_strategy(s); engine.run(); engine.end()
+    engine.add_instrument(inst); engine.add_data(l1(raw)); s=FibBosMacd(Config(instrument_id=inst.id, direction_mode=a.direction_mode)); engine.add_strategy(s); engine.run(); engine.end()
     out={"status":"COMPLETE","engine":"NautilusTrader BacktestEngine","raw_ticks":len(raw),"ohlc_resample_used":False,
-      "execution":"Raw QuoteTick BUY Ask / SELL Bid","hypothesis":"M15 confirmed HH/HL or LL/LH; M5 confirmed-close BOS; fixed BOS-leg Fib .768-.804 retracement; M1 MACD(12,26,9) histogram reacceleration.",
+      "execution":"Raw QuoteTick BUY Ask / SELL Bid","direction_mode":a.direction_mode,"hypothesis":"M15 confirmed HH/HL or LL/LH; M5 confirmed-close BOS; fixed BOS-leg Fib .768-.804 retracement; M1 MACD(12,26,9) histogram reacceleration.",
       "anti_lookahead":"Pivots require three subsequent completed bars. BOS uses completed M5 close. MACD trigger uses completed M1 close; entry occurs on the following QuoteTick.",
-      "parameters":{"fib_entry_zone":"0.768-0.804","stop":"0.933","pivot_confirmation":"3 completed bars each side","BOS":"M5 close beyond pivot by 0.10xATR14","measurement_exit":"stop or 120 minutes after entry; no discretionary TP","macd":"12,26,9 histogram reacceleration"},
+      "parameters":{"fib_entry_zone":"0.768-0.804","stop":"0.933","pivot_confirmation":"3 completed bars each side","BOS":"M5 close beyond pivot by 0.10xATR14","measurement_exit":"stop or 120 minutes after entry; no discretionary TP","inverse_definition":"Opposite trade at the same causal signal; stop at BOS impulse endpoint (Fib 0.0)" if a.direction_mode=="inverse" else None,"macd":"12,26,9 histogram reacceleration"},
       "results":{"fib_bos_macd_v1":s.result()}}
     path=Path("results/fib-bos-macd")/a.experiment_id/"summary.json"; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(json.dumps(out,indent=2)); print(json.dumps(out,indent=2))
 if __name__=="__main__": main()

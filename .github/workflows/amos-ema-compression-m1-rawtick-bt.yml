@@ -1,0 +1,64 @@
+name: AMOS EMA Compression M1 Raw BidAsk Nautilus BT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bt_requests/amos_ema_compression_m1_rawtick_90d.request'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  raw-bidask-m1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' numpy pyarrow pandas
+      - name: Download 90d Raw BidAsk chunks
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          pattern: xauusd-raw-bidask-20260225-90d-*
+          path: catalog/download
+          merge-multiple: false
+      - name: Arrange Raw BidAsk chunks
+        run: |
+          set -euo pipefail
+          for c in a b c d; do
+            mv "catalog/download/xauusd-raw-bidask-20260225-90d-$c" "catalog/xauusd-90d-$c"
+            test -f "catalog/xauusd-90d-$c/catalog_manifest.json"
+          done
+      - name: Configure M1 EMA-only replay
+        run: |
+          sed -i 's/deque(maxlen=320)/deque(maxlen=1000)/g' research/amos_bbema_rawtick_bt_v1.py
+          sed -i 's/self.v=\[Variant("bb_rsi_divergence",True,False),Variant("ema_compression",False,True),Variant("combined_or",True,True)\]/self.v=[Variant("ema_compression",False,True)]/' research/amos_bbema_rawtick_bt_v1.py
+          sed -i 's/5-MINUTE-BID-INTERNAL/1-MINUTE-BID-INTERNAL/g; s/M5 Nautilus/M1 Nautilus/g' research/amos_bbema_rawtick_bt_v1.py
+          python -m py_compile research/amos_bbema_rawtick_bt_v1.py
+      - name: Run M1 EMA-compression Raw BidAsk BT
+        env:
+          EXPERIMENT_ID: ema-compression-m1-raw90d-${{ github.run_id }}
+        run: |
+          python research/amos_bbema_rawtick_bt_v1.py \
+            --catalog catalog/xauusd-90d-a --catalog catalog/xauusd-90d-b \
+            --catalog catalog/xauusd-90d-c --catalog catalog/xauusd-90d-d \
+            --experiment-id "$EXPERIMENT_ID" --lot 0.02 --contract-size 100
+      - name: Upload M1 Raw BidAsk BT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-ema-compression-m1-rawtick-bt-${{ github.run_id }}
+          path: results/amos-bbema/
+          if-no-files-found: warn
+          retention-days: 90

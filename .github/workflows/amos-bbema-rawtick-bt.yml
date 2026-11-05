@@ -60,14 +60,14 @@ jobs:
         run: |
           set -euo pipefail
           for c in a b c d; do test -f "catalog/xauusd-90d-$c/catalog_manifest.json"; done
-      - name: Apply indicator-state correction
+      - name: Apply indicator and RSI-threshold correction
         run: |
-          # EMA200/RSI state must not restart inside the 90d replay.
           sed -i 's/deque(maxlen=320)/deque(maxlen=1000)/g' research/amos_bbema_rawtick_bt_v1.py
+          sed -i 's/rq>rz+1/rq>rz+1 and rq<=30/g; s/rq<rz-1/rq<rz-1 and rq>=70/g' research/amos_bbema_rawtick_bt_v1.py
           python -m py_compile research/amos_bbema_rawtick_bt_v1.py
       - name: Run BB-RSI / EMA-compression Raw BidAsk BT
         env:
-          EXPERIMENT_ID: bbema-raw90d-${{ github.run_id }}
+          EXPERIMENT_ID: bbema-rsi70-30-raw90d-${{ github.run_id }}
         run: |
           python research/amos_bbema_rawtick_bt_v1.py \
             --catalog catalog/xauusd-90d-a --catalog catalog/xauusd-90d-b \
@@ -77,7 +77,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: amos-bbema-rawtick-bt-${{ github.run_id }}
+          name: amos-bbema-rsi70-30-rawtick-bt-${{ github.run_id }}
           path: results/amos-bbema/
           if-no-files-found: warn
           retention-days: 90

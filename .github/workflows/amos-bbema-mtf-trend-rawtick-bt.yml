@@ -38,8 +38,8 @@ jobs:
             test -d "$src"
             mv "$src" "catalog/xauusd-90d-$c"
           done
-          find catalog -name manifest.json -print | sort
-          test "$(find catalog -name manifest.json | wc -l)" -eq 4
+          find catalog -name catalog_manifest.json -print | sort
+          test "$(find catalog -name catalog_manifest.json | wc -l)" -eq 4
 
       - name: Set up Python
         uses: actions/setup-python@v5

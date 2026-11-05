@@ -1,0 +1,56 @@
+name: AMOS BBEMA Raw BidAsk Nautilus BT
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bt_requests/amos_bbema_rawtick_90d.request'
+
+permissions:
+  contents: read
+
+jobs:
+  raw-bidask-bt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install NautilusTrader
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' numpy pyarrow pandas
+      - name: Restore 90d Raw BidAsk catalog chunks
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            catalog/xauusd-90d-a
+            catalog/xauusd-90d-b
+            catalog/xauusd-90d-c
+            catalog/xauusd-90d-d
+          key: xauusd-raw-bidask-20260225-90d-a-v1
+          restore-keys: |
+            xauusd-raw-bidask-20260225-90d-
+      - name: Assert every Raw BidAsk chunk exists
+        run: |
+          set -euo pipefail
+          for c in a b c d; do test -f "catalog/xauusd-90d-$c/catalog_manifest.json"; done
+      - name: Run BB-RSI / EMA-compression Raw BidAsk BT
+        env:
+          EXPERIMENT_ID: bbema-raw90d-${{ github.run_id }}
+        run: |
+          python research/amos_bbema_rawtick_bt_v1.py \
+            --catalog catalog/xauusd-90d-a --catalog catalog/xauusd-90d-b \
+            --catalog catalog/xauusd-90d-c --catalog catalog/xauusd-90d-d \
+            --experiment-id "$EXPERIMENT_ID" --lot 0.02 --contract-size 100
+      - name: Upload Raw BidAsk BT evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amos-bbema-rawtick-bt-${{ github.run_id }}
+          path: results/amos-bbema/
+          if-no-files-found: error
+          retention-days: 90

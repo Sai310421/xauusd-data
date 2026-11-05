@@ -1,0 +1,67 @@
+name: Fib BOS MACD Raw BidAsk Measurement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'research/fib_bos_macd_rawtick_v1.py'
+      - '.github/workflows/fib-bos-macd-rawtick-bt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  raw-bidask-nautilus-measurement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download four canonical 90-day Raw Bid Ask catalog chunks
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          pattern: xauusd-raw-bidask-20260225-90d-*
+          path: catalog/download
+          merge-multiple: false
+      - name: Assemble catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p catalog
+          for c in a b c d; do
+            src="catalog/download/xauusd-raw-bidask-20260225-90d-$c"
+            test -d "$src"
+            mv "$src" "catalog/xauusd-90d-$c"
+          done
+          test "$(find catalog -name catalog_manifest.json | wc -l)" -eq 4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Nautilus and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' numpy pyarrow
+      - name: Measure Fib BOS MACD on Raw BidAsk
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p results/fib-bos-macd/_logs
+          python research/fib_bos_macd_rawtick_v1.py \
+            --catalog catalog/xauusd-90d-a \
+            --catalog catalog/xauusd-90d-b \
+            --catalog catalog/xauusd-90d-c \
+            --catalog catalog/xauusd-90d-d \
+            --experiment-id "fib-bos-macd-${{ github.run_id }}" 2>&1 | tee results/fib-bos-macd/_logs/runner.log
+      - name: Upload result and runner log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fib-bos-macd-result-${{ github.run_id }}
+          path: results/fib-bos-macd/
+          if-no-files-found: error
+          retention-days: 90

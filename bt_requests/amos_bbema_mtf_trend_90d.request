@@ -1,0 +1,14 @@
+dataset_id=xauusd-raw-bidask-20260225-90d
+experiment=bbema_positive_mtf_trend_v1
+ema_low_tf=M1
+ema_high_tf=M5
+bb_low_tf=M5
+bb_high_tf=M15
+trend_buy=last_closed_HTF_EMA50_above_EMA200_and_EMA50_rising
+trend_sell=last_closed_HTF_EMA50_below_EMA200_and_EMA50_falling
+bb_signal=BB_2sigma_touch+regular_RSI14_divergence+RSI30_70
+ema_signal=EMA_compression+structure+breakout
+sl=structure_plus_0.25ATR14
+tp=2.0R
+execution=next_QuoteTick_ask_bid
+ohlc_resample_used=false

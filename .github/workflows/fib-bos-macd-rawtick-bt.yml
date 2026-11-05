@@ -56,7 +56,15 @@ jobs:
             --catalog catalog/xauusd-90d-b \
             --catalog catalog/xauusd-90d-c \
             --catalog catalog/xauusd-90d-d \
-            --experiment-id "fib-bos-macd-${{ github.run_id }}" 2>&1 | tee results/fib-bos-macd/_logs/runner.log
+            --direction-mode normal \
+            --experiment-id "fib-bos-macd-normal-${{ github.run_id }}" 2>&1 | tee results/fib-bos-macd/_logs/normal.log
+          python research/fib_bos_macd_rawtick_v1.py \
+            --catalog catalog/xauusd-90d-a \
+            --catalog catalog/xauusd-90d-b \
+            --catalog catalog/xauusd-90d-c \
+            --catalog catalog/xauusd-90d-d \
+            --direction-mode inverse \
+            --experiment-id "fib-bos-macd-inverse-${{ github.run_id }}" 2>&1 | tee results/fib-bos-macd/_logs/inverse.log
       - name: Upload result and runner log
         if: always()
         uses: actions/upload-artifact@v4

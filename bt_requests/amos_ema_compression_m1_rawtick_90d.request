@@ -1,0 +1,10 @@
+dataset_id=xauusd-raw-bidask-20260225-90d
+strategy_id=ema-compression-m1-rawtick-v1
+instrument=XAUUSD
+signal_timeframe=M1
+entry_logic=EMA20_50_100_200 compression plus no-new-high-low plus breakout
+sl=structure_plus_0.25ATR14
+tp=2.0R
+execution=next QuoteTick ASK_BID
+vwap_gate=excluded_initial_screening
+ohlc_resample_used=false

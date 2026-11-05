@@ -52,15 +52,19 @@ jobs:
           python -m pip install 'nautilus_trader==1.230.0' numpy pandas pyarrow
 
       - name: Run positive-direction MTF trend-gated Raw Bid Ask backtest
+        shell: bash
         run: |
+          set -o pipefail
+          mkdir -p results/amos-bbema-mtf/_logs
           python research/amos_bbema_mtf_trend_rawtick_bt_v1.py \
             --catalog catalog/xauusd-90d-a \
             --catalog catalog/xauusd-90d-b \
             --catalog catalog/xauusd-90d-c \
             --catalog catalog/xauusd-90d-d \
-            --experiment-id "bbema-mtf-trend-${{ github.run_id }}"
+            --experiment-id "bbema-mtf-trend-${{ github.run_id }}" 2>&1 | tee results/amos-bbema-mtf/_logs/runner.log
 
-      - name: Upload result
+      - name: Upload result and runner log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: amos-bbema-mtf-trend-result-${{ github.run_id }}

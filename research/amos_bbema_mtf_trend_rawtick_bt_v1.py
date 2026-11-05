@@ -44,7 +44,7 @@ def prev(a,start,low,look):
   if plow(a,i) if low else phigh(a,i):return i
  return None
 class Cfg(StrategyConfig,frozen=True):
- instrument_id:object;mode:str;low_min:int;high_min:int
+ instrument_id:object;mode:str;low_min:int;high_min:int;trend_gate:bool
 class Gated(Strategy):
  def __init__(self,c):
   super().__init__(c);self.lo={k:deque(maxlen=1000) for k in "ohlc"};self.hc=deque(maxlen=1000);self.lb=self.hb=None;self.lwork=self.hwork=None;self.trend=0;self.pending=self.active=None;self.lastb=self.lasta=None;self.signals=0;self.trades=[];self.ticks=0
@@ -80,13 +80,15 @@ class Gated(Strategy):
   return 0,None
  def low_close(self,w):
   self.close_bucket(w,self.lo);o,h,l,c=[list(self.lo[k]) for k in "ohlc"];n=len(c)-1
-  if self.pending or self.active or self.trend==0:return
+  if self.pending or self.active or (self.config.trend_gate and self.trend==0):return
   side,swing=(self.emasig(o,h,l,c,n) if self.config.mode=="ema" else self.divsig(o,h,l,c,n))
-  if not side or side!=self.trend:return
+  if not side or (self.config.trend_gate and side!=self.trend):return
   a=atr(h,l,c,n)
   if a is not None:self.pending=(side,swing-a*.25 if side>0 else swing+a*.25);self.signals+=1
  def finish(self,mark,why):
-  x=self.active;p=(mark-x["entry"])*x["side"];risk=abs(x["entry"]-x["stop"]);self.trades.append({"pnl_usd":p*2,"r":p/risk if risk else None,"why":why});self.active=None
+  x=self.active;p=(mark-x["entry"])*x["side"];risk=abs(x["entry"]-x["stop"])
+  self.trades.append({"pnl_usd":p*2,"r":p/risk if risk else None,"why":why,"entry":x["entry"],"stop":x["stop"],"take":x["take"],"risk_price":risk,"mae_price":x["mae"],"mfe_price":x["mfe"],"mae_R":x["mae"]/risk if risk else None,"mfe_R":x["mfe"]/risk if risk else None})
+  self.active=None
  def on_quote_tick(self,t):
   self.ticks+=1;bid,ask=f(t.bid_price),f(t.ask_price);self.lastb,self.lasta=bid,ask;ts=t.ts_event
   # Low closes first: a newly closing HTF bar is not used until the next low bar, preventing look-ahead.
@@ -109,16 +111,21 @@ class Gated(Strategy):
  def result(self):
   p=np.asarray([x["pnl_usd"] for x in self.trades],float);w,l=p[p>0],p[p<0];eq=peak=1000;dd=0
   for x in p:eq+=x;peak=max(peak,eq);dd=max(dd,peak-eq)
-  return {"signals":self.signals,"N":len(p),"WR_pct":float((p>0).mean()*100) if len(p) else 0,"PF":float(w.sum()/abs(l.sum())) if len(l) else None,"EV_usd":float(p.mean()) if len(p) else 0,"Net_usd":float(p.sum()),"Return_pct":float(p.sum()/10),"MaxDD_pct":float(dd/peak*100) if peak else None,"avg_R":float(np.mean([x["r"] for x in self.trades])) if self.trades else 0,"TP":sum(x["why"]=="TP" for x in self.trades),"SL":sum(x["why"]=="SL" for x in self.trades)}
+  adverse=np.asarray([-x["mae_R"] for x in self.trades if x["mae_R"] is not None],float);favorable=np.asarray([x["mfe_R"] for x in self.trades if x["mfe_R"] is not None],float)
+  mm={"avg_MAE_R":float(adverse.mean()) if len(adverse) else 0,"median_MAE_R":float(np.median(adverse)) if len(adverse) else 0,"p90_MAE_R":float(np.percentile(adverse,90)) if len(adverse) else 0,"avg_MFE_R":float(favorable.mean()) if len(favorable) else 0,"median_MFE_R":float(np.median(favorable)) if len(favorable) else 0,"p90_MFE_R":float(np.percentile(favorable,90)) if len(favorable) else 0,"MFE_ge_1R_pct":float((favorable>=1).mean()*100) if len(favorable) else 0,"MFE_ge_2R_pct":float((favorable>=2).mean()*100) if len(favorable) else 0}
+  return {"signals":self.signals,"N":len(p),"WR_pct":float((p>0).mean()*100) if len(p) else 0,"PF":float(w.sum()/abs(l.sum())) if len(l) else None,"EV_usd":float(p.mean()) if len(p) else 0,"Net_usd":float(p.sum()),"Return_pct":float(p.sum()/10),"MaxDD_pct":float(dd/peak*100) if peak else None,"avg_R":float(np.mean([x["r"] for x in self.trades])) if self.trades else 0,"TP":sum(x["why"]=="TP" for x in self.trades),"SL":sum(x["why"]=="SL" for x in self.trades),"MAE_MFE_R":mm,"trades":self.trades}
 def l1(q):
  one=Quantity.from_int(1);out=[]
  for t in q:out.append(QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,bid_size=one if f(t.bid_size)<=0 else t.bid_size,ask_size=one if f(t.ask_size)<=0 else t.ask_size,ts_event=t.ts_event,ts_init=t.ts_init) if f(t.bid_size)<=0 or f(t.ask_size)<=0 else t)
  return out
 def main():
- p=argparse.ArgumentParser();p.add_argument("--catalog",action="append",required=True);p.add_argument("--experiment-id",required=True);a=p.parse_args();raw=[];inst=None
+ p=argparse.ArgumentParser();p.add_argument("--catalog",action="append",required=True);p.add_argument("--experiment-id",required=True);p.add_argument("--base-only",action="store_true");a=p.parse_args();raw=[];inst=None
  for root in a.catalog:
   cat=ParquetDataCatalog(root);i=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD");inst=inst or i;raw+=cat.query(data_cls=QuoteTick,identifiers=[i.id.value])
- raw.sort(key=lambda x:x.ts_event);e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)));e.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"));e.add_instrument(inst);e.add_data(l1(raw));ema_s=Gated(Cfg(instrument_id=inst.id,mode="ema",low_min=1,high_min=5));bb_s=Gated(Cfg(instrument_id=inst.id,mode="bb",low_min=5,high_min=15));e.add_strategy(ema_s);e.add_strategy(bb_s);e.run();e.end()
- r={"status":"COMPLETE","engine":"NautilusTrader BacktestEngine","raw_ticks":len(raw),"ohlc_resample_used":False,"execution":"Raw QuoteTick BUY Ask/SELL Bid","trend_gate":{"M1_EMA":"last completed M5 EMA50>EMA200 and rising for buy; inverse for sell","M5_BB":"last completed M15 EMA50>EMA200 and rising for buy; inverse for sell"},"results":{"ema_m1_m5_trend":ema_s.result(),"bb_m5_m15_trend":bb_s.result()}}
+ raw.sort(key=lambda x:x.ts_event);e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)));e.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"));e.add_instrument(inst);e.add_data(l1(raw))
+ gate=not a.base_only
+ ema_s=Gated(Cfg(instrument_id=inst.id,mode="ema",low_min=1,high_min=5,trend_gate=gate));bb_s=Gated(Cfg(instrument_id=inst.id,mode="bb",low_min=5,high_min=15,trend_gate=gate));e.add_strategy(ema_s);e.add_strategy(bb_s);e.run();e.end()
+ labels=("ema_m1_base","bb_m5_base") if a.base_only else ("ema_m1_m5_trend","bb_m5_m15_trend")
+ r={"status":"COMPLETE","engine":"NautilusTrader BacktestEngine","raw_ticks":len(raw),"ohlc_resample_used":False,"execution":"Raw QuoteTick BUY Ask/SELL Bid","trend_gate":("disabled: positive-direction base MAE/MFE measurement" if a.base_only else {"M1_EMA":"last completed M5 EMA50>EMA200 and rising for buy; inverse for sell","M5_BB":"last completed M15 EMA50>EMA200 and rising for buy; inverse for sell"}),"results":{labels[0]:ema_s.result(),labels[1]:bb_s.result()}}
  out=Path("results/amos-bbema-mtf")/a.experiment_id/"summary.json";out.parent.mkdir(parents=True,exist_ok=True);out.write_text(json.dumps(r,indent=2));print(json.dumps(r,indent=2))
 if __name__=="__main__":main()

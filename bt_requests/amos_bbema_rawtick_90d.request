@@ -1,0 +1,10 @@
+dataset_id=xauusd-raw-bidask-20260225-90d
+strategy_id=amos-bbema-rawtick-v1
+instrument=XAUUSD
+bars=M5 Nautilus INTERNAL BID bars directly from Raw QuoteTick
+execution=next QuoteTick ASK/BID, stop/take on Raw Bid/Ask
+variants=bb_rsi_divergence,ema_compression,combined_or
+sl=structure_plus_0.25ATR14
+tp=2.0R
+vwap_gate=excluded_initial_screening_pending_custom_indicator_port
+ohlc_resample_used=false

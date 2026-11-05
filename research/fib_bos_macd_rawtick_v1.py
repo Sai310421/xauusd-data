@@ -38,6 +38,9 @@ class FibBosMacd(Strategy):
         self.ticks = self.signals = 0
         self.trades, self.signal_log = [], []
         self.macd_hist = []
+        self.m1_closes = []
+        self.ema12 = self.ema26 = self.signal9 = None
+        self.macd_values = []
         self.last_m5_close = None
 
     def on_start(self): self.subscribe_quote_ticks(self.config.instrument_id)
@@ -87,30 +90,30 @@ class FibBosMacd(Strategy):
                 if high > low:
                     self.arm = {"side":-1, "high":high, "low":low, "born":bar["ts"], "expires":bar["ts"]+120*60*NS}
 
-    def _macd(self):
-        closes = [x["c"] for x in self.bars[1]]
-        if len(closes) < 36: return None
-        def series(n):
-            k, val = 2/(n+1), float(np.mean(closes[:n]))
-            out = [None]*(n-1)+[val]
-            for z in closes[n:]:
-                val = k*z+(1-k)*val; out.append(val)
-            return out
-        a, b = series(12), series(26)
-        macd = [x-y for x,y in zip(a[25:],b[25:])]
-        if len(macd) < 9: return None
-        k, sig = .2, float(np.mean(macd[:9]))
-        hist = [None]*8 + [macd[8]-sig]
-        for z in macd[9:]:
-            sig = k*z+(1-k)*sig; hist.append(z-sig)
-        return hist[-3:]
+    def _update_macd(self, close):
+        """O(1) MACD update; values exist only after each causal M1 close."""
+        self.m1_closes.append(close)
+        n = len(self.m1_closes)
+        if n == 12: self.ema12 = float(np.mean(self.m1_closes[:12]))
+        elif n > 12: self.ema12 = (2/13)*close + (11/13)*self.ema12
+        if n == 26: self.ema26 = float(np.mean(self.m1_closes[:26]))
+        elif n > 26: self.ema26 = (2/27)*close + (25/27)*self.ema26
+        if self.ema12 is None or self.ema26 is None: return
+        macd = self.ema12 - self.ema26
+        self.macd_values.append(macd)
+        m = len(self.macd_values)
+        if m == 9: self.signal9 = float(np.mean(self.macd_values[:9]))
+        elif m > 9: self.signal9 = .2*macd + .8*self.signal9
+        if self.signal9 is not None: self.macd_hist.append(macd-self.signal9)
+
 
     def _on_m1_close(self, bar):
+        self._update_macd(bar["c"])
         if not self.arm or self.pending or self.active or bar["ts"] > self.arm["expires"]: return
         a, side, r = self.arm, self.arm["side"], self.arm["high"]-self.arm["low"]
         zlo, zhi = (a["high"]-.804*r, a["high"]-.768*r) if side > 0 else (a["low"]+.768*r, a["low"]+.804*r)
         touch = bar["l"] <= zhi and bar["h"] >= zlo
-        h = self._macd()
+        h = self.macd_hist[-3:] if len(self.macd_hist) >= 3 else None
         reaccelerate = h is not None and ((h[-1] > h[-2] and h[-2] <= h[-3]) if side > 0 else (h[-1] < h[-2] and h[-2] >= h[-3]))
         if touch and reaccelerate:
             self.pending = {"side":side, "arm":a, "signal_ts":bar["ts"], "zone":[zlo,zhi]}

@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import lzma
 import struct
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -32,33 +33,37 @@ def fetch_hour(job: tuple[dt.date, int]) -> tuple[list[tuple], dict]:
     origin = dt.datetime(day.year, day.month, day.day, hour, tzinfo=dt.timezone.utc)
     detail = {"day": str(day), "hour": hour, "status": None, "ticks": 0}
     last_error = None
-    for host in HOSTS:
-        try:
-            request = urllib.request.Request(f"{host}/{hour_url(day, hour)}", headers=HEADERS)
-            with urllib.request.urlopen(request, timeout=45) as response:
-                payload = response.read()
-            data = lzma.decompress(payload)
-            if len(data) % REC.size:
-                raise ValueError(f"bad BI5 record boundary: {len(data)}")
-            rows = []
-            for offset in range(0, len(data), REC.size):
-                ms, ask_i, bid_i, ask_v, bid_v = REC.unpack_from(data, offset)
-                bid, ask = bid_i / 1000.0, ask_i / 1000.0
-                if not (0 <= ms < 3_600_000 and 0 < bid <= ask):
-                    continue
-                rows.append((origin + dt.timedelta(milliseconds=ms), bid, ask, float(bid_v), float(ask_v)))
-            detail.update(status=200, ticks=len(rows), host=host)
-            return rows, detail
-        except urllib.error.HTTPError as exc:
-            last_error = f"HTTP {exc.code}"
-            if exc.code == 404:
-                detail.update(status=404, ticks=0, host=host)
-                return [], detail
-        except Exception as exc:
-            last_error = f"{type(exc).__name__}: {exc}"
-    detail.update(status="error", error=last_error)
+    # Dukascopy intermittently returns 503. Retry the whole host pair before
+    # declaring an hour unusable; never silently accept a partial day.
+    for attempt in range(4):
+        for host in HOSTS:
+            try:
+                request = urllib.request.Request(f"{host}/{hour_url(day, hour)}", headers=HEADERS)
+                with urllib.request.urlopen(request, timeout=45) as response:
+                    payload = response.read()
+                data = lzma.decompress(payload)
+                if len(data) % REC.size:
+                    raise ValueError(f"bad BI5 record boundary: {len(data)}")
+                rows = []
+                for offset in range(0, len(data), REC.size):
+                    ms, ask_i, bid_i, ask_v, bid_v = REC.unpack_from(data, offset)
+                    bid, ask = bid_i / 1000.0, ask_i / 1000.0
+                    if not (0 <= ms < 3_600_000 and 0 < bid <= ask):
+                        continue
+                    rows.append((origin + dt.timedelta(milliseconds=ms), bid, ask, float(bid_v), float(ask_v)))
+                detail.update(status=200, ticks=len(rows), host=host, attempts=attempt + 1)
+                return rows, detail
+            except urllib.error.HTTPError as exc:
+                last_error = f"HTTP {exc.code}"
+                if exc.code == 404:
+                    detail.update(status=404, ticks=0, host=host, attempts=attempt + 1)
+                    return [], detail
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+        if attempt < 3:
+            time.sleep(2 ** attempt)
+    detail.update(status="error", error=last_error, attempts=4)
     return [], detail
-
 
 def dates(start: dt.date, end: dt.date):
     day = start

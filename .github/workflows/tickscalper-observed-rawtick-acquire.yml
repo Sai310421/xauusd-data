@@ -34,6 +34,8 @@ jobs:
     env:
       START: ${{ inputs.start || '2026-10-20' }}
       END: ${{ inputs.end || '2026-10-20' }}
+      START_HOUR: ${{ inputs.start_hour || '17' }}
+      END_HOUR: ${{ inputs.end_hour || '20' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,13 +45,13 @@ jobs:
       - name: Acquire direct XAUUSD BidAsk ticks
         run: |
           python research/tickscalper_observed_rawtick_acquire.py \
-            --start "$START" --end "$END" \\
-            --start-hour "$START_HOUR" --end-hour "$END_HOUR" \\
+            --start "$START" --end "$END" \
+            --start-hour "$START_HOUR" --end-hour "$END_HOUR" \
             --out artifacts/tickscalper_observed_rawtick
       - name: Publish raw-tick evidence
         uses: actions/upload-artifact@v4
         with:
-          name: tickscalper-observed-raw-bidask-${{ env.START }}-${{ env.END }}
+          name: tickscalper-observed-raw-bidask-${{ env.START }}-${{ env.END }}-${{ env.START_HOUR }}-${{ env.END_HOUR }}
           path: artifacts/tickscalper_observed_rawtick/
           if-no-files-found: error
           retention-days: 14

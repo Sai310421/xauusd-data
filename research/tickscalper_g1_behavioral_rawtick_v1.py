@@ -30,7 +30,7 @@ class Config(StrategyConfig,frozen=True): instrument_id:object
 
 class G1(Strategy):
     # Inputs fixed to supplied EA defaults, except EnableTrading=true for research.
-    BASE=.01; MAX_ADDS=2; MAX_RISK_LOTS=.02; STOP_ATR=1.; TARGET_R=2.; TRAIL_START=2.; TRAIL_ATR=1.; HOLD=45*60*NS
+    BASE=.01; MAX_ADDS=2; MAX_RISK_LOTS=.02; STOP_ATR=1.; TARGET_R=2.; TRAIL_START=2.; TRAIL_ATR=1.; HOLD=45*60*NS; MAX_SPREAD_ATR=.15; SOURCE_EXACT_LOSS_HALT=False
     def __init__(self,c):
         super().__init__(c)
         self.bucket=None; self.bar=None; self.closes=[]; self.ranges=[]; self.prevclose=None
@@ -81,11 +81,14 @@ class G1(Strategy):
         eq=self._eq(bid,ask)
         if dt!=self.day:self.day=dt;self.day_start=eq
         self.peak=max(self.peak,eq); dd=100*max(0,self.peak-eq)/self.peak; daydd=100*max(0,self.day_start-eq)/self.day_start
-        # A loss-triggered pause is armed once per newly reached loss count.
-        # Reassigning halt on every tick would turn a 24-hour pause permanent.
-        if self.losses < 2: self.last_halted_losses=0
-        if self.losses >= 2 and self.losses > self.last_halted_losses:
-            self.halt=ts+24*3600*NS; self.last_halted_losses=self.losses
+        if self.SOURCE_EXACT_LOSS_HALT:
+            # Literal supplied-source behavior: each tick renews the halt.
+            if self.losses >= 2: self.halt=ts+24*3600*NS
+        else:
+            # Repaired behavior: arm one 24-hour halt per newly reached count.
+            if self.losses < 2: self.last_halted_losses=0
+            if self.losses >= 2 and self.losses > self.last_halted_losses:
+                self.halt=ts+24*3600*NS; self.last_halted_losses=self.losses
         if daydd>=5 or dd>=15 or ts<self.halt:
             self._close(self.buy,bid,ask,"hard_halt",ts);self._close(self.sell,bid,ask,"hard_halt",ts);return True
         return False
@@ -123,7 +126,7 @@ class G1(Strategy):
             hit.append(mark>=p["tp"] if side>0 else mark<=p["tp"])
         if any(hit):self._close(ps,bid,ask,"position_SL_or_TP",ts);return
         if basket_r<=-1 or ts-ps[0]["opened"]>=self.HOLD:self._close(ps,bid,ask,"basket_SL_or_time",ts);return
-        if len(ps)-1<self.MAX_ADDS and vol<self.MAX_RISK_LOTS and basket_r<0 and signal and spread<=.15 and self._fp(side,mean,bid,ask)>=.55 and ts-self.last_add[side]>=60*NS:
+        if len(ps)-1<self.MAX_ADDS and vol<self.MAX_RISK_LOTS and basket_r<0 and signal and spread<=self.MAX_SPREAD_ATR and self._fp(side,mean,bid,ask)>=.55 and ts-self.last_add[side]>=60*NS:
             nextv=min(self.BASE*self._mult(bid,ask),self.MAX_RISK_LOTS-vol)
             if nextv>=.01:self._open(side,bid,ask,atr,ts,.01);self.last_add[side]=ts
         if basket_r>=self.TRAIL_START:
@@ -146,7 +149,7 @@ class G1(Strategy):
         self._manage(1,bid,ask,atr,buy_sig,spread,ts);self._manage(-1,bid,ask,atr,sell_sig,spread,ts)
         dt=datetime.fromtimestamp(ts//NS,timezone.utc)
         if dt.weekday()==4 and dt.hour>=21:return
-        if spread>.15:return
+        if spread>self.MAX_SPREAD_ATR:return
         if not self.buy and buy_sig:self._open(1,bid,ask,atr,ts,.01)
         if not self.sell and sell_sig:self._open(-1,bid,ask,atr,ts,.01)
 
@@ -161,11 +164,11 @@ class G1(Strategy):
 def l1(ts):
  q=Quantity.from_int(1);return [t if f(t.bid_size)>0 and f(t.ask_size)>0 else QuoteTick(instrument_id=t.instrument_id,bid_price=t.bid_price,ask_price=t.ask_price,bid_size=t.bid_size if f(t.bid_size)>0 else q,ask_size=t.ask_size if f(t.ask_size)>0 else q,ts_event=t.ts_event,ts_init=t.ts_init) for t in ts]
 def main():
- ap=argparse.ArgumentParser();ap.add_argument("--catalog",action="append",required=True);ap.add_argument("--experiment-id",required=True);a=ap.parse_args();raw=[];inst=None
+ ap=argparse.ArgumentParser();ap.add_argument("--catalog",action="append",required=True);ap.add_argument("--experiment-id",required=True);ap.add_argument("--hard-stop-atr",type=float,default=1.0);ap.add_argument("--max-spread-atr",type=float,default=.15);ap.add_argument("--source-exact-loss-halt",action="store_true");a=ap.parse_args();G1.STOP_ATR=a.hard_stop_atr;G1.MAX_SPREAD_ATR=a.max_spread_atr;G1.SOURCE_EXACT_LOSS_HALT=a.source_exact_loss_halt;raw=[];inst=None
  for root in a.catalog:
   cat=ParquetDataCatalog(root);i=next(x for x in cat.instruments() if x.id.symbol.value.replace("/","")=="XAUUSD");inst=inst or i;raw+=cat.query(data_cls=QuoteTick,identifiers=[i.id.value])
  raw.sort(key=lambda x:x.ts_event);e=BacktestEngine(config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"),risk_engine=RiskEngineConfig(bypass=True)))
  e.add_venue(venue=inst.id.venue,oms_type=OmsType.NETTING,account_type=AccountType.MARGIN,book_type=BookType.L1_MBP,base_currency=USD,starting_balances=[Money(1000,USD)],default_leverage=Decimal("2000"));e.add_instrument(inst);e.add_data(l1(raw));s=G1(Config(instrument_id=inst.id));e.add_strategy(s);e.run();e.end()
- out={"status":"COMPLETE","engine":"NautilusTrader BacktestEngine","raw_ticks":len(raw),"ohlc_resample_used":False,"execution":"Raw QuoteTick BUY Ask / SELL Bid","source":"TickScalper_G1_RiskGoverned.mq5 supplied by user","translation_scope":"EMA12/EMA144 + RSI9 current-M1 proxy, ATR14, max two non-geometric adds, basket/time stop, TP2R/trail, DD/consecutive-loss halts; MT5 terminal fill model and commission are not reproduced.","results":{"tickscalper_g1_behavioral_v1":s.result()}}
+ out={"status":"COMPLETE","engine":"NautilusTrader BacktestEngine","raw_ticks":len(raw),"ohlc_resample_used":False,"execution":"Raw QuoteTick BUY Ask / SELL Bid","source":"TickScalper_G1_RiskGoverned.mq5 supplied by user","source_exact_loss_halt":a.source_exact_loss_halt,"parameters":{"hard_stop_atr":a.hard_stop_atr,"max_spread_atr":a.max_spread_atr},"translation_scope":"EMA12/EMA144 + RSI9 current-M1 proxy, ATR14, max two non-geometric adds, basket/time stop, TP2R/trail, DD/consecutive-loss halts; MT5 terminal fill model and commission are not reproduced.","results":{"tickscalper_g1_behavioral_v1":s.result()}}
  path=Path("results/tickscalper-g1")/a.experiment_id/"summary.json";path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(out,indent=2));print(json.dumps(out,indent=2))
 if __name__=="__main__":main()

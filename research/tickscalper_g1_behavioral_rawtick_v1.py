@@ -36,7 +36,7 @@ class G1(Strategy):
         self.bucket=None; self.bar=None; self.closes=[]; self.ranges=[]; self.prevclose=None
         self.ef=self.es=None; self.avg_gain=self.avg_loss=None; self.atr=None
         self.last_bid=self.last_ask=None; self.buy=[]; self.sell=[]; self.last_add={1:0,-1:0}
-        self.equity0=1000.; self.closed=0.; self.peak=1000.; self.day=None; self.day_start=1000.; self.halt=0; self.losses=0
+        self.equity0=1000.; self.closed=0.; self.peak=1000.; self.day=None; self.day_start=1000.; self.halt=0; self.losses=0; self.last_halted_losses=0
         self.prevdd=self.prevvel=0.; self.trades=[]; self.ticks=0; self.entry_count=0
 
     def on_start(self): self.subscribe_quote_ticks(self.config.instrument_id)
@@ -81,7 +81,11 @@ class G1(Strategy):
         eq=self._eq(bid,ask)
         if dt!=self.day:self.day=dt;self.day_start=eq
         self.peak=max(self.peak,eq); dd=100*max(0,self.peak-eq)/self.peak; daydd=100*max(0,self.day_start-eq)/self.day_start
-        if self.losses>=2:self.halt=ts+24*3600*NS
+        # A loss-triggered pause is armed once per newly reached loss count.
+        # Reassigning halt on every tick would turn a 24-hour pause permanent.
+        if self.losses < 2: self.last_halted_losses=0
+        if self.losses >= 2 and self.losses > self.last_halted_losses:
+            self.halt=ts+24*3600*NS; self.last_halted_losses=self.losses
         if daydd>=5 or dd>=15 or ts<self.halt:
             self._close(self.buy,bid,ask,"hard_halt",ts);self._close(self.sell,bid,ask,"hard_halt",ts);return True
         return False

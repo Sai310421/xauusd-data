@@ -1,0 +1,45 @@
+name: TickScalper observed-period Raw BidAsk acquisition
+
+on:
+  push:
+    paths:
+      - "research/tickscalper_observed_rawtick_acquire.py"
+      - ".github/workflows/tickscalper-observed-rawtick-acquire.yml"
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "UTC start date (YYYY-MM-DD)"
+        required: true
+        default: "2026-10-20"
+      end:
+        description: "UTC end date (YYYY-MM-DD)"
+        required: true
+        default: "2026-10-20"
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      START: ${{ inputs.start || '2026-10-20' }}
+      END: ${{ inputs.end || '2026-10-20' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --disable-pip-version-check pandas pyarrow
+      - name: Acquire direct XAUUSD BidAsk ticks
+        run: |
+          python research/tickscalper_observed_rawtick_acquire.py \
+            --start "$START" --end "$END" --out artifacts/tickscalper_observed_rawtick
+      - name: Publish raw-tick evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: tickscalper-observed-raw-bidask-${{ env.START }}-${{ env.END }}
+          path: artifacts/tickscalper_observed_rawtick/
+          if-no-files-found: error
+          retention-days: 14

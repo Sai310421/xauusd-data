@@ -35,7 +35,7 @@ def fetch_hour(job: tuple[dt.date, int]) -> tuple[list[tuple], dict]:
     last_error = None
     # Dukascopy intermittently returns 503. Retry the whole host pair before
     # declaring an hour unusable; never silently accept a partial day.
-    for attempt in range(4):
+    for attempt in range(8):
         for host in HOSTS:
             try:
                 request = urllib.request.Request(f"{host}/{hour_url(day, hour)}", headers=HEADERS)
@@ -60,9 +60,9 @@ def fetch_hour(job: tuple[dt.date, int]) -> tuple[list[tuple], dict]:
                     return [], detail
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
-        if attempt < 3:
+        if attempt < 7:
             time.sleep(2 ** attempt)
-    detail.update(status="error", error=last_error, attempts=4)
+    detail.update(status="error", error=last_error, attempts=8)
     return [], detail
 
 def dates(start: dt.date, end: dt.date):
@@ -78,7 +78,7 @@ def main() -> None:
     parser.add_argument("--start", required=True, type=dt.date.fromisoformat)
     parser.add_argument("--end", required=True, type=dt.date.fromisoformat)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args()
     if args.end < args.start:
         raise SystemExit("--end must not precede --start")

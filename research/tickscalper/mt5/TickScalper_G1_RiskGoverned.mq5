@@ -18,6 +18,8 @@ input int    MaxAdds                          = 2;
 input double MaxTotalRiskR                    = 2.00;
 input double HardStopATR                      = 1.00;
 input double TargetR                          = 2.00;
+input double BasketRecoveryR                  = 0.25;
+input double EmergencyIndividualStopATR       = 3.00;
 input double TrailStartR                      = 2.00;
 input double TrailATR                         = 1.00;
 input int    MaxHoldMinutes                   = 45;
@@ -266,10 +268,11 @@ bool OpenOrder(const ENUM_POSITION_TYPE side,const ulong magic,const double lots
    trade.SetExpertMagicNumber(magic);
    trade.SetDeviationInPoints(SlippagePoints);
    double price=(side==POSITION_TYPE_BUY ? tick.ask : tick.bid);
-   double sl=(side==POSITION_TYPE_BUY ? price-HardStopATR*atr : price+HardStopATR*atr);
-   double tp=(side==POSITION_TYPE_BUY ? price+TargetR*HardStopATR*atr : price-TargetR*HardStopATR*atr);
-   return (side==POSITION_TYPE_BUY ? trade.Buy(lots,symbol_name,0.0,sl,tp,"TickScalper-G1-Buy")
-                                    : trade.Sell(lots,symbol_name,0.0,sl,tp,"TickScalper-G1-Sell"));
+   // Profit is managed at basket level. The individual SL is only an outage/gap
+   // backstop; normal loss control is the tighter basket hard-stop in ManageBasket.
+   double sl=(side==POSITION_TYPE_BUY ? price-EmergencyIndividualStopATR*HardStopATR*atr : price+EmergencyIndividualStopATR*HardStopATR*atr);
+   return (side==POSITION_TYPE_BUY ? trade.Buy(lots,symbol_name,0.0,sl,0.0,"TickScalper-G1-Buy")
+                                    : trade.Sell(lots,symbol_name,0.0,sl,0.0,"TickScalper-G1-Sell"));
 }
 
 //+------------------------------------------------------------------+
@@ -303,6 +306,14 @@ void ManageBasket(const ENUM_POSITION_TYPE side,const ulong magic)
    double price=(side==POSITION_TYPE_BUY ? tick.bid : tick.ask);
    double r=(side==POSITION_TYPE_BUY ? price-mean_price : mean_price-price)/(HardStopATR*atr);
    if(r<=-1.0 || (TimeCurrent()-opened)>=MaxHoldMinutes*60)
+   {
+      CloseBasket(magic,side);
+      return;
+   }
+   // A multi-leg basket exits together just above its weighted average price.
+   // A single-leg trade retains the larger TargetR objective.
+   double target_r=(count>1 ? BasketRecoveryR : TargetR);
+   if(r>=target_r)
    {
       CloseBasket(magic,side);
       return;

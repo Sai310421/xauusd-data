@@ -15,6 +15,14 @@ on:
         description: "UTC end date (YYYY-MM-DD)"
         required: true
         default: "2026-10-20"
+      start_hour:
+        description: "UTC first hour (0-23)"
+        required: true
+        default: "17"
+      end_hour:
+        description: "UTC final hour (0-23)"
+        required: true
+        default: "20"
 
 permissions:
   contents: read
@@ -35,7 +43,9 @@ jobs:
       - name: Acquire direct XAUUSD BidAsk ticks
         run: |
           python research/tickscalper_observed_rawtick_acquire.py \
-            --start "$START" --end "$END" --out artifacts/tickscalper_observed_rawtick
+            --start "$START" --end "$END" \\
+            --start-hour "$START_HOUR" --end-hour "$END_HOUR" \\
+            --out artifacts/tickscalper_observed_rawtick
       - name: Publish raw-tick evidence
         uses: actions/upload-artifact@v4
         with:

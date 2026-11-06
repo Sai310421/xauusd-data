@@ -1,0 +1,57 @@
+name: TickScalper G1 Set File Raw BidAsk BT
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/tickscalper-g1-set-rawtick-bt.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  raw-bidask-source-exact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: Sai310421/xauusd-data
+          run-id: 41971304049
+          pattern: xauusd-raw-bidask-20260225-90d-*
+          path: catalog/download
+          merge-multiple: false
+      - name: Assemble catalog
+        run: |
+          set -euo pipefail
+          mkdir -p catalog
+          for c in a b c d; do mv "catalog/download/xauusd-raw-bidask-20260225-90d-$c" "catalog/xauusd-90d-$c"; done
+          test "$(find catalog -name catalog_manifest.json | wc -l)" -eq 4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'nautilus_trader==1.230.0' numpy pyarrow
+      - name: Run supplied mq5 plus supplied set values
+        run: |
+          set -o pipefail
+          mkdir -p results/tickscalper-g1-set/_logs
+          python research/tickscalper_g1_behavioral_rawtick_v1.py \
+            --catalog catalog/xauusd-90d-a \
+            --catalog catalog/xauusd-90d-b \
+            --catalog catalog/xauusd-90d-c \
+            --catalog catalog/xauusd-90d-d \
+            --hard-stop-atr 1.50 \
+            --max-spread-atr 0.50 \
+            --source-exact-loss-halt \
+            --experiment-id "tickscalper-g1-set-${{ github.run_id }}" 2>&1 | tee results/tickscalper-g1-set/_logs/runner.log
+      - name: Upload result and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tickscalper-g1-set-result-${{ github.run_id }}
+          path: results/tickscalper-g1-set/
+          if-no-files-found: error
+          retention-days: 90

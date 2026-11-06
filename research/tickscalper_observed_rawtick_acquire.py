@@ -79,11 +79,15 @@ def main() -> None:
     parser.add_argument("--end", required=True, type=dt.date.fromisoformat)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument("--start-hour", type=int, default=0)
+    parser.add_argument("--end-hour", type=int, default=23)
     args = parser.parse_args()
     if args.end < args.start:
         raise SystemExit("--end must not precede --start")
+    if not (0 <= args.start_hour <= args.end_hour <= 23):
+        raise SystemExit("hours must satisfy 0 <= start-hour <= end-hour <= 23")
 
-    jobs = [(day, hour) for day in dates(args.start, args.end) for hour in range(24)]
+    jobs = [(day, hour) for day in dates(args.start, args.end) for hour in range(args.start_hour, args.end_hour + 1)]
     with futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         result = list(pool.map(fetch_hour, jobs))
 
@@ -104,6 +108,8 @@ def main() -> None:
         "timezone": "UTC",
         "start": args.start.isoformat(),
         "end": args.end.isoformat(),
+        "start_hour": args.start_hour,
+        "end_hour": args.end_hour,
         "hours_requested": len(jobs),
         "hours_ok": sum(x["status"] == 200 for x in evidence),
         "ticks": int(len(frame)),

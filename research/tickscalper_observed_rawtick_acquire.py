@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Download an exact UTC XAUUSD Dukascopy Raw Bid/Ask slice with evidence.
 
-This is data acquisition only.  It intentionally has no strategy entry logic.
+This is data acquisition only. It intentionally has no strategy entry logic.
+The workflow begins with one observed UTC day; ranges are explicit inputs.
 """
 from __future__ import annotations
 

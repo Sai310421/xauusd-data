@@ -3,9 +3,9 @@ name: XAUUSD 90d Raw BidAsk Nautilus Catalog
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feat/xauusd-duka-raw-90d-20260801]
     paths:
-      - 'bt_requests/xauusd_raw_bidask_90d_20260225.request'
+      - 'bt_requests/xauusd_raw_bidask_90d_20260801.request'
 
 permissions:
   contents: read
@@ -21,17 +21,17 @@ jobs:
       matrix:
         include:
           - name: a
-            start: '2026-02-25'
+            start: '2026-08-01'
             days: 23
           - name: b
-            start: '2026-03-20'
+            start: '2026-08-24'
             days: 23
           - name: c
-            start: '2026-04-12'
+            start: '2026-09-16'
             days: 23
           - name: d
-            start: '2026-05-05'
-            days: 22
+            start: '2026-10-09'
+            days: 21
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: catalog/xauusd-90d-${{ matrix.name }}
-          key: xauusd-raw-bidask-20260225-90d-${{ matrix.name }}-v1
+          key: xauusd-raw-bidask-20260801-90d-${{ matrix.name }}-v1
       - name: Build Nautilus QuoteTick catalog from Dukascopy BI5
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -103,11 +103,11 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: catalog/xauusd-90d-${{ matrix.name }}
-          key: xauusd-raw-bidask-20260225-90d-${{ matrix.name }}-v1
+          key: xauusd-raw-bidask-20260801-90d-${{ matrix.name }}-v1
       - name: Persist Raw BidAsk catalog artifact
         uses: actions/upload-artifact@v4
         with:
-          name: xauusd-raw-bidask-20260225-90d-${{ matrix.name }}
+          name: xauusd-raw-bidask-20260801-90d-${{ matrix.name }}
           path: catalog/xauusd-90d-${{ matrix.name }}
           if-no-files-found: error
           retention-days: 90

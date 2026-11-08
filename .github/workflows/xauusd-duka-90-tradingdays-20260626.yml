@@ -1,0 +1,124 @@
+name: XAUUSD Dukascopy 90 Trading Days Raw BidAsk
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/xauusd-duka-90-tradingdays-20260626]
+    paths:
+      - 'bt_requests/xauusd_90_tradingdays_20260626.request'
+      - '.github/workflows/xauusd-duka-90-tradingdays-20260626.yml'
+permissions:
+  contents: read
+env:
+  NAUTILUS_VERSION: '1.230.0'
+jobs:
+  catalog:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - {name: a, start: '2026-06-26', days: 32}
+          - {name: b, start: '2026-07-28', days: 32}
+          - {name: c, start: '2026-08-29', days: 32}
+          - {name: d, start: '2026-09-30', days: 30}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nautilus_trader==${NAUTILUS_VERSION}" pandas numpy pyarrow
+      - name: Acquire fresh Dukascopy BI5 Raw BidAsk, build Nautilus QuoteTick
+        run: |
+          set -euo pipefail
+          python research/build_raw_bidask_catalog_duka.py --start "${{ matrix.start }}" --days "${{ matrix.days }}" --catalog "catalog/xauusd-90trading-${{ matrix.name }}" --workers 12 --symbols XAUUSD --fresh
+      - name: Validate weekday session coverage, actual tick quotes and manifest
+        env:
+          CHUNK: ${{ matrix.name }}
+          CHUNK_START: ${{ matrix.start }}
+          CHUNK_DAYS: ${{ matrix.days }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt
+          import json, os
+          from pathlib import Path
+          import numpy as np
+          from nautilus_trader.persistence.catalog import ParquetDataCatalog
+          from nautilus_trader.model.data import QuoteTick
+
+          root = Path("catalog") / ("xauusd-90trading-" + os.environ["CHUNK"])
+          cat = ParquetDataCatalog(str(root))
+          inst = next((i for i in cat.instruments() if i.id.symbol.value.replace("/", "") == "XAUUSD"), None)
+          assert inst is not None, "XAUUSD instrument absent"
+          ticks = cat.query(data_cls=QuoteTick, identifiers=[inst.id.value])
+          assert len(ticks) >= 1000, "No usable QuoteTick stream"
+          stamp_ns = 86400 * 1_000_000_000
+          observed_day_numbers = {int(t.ts_event) // stamp_ns for t in ticks}
+          start = dt.date.fromisoformat(os.environ["CHUNK_START"])
+          days = int(os.environ["CHUNK_DAYS"])
+          expected_weekdays = [start + dt.timedelta(days=i) for i in range(days) if (start + dt.timedelta(days=i)).weekday() < 5]
+          observed_weekdays = [d.isoformat() for d in expected_weekdays if (d - dt.date(1970, 1, 1)).days in observed_day_numbers]
+          missing_weekdays = [d.isoformat() for d in expected_weekdays if (d - dt.date(1970, 1, 1)).days not in observed_day_numbers]
+          sample = ticks[::max(1, len(ticks)//100000)]
+          bid = np.fromiter((float(t.bid_price) for t in sample), dtype=float)
+          ask = np.fromiter((float(t.ask_price) for t in sample), dtype=float)
+          assert np.all(bid > 0) and np.all(ask >= bid), "Invalid Bid/Ask"
+          report = {
+            "status": "PASS" if not missing_weekdays else "INVALID",
+            "chunk": os.environ["CHUNK"], "source": "Dukascopy BI5",
+            "data_kind": "RAW_BIDASK", "ohlc_resample_used": False,
+            "quote_ticks": len(ticks),
+            "first_ts_ns": int(ticks[0].ts_event), "last_ts_ns": int(ticks[-1].ts_event),
+            "expected_weekdays": [d.isoformat() for d in expected_weekdays],
+            "observed_weekdays": observed_weekdays, "missing_weekdays": missing_weekdays,
+          }
+          (root / "trading_day_audit.json").write_text(json.dumps(report, indent=2))
+          print(json.dumps(report, indent=2))
+          if missing_weekdays: raise SystemExit("INVALID: weekday sessions without recorded Bid/Ask")
+          PY
+      - name: Persist verified Nautilus catalog and audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: xauusd-duka-90trading-20260626-${{ matrix.name }}
+          path: catalog/xauusd-90trading-${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 90
+  verify-all:
+    needs: catalog
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: xauusd-duka-90trading-20260626-*
+          path: audit_artifacts
+      - name: Assert exactly 90 distinct weekday sessions across 4 saved catalogs
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          from pathlib import Path
+          reports=list(Path("audit_artifacts").rglob("trading_day_audit.json"))
+          assert len(reports)==4, f"Expected 4 persisted audits, got {len(reports)}"
+          all_days=[]
+          total_ticks=0
+          for path in reports:
+            report=json.loads(path.read_text())
+            assert report["status"]=="PASS", path
+            assert not report["missing_weekdays"], path
+            all_days.extend(report["observed_weekdays"])
+            total_ticks+=report["quote_ticks"]
+          assert len(all_days)==len(set(all_days))==90, f"Expected 90 unique weekday sessions, got {len(all_days)} ({len(set(all_days))} unique)"
+          assert min(all_days)=="2026-06-26" and max(all_days)=="2026-10-29"
+          result={"status":"PASS","weekday_sessions":90,"first":"2026-06-26","last":"2026-10-29","quote_ticks":total_ticks,"saved_catalogs":len(reports),"source":"Dukascopy BI5","data_kind":"RAW_BIDASK"}
+          Path("xauusd_90trading_final_audit.json").write_text(json.dumps(result,indent=2))
+          print(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xauusd-duka-90trading-final-audit
+          path: xauusd_90trading_final_audit.json
+          if-no-files-found: error
+          retention-days: 90

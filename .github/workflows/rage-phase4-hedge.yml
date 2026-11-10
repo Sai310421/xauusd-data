@@ -1,0 +1,33 @@
+name: RAGE Phase 4 Hedge Safety
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rage-dual-compound-hedge/**"
+      - ".github/workflows/rage-phase4-hedge.yml"
+  pull_request:
+    paths:
+      - "rage-dual-compound-hedge/**"
+      - ".github/workflows/rage-phase4-hedge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rage-phase4-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  h1-to-tick-safety:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: rage-dual-compound-hedge/requirements-test.txt
+      - run: python -m pip install -r rage-dual-compound-hedge/requirements-test.txt
+      - run: python -m pytest -q rage-dual-compound-hedge/tests

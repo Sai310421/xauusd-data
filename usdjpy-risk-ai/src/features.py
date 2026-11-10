@@ -154,6 +154,8 @@ def validate_feature_integrity(frame: pd.DataFrame) -> None:
 def prepare_training_rows(frame: pd.DataFrame, max_missing_rate: float = 0.05) -> pd.DataFrame:
     """Remove warmup/terminal rows, then reject rows with material feature gaps."""
     eligible = frame.dropna(subset=["future_return"]).copy()
+    # Initial rolling windows are an expected warmup, not a data-quality event.
+    eligible = eligible.loc[eligible["z_fx"].notna()].copy()
     missing_rate = eligible[FEATURES].isna().mean(axis=1)
     if (missing_rate > max_missing_rate).any():
         raise FeatureQualityError("REQUIRED_FEATURE_MISSING")

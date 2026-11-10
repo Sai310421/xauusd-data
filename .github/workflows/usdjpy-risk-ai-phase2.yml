@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - "usdjpy-risk-ai/**"
+      - ".github/workflows/usdjpy-risk-ai-phase2.yml"
   pull_request:
     paths:
       - "usdjpy-risk-ai/**"
+      - ".github/workflows/usdjpy-risk-ai-phase2.yml"
   workflow_dispatch:
 
 permissions:

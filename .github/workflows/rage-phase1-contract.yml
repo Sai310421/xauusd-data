@@ -28,7 +28,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
       - name: Install contract validator
         run: python -m pip install "jsonschema>=4.23,<5"
       - name: Validate H1 macro signal contract

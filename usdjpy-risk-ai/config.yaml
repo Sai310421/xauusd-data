@@ -1,0 +1,40 @@
+config_version: "v1.3.1-phase2"
+run_mode: fixture
+time:
+  canonical_timezone: UTC
+  bar_interval: 1h
+  label_horizon_bars: 24
+  zscore_window_bars: 480
+  train_embargo_bars: 24
+  no_forward_fill_across_market_close: true
+databento:
+  datasets:
+    futures: GLBX.MDP3
+    volatility: XCBF.PITCH
+  schema:
+    futures: ohlcv-1h
+    volatility: ohlcv-1h
+  stype_in: continuous
+  continuous_contract:
+    roll_rule: v
+    rank: 0
+    symbols:
+      six_j: 6J.v.0
+      es: ES.v.0
+      nq: NQ.v.0
+      zn: ZN.v.0
+      vx: VX.v.0
+oanda:
+  instrument: USD_JPY
+  granularity: H1
+  price: M
+  timezone: UTC
+feature_store:
+  raw_directory: data/raw
+  features_directory: data/features
+quality:
+  max_missing_required_features: 0.05
+lead_lag:
+  candidate_lags_bars: [0, 1]
+  min_observations: 240
+  lookback_bars: 240

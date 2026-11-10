@@ -1,0 +1,1 @@
+"""USDJPY Risk AI tests."""

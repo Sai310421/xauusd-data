@@ -11,7 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.features import FEATURES
-from src.modeling import FoldDefinition, fit_target, predict_probability, split_fold, walk_forward
+from src.modeling import (
+    FoldDefinition,
+    fit_target,
+    predict_probability,
+    split_fold,
+    walk_forward,
+)
 
 
 def model_frame(rows: int = 900) -> pd.DataFrame:

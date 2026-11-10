@@ -1,4 +1,4 @@
-config_version: "v1.3.1-phase2"
+config_version: "v1.3.1-phase3"
 run_mode: fixture
 time:
   canonical_timezone: UTC
@@ -34,7 +34,24 @@ feature_store:
   features_directory: data/features
 quality:
   max_missing_required_features: 0.05
+  min_positive_samples: 50
 lead_lag:
   candidate_lags_bars: [0, 1]
   min_observations: 240
   lookback_bars: 240
+model:
+  objective: binary
+  n_estimators: 1000
+  learning_rate: 0.03
+  num_leaves: 64
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 1
+  class_weight: balanced
+  random_state: 42
+calibration:
+  primary: isotonic
+  fallback: sigmoid
+  isotonic_min_validation_rows: 1000
+  isotonic_min_positive_samples: 100
+  ece_bins: 10

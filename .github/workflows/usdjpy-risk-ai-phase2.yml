@@ -1,4 +1,4 @@
-name: USDJPY Risk AI Phase 2 CI
+name: USDJPY Risk AI Fixture CI
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: usdjpy-risk-ai-phase2-${{ github.workflow }}-${{ github.ref }}
+  group: usdjpy-risk-ai-fixture-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,5 +36,6 @@ jobs:
       - run: python tests/fixtures/make_fixture.py --output /tmp/raw_fixture.parquet
       - run: python -m src.collect --input /tmp/raw_fixture.parquet --output /tmp/raw
       - run: python -m src.features --input /tmp/raw --output /tmp/features
+      - run: python -m src.walkforward --input /tmp/features --output /tmp/reports
       - run: pytest -q
       - run: ruff check .

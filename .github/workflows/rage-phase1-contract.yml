@@ -1,0 +1,28 @@
+name: RAGE Phase 1 Contract
+
+on:
+  pull_request:
+    paths:
+      - "rage-dual-compound-hedge/contracts/**"
+      - "rage-dual-compound-hedge/tests/phase1_contract_test.py"
+      - "rage-dual-compound-hedge/docs/PHASE_1_FOUNDATION_AUDIT.md"
+      - ".github/workflows/rage-phase1-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-h1-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install contract validator
+        run: python -m pip install "jsonschema>=4.23,<5"
+      - name: Validate H1 macro signal contract
+        run: python rage-dual-compound-hedge/tests/phase1_contract_test.py

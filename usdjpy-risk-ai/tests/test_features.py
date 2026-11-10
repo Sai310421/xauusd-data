@@ -4,7 +4,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -40,19 +39,29 @@ def test_future_price_change_does_not_alter_prior_feature_rows() -> None:
     baseline = build_features(raw)
     changed = raw.copy()
     late = changed["datetime_utc"].max()
-    changed.loc[(changed["datetime_utc"] == late) & (changed["symbol"] == "USDJPY"), "close"] *= 1.5
+    changed.loc[
+        (changed["datetime_utc"] == late) & (changed["symbol"] == "USDJPY"),
+        "close",
+    ] *= 1.5
     altered = build_features(changed)
     cutoff = late - pd.Timedelta(hours=25)
     columns = FEATURES + ["risk_score", "future_return"]
-    left = baseline.loc[baseline["datetime_utc"] < cutoff, columns].reset_index(drop=True)
-    right = altered.loc[altered["datetime_utc"] < cutoff, columns].reset_index(drop=True)
+    left = baseline.loc[
+        baseline["datetime_utc"] < cutoff, columns
+    ].reset_index(drop=True)
+    right = altered.loc[
+        altered["datetime_utc"] < cutoff, columns
+    ].reset_index(drop=True)
     pd.testing.assert_frame_equal(left, right)
 
 
 def test_future_roll_invalidates_labels() -> None:
     raw = normalize_raw(make_fixture())
     event_time = raw["datetime_utc"].iloc[-40]
-    raw.loc[(raw["symbol"] == "ES") & (raw["datetime_utc"] == event_time), "roll_event"] = True
+    raw.loc[
+        (raw["symbol"] == "ES") & (raw["datetime_utc"] == event_time),
+        "roll_event",
+    ] = True
     frame = build_features(raw)
     affected = frame.loc[
         (frame["datetime_utc"] >= event_time - pd.Timedelta(hours=24))
@@ -63,6 +72,8 @@ def test_future_roll_invalidates_labels() -> None:
 
 def test_future_feature_timestamp_is_rejected() -> None:
     frame = _features()
-    frame.loc[500, "max_feature_source_timestamp"] = frame.loc[500, "datetime_utc"] + pd.Timedelta(hours=1)
+    frame.loc[500, "max_feature_source_timestamp"] = (
+        frame.loc[500, "datetime_utc"] + pd.Timedelta(hours=1)
+    )
     with pytest.raises(FeatureQualityError, match="FEATURE_INTEGRITY_FAILURE"):
         validate_feature_integrity(frame)

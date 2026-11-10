@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amos.local/contracts/h1_macro_signal_v1.schema.json",
+  "title": "H1 Macro Signal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "signal_id",
+    "as_of_utc",
+    "valid_until_utc",
+    "signal_status",
+    "model_version",
+    "portfolio_risk",
+    "portfolio_regime",
+    "gold_prob_up2",
+    "stock_crash_prob",
+    "smallcap_stress",
+    "breadth_div",
+    "psi_status",
+    "probability_ordering_pass",
+    "feature_schema_pass",
+    "manifest_integrity_pass"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "h1-macro-signal/v1"
+    },
+    "signal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "as_of_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signal_status": {
+      "enum": [
+        "READY",
+        "STOPPED"
+      ]
+    },
+    "stop_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 128
+    },
+    "model_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "portfolio_risk": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "portfolio_regime": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "gold_prob_up2": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "stock_crash_prob": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "smallcap_stress": {
+      "type": "number"
+    },
+    "breadth_div": {
+      "type": "number"
+    },
+    "psi_status": {
+      "enum": [
+        "NORMAL",
+        "WATCH",
+        "CRITICAL"
+      ]
+    },
+    "probability_ordering_pass": {
+      "const": true
+    },
+    "feature_schema_pass": {
+      "const": true
+    },
+    "manifest_integrity_pass": {
+      "const": true
+    },
+    "source_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "top_drivers": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "signal_status": {
+            "const": "STOPPED"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "stop_reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "signal_status": {
+            "const": "READY"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "stop_reason": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

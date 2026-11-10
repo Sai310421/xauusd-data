@@ -1,0 +1,6 @@
+numpy>=2.0,<3
+pandas>=2.2,<3
+pyarrow>=17,<20
+PyYAML>=6.0,<7
+pytest>=8.0,<9
+ruff>=0.8,<1

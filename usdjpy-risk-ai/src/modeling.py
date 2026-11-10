@@ -1,9 +1,10 @@
 """Time-series model fitting, calibration, and walk-forward evaluation."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import timedelta
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd

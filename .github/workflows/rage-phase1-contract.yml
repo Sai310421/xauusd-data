@@ -1,6 +1,13 @@
 name: RAGE Phase 1 Contract
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "rage-dual-compound-hedge/contracts/**"
+      - "rage-dual-compound-hedge/tests/phase1_contract_test.py"
+      - "rage-dual-compound-hedge/docs/PHASE_1_FOUNDATION_AUDIT.md"
+      - ".github/workflows/rage-phase1-contract.yml"
   pull_request:
     paths:
       - "rage-dual-compound-hedge/contracts/**"

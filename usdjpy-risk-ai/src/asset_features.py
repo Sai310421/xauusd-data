@@ -90,7 +90,8 @@ def prepare_asset_training_rows(frame: pd.DataFrame, feature_columns: list[str],
     """Remove warm-up and terminal rows; reject feature loss above 5 percent."""
     result = frame.dropna(subset=list(targets)).copy()
     # Initial trailing z-score warm-up is expected and is not a source failure.
-    result = result.loc[result["dxy_z"].notna()].copy()
+    warmup_columns = result.filter(regex=r"^dxy_z$")
+    result = result.loc[~warmup_columns.isna().any(axis=1)].copy()
     missing = result[feature_columns].isna().mean(axis=1)
     if (missing > 0.05).any():
         raise AssetFeatureError("REQUIRED_FEATURE_MISSING")

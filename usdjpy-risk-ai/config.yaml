@@ -1,4 +1,4 @@
-config_version: "v1.3.3-phase6"
+config_version: "v1.3.4-multiasset-data"
 run_mode: fixture
 time:
   canonical_timezone: UTC
@@ -24,6 +24,13 @@ oanda:
   granularity: H1
   price: M
   timezone: UTC
+multiasset:
+  source_mode: provider_continuous_front
+  assets:
+    rty: {dataset: GLBX.MDP3, continuous_symbol: RTY.v.0, schema: ohlcv-1h}
+    gc: {dataset: GLBX.MDP3, continuous_symbol: GC.v.0, schema: ohlcv-1h}
+    dxy: {dataset: IFUS.IMPACT, continuous_symbol: DX.v.0, schema: ohlcv-1h}
+    us10y: {dataset: GLBX.MDP3, continuous_symbol: 10Y.v.0, schema: ohlcv-1h}
 oci:
   region: ap-tokyo-1
   bucket_env: OCI_OBJECT_STORAGE_BUCKET

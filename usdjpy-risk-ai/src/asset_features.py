@@ -27,23 +27,27 @@ def _multiasset_wide(raw: pd.DataFrame) -> pd.DataFrame:
     if not required.issubset(set(raw["asset"])):
         raise AssetFeatureError("MULTIASSET_UNIVERSE_INCOMPLETE")
     frame = raw.copy()
+    if "roll_event" not in raw.columns:
+        raise AssetFeatureError("MULTIASSET_ROLL_METADATA_MISSING")
     frame["datetime_utc"] = pd.to_datetime(frame["source_bar_start_utc"], utc=True) + pd.Timedelta(hours=1)
     if frame.duplicated(["asset", "datetime_utc"]).any():
         raise AssetFeatureError("MULTIASSET_DUPLICATE_BAR")
     close = frame.pivot(index="datetime_utc", columns="asset", values="close")
     volume = frame.pivot(index="datetime_utc", columns="asset", values="volume")
+    rolls = frame.pivot(index="datetime_utc", columns="asset", values="roll_event")
     if close[list(required)].isna().any().any() or volume[list(required)].isna().any().any():
         raise AssetFeatureError("MULTIASSET_ALIGNMENT_INCOMPLETE")
     result = pd.DataFrame(index=close.index)
     for asset in sorted(required):
         result[f"close_{asset.lower()}"] = close[asset]
         result[f"volume_{asset.lower()}"] = volume[asset]
+        result[f"roll_{asset.lower()}"] = rolls[asset].astype(bool)
     return result.reset_index()
 
 
 def build_asset_features(base_features: pd.DataFrame, multiasset_raw: pd.DataFrame, zscore_window: int = 480, label_horizon: int = 24) -> pd.DataFrame:
     """Join completed H1 sources strictly and compute no-lookahead model inputs."""
-    required_base = {"datetime_utc", "close_es", "close_nq", "flow_vx", "flow_zn", "risk_score"}
+    required_base = {"datetime_utc", "close_es", "close_nq", "flow_vx", "flow_zn", "risk_score", "roll_es"}
     if not required_base.issubset(base_features.columns):
         raise AssetFeatureError("USDJPY_FEATURE_SOURCE_INCOMPLETE")
     base = base_features.copy()
@@ -65,12 +69,18 @@ def build_asset_features(base_features: pd.DataFrame, multiasset_raw: pd.DataFra
     frame["gold_score"] = 0.30 * frame["flow_gc"] - 0.20 * frame["dxy_z"] + 0.15 * frame["flow_zn"] + 0.15 * frame["flow_vx"] - 0.10 * frame["us10y_z"] + 0.10 * frame["smallcap_stress"]
     future_gc = np.log(frame["close_gc"].shift(-label_horizon) / frame["close_gc"])
     future_es = np.log(frame["close_es"].shift(-label_horizon) / frame["close_es"])
+    future_gc_roll = frame["roll_gc"].iloc[::-1].rolling(label_horizon + 1, min_periods=1).max().iloc[::-1].astype(bool)
+    future_es_roll = frame["roll_es"].iloc[::-1].rolling(label_horizon + 1, min_periods=1).max().iloc[::-1].astype(bool)
     for target, threshold in zip(GOLD_TARGETS, (0.01, 0.02, 0.03), strict=True):
         frame[target] = (future_gc > threshold).astype("float64")
-        frame.loc[future_gc.isna(), target] = np.nan
+        frame.loc[future_gc.isna() | future_gc_roll, target] = np.nan
     for target, threshold in zip(STOCK_TARGETS, (-0.01, -0.02, -0.03), strict=True):
         frame[target] = (future_es < threshold).astype("float64")
-        frame.loc[future_es.isna(), target] = np.nan
+        frame.loc[future_es.isna() | future_es_roll, target] = np.nan
+    roll_columns = [column for column in frame if column.startswith("roll_")]
+    frame["roll_event"] = frame[roll_columns].any(axis=1)
+    # A raw continuous-contract discontinuity is not a predictive return.
+    frame.loc[frame["roll_event"], FEATURES_GOLD + FEATURES_STOCK] = np.nan
     frame["feature_timestamp"] = frame["datetime_utc"]
     frame["max_feature_source_timestamp"] = frame["datetime_utc"]
     return frame

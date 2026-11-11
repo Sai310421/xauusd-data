@@ -8,7 +8,11 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .multiasset_provider import MULTIASSET_ASSETS, MultiAssetDatabentoProvider, write_monthly_multiasset
+from .multiasset_provider import (
+    MULTIASSET_ASSETS,
+    MultiAssetDatabentoProvider,
+    write_monthly_multiasset,
+)
 
 
 def main() -> None:

@@ -1,8 +1,8 @@
 """Offline provider contract tests for the multi-asset data universe."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd

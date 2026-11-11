@@ -1,15 +1,20 @@
 """Databento H1 collector for the fixed multi-asset model universe."""
 from __future__ import annotations
 
+import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-import os
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 import pandas as pd
 
-from .data_provider import DataQualityError, ProviderCredentialsError, ProviderResponseError
+from .data_provider import (
+    DataQualityError,
+    ProviderCredentialsError,
+    ProviderResponseError,
+)
 
 MULTIASSET_COLUMNS = ("asset", "source_bar_start_utc", "close", "volume", "provider", "dataset", "continuous_symbol", "instrument_id", "roll_event")
 MULTIASSET_ASSETS = ("RTY", "GC", "DXY", "US10Y")
@@ -35,7 +40,7 @@ class MultiAssetDatabentoProvider:
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
 
     @classmethod
-    def from_environment(cls, config: Mapping[str, Any]) -> "MultiAssetDatabentoProvider":
+    def from_environment(cls, config: Mapping[str, Any]) -> MultiAssetDatabentoProvider:
         """Construct from the canonical config and the Databento secret."""
         if not os.environ.get("DATABENTO_API_KEY"):
             raise ProviderCredentialsError("missing required production secret: DATABENTO_API_KEY")

@@ -26,6 +26,10 @@ oanda:
   timezone: UTC
 multiasset:
   source_mode: provider_continuous_front
+  back_adjusted: false
+  roll_protection:
+    invalidate_feature_bar: true
+    invalidate_label_horizon: true
   assets:
     rty: {dataset: GLBX.MDP3, continuous_symbol: RTY.v.0, schema: ohlcv-1h}
     gc: {dataset: GLBX.MDP3, continuous_symbol: GC.v.0, schema: ohlcv-1h}

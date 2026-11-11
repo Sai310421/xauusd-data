@@ -6,5 +6,6 @@ lightgbm>=4.5,<5
 scikit-learn>=1.5,<2
 requests>=2.32,<3
 databento>=0.50,<1
+oci>=2.190,<3
 pytest>=8.0,<9
 ruff>=0.8,<1

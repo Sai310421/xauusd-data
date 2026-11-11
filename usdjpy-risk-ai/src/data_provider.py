@@ -5,7 +5,7 @@ continuous front contracts for futures and OANDA midpoint candles for USDJPY.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path

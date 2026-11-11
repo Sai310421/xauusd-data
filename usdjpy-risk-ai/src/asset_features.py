@@ -80,7 +80,8 @@ def build_asset_features(base_features: pd.DataFrame, multiasset_raw: pd.DataFra
     roll_columns = [column for column in frame if column.startswith("roll_")]
     frame["roll_event"] = frame[roll_columns].any(axis=1)
     # A raw continuous-contract discontinuity is not a predictive return.
-    frame.loc[frame["roll_event"], FEATURES_GOLD + FEATURES_STOCK] = np.nan
+    model_features = list(dict.fromkeys(FEATURES_GOLD + FEATURES_STOCK))
+    frame.loc[frame["roll_event"], model_features] = np.nan
     frame["feature_timestamp"] = frame["datetime_utc"]
     frame["max_feature_source_timestamp"] = frame["datetime_utc"]
     return frame

@@ -5,11 +5,12 @@ continuous front contracts for futures and OANDA midpoint candles for USDJPY.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import os
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Protocol
 
 import pandas as pd
 
@@ -21,9 +22,6 @@ REQUIRED_RAW_COLUMNS = {
 }
 REQUIRED_SYMBOLS = ("6J", "VX", "ES", "NQ", "ZN", "USDJPY")
 FUTURES_SYMBOLS = ("6J", "VX", "ES", "NQ", "ZN")
-UTC = timezone.utc
-
-
 class DataQualityError(ValueError):
     """Raised when data violates the fixed H1 market-data contract."""
 
@@ -101,7 +99,7 @@ class DatabentoProvider:
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
 
     @classmethod
-    def from_environment(cls, config: Mapping[str, Any]) -> "DatabentoProvider":
+    def from_environment(cls, config: Mapping[str, Any]) -> DatabentoProvider:
         """Construct the client only after the Databento secret is present."""
         require_environment(("DATABENTO_API_KEY",))
         try:
@@ -158,7 +156,7 @@ class OandaProvider:
     max_candles_per_request: int = 5000
 
     @classmethod
-    def from_environment(cls, config: Mapping[str, Any]) -> "OandaProvider":
+    def from_environment(cls, config: Mapping[str, Any]) -> OandaProvider:
         """Build a production reader after verifying the token is present."""
         require_environment(("OANDA_API_TOKEN",))
         section = config["oanda"]

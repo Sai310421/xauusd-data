@@ -9,7 +9,12 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .data_provider import DatabentoProvider, OandaProvider, normalize_raw, write_monthly_raw
+from .data_provider import (
+    DatabentoProvider,
+    OandaProvider,
+    normalize_raw,
+    write_monthly_raw,
+)
 
 
 def _parse_utc(value: str) -> datetime:

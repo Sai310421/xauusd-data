@@ -1,8 +1,8 @@
 """Offline contract tests for production market-data adapters."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -11,9 +11,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.data_provider import DatabentoProvider, OandaProvider, ProviderCredentialsError, require_environment
-
-UTC = timezone.utc
+from src.data_provider import (
+    DatabentoProvider,
+    OandaProvider,
+    ProviderCredentialsError,
+    require_environment,
+)
 
 
 class FakeStore:

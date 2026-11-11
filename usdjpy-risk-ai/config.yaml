@@ -1,4 +1,4 @@
-config_version: "v1.3.2-phase5"
+config_version: "v1.3.3-phase6"
 run_mode: fixture
 time:
   canonical_timezone: UTC
@@ -10,22 +10,13 @@ time:
 databento:
   api_key_env: DATABENTO_API_KEY
   futures_symbol_mode: provider_continuous_front
-  datasets:
-    futures: GLBX.MDP3
-    volatility: XCBF.PITCH
-  schema:
-    futures: ohlcv-1h
-    volatility: ohlcv-1h
+  datasets: {futures: GLBX.MDP3, volatility: XCBF.PITCH}
+  schema: {futures: ohlcv-1h, volatility: ohlcv-1h}
   stype_in: continuous
   continuous_contract:
     roll_rule: v
     rank: 0
-    symbols:
-      six_j: 6J.v.0
-      es: ES.v.0
-      nq: NQ.v.0
-      zn: ZN.v.0
-      vx: VX.v.0
+    symbols: {six_j: 6J.v.0, es: ES.v.0, nq: NQ.v.0, zn: ZN.v.0, vx: VX.v.0}
 oanda:
   token_env: OANDA_API_TOKEN
   environment: practice
@@ -33,16 +24,18 @@ oanda:
   granularity: H1
   price: M
   timezone: UTC
+oci:
+  region: ap-tokyo-1
+  bucket_env: OCI_OBJECT_STORAGE_BUCKET
+  namespace_env: OCI_OBJECT_STORAGE_NAMESPACE
+  config_file: ~/.oci/config
+  profile: DEFAULT
+  prefix: usdjpy-risk-ai
 feature_store:
   raw_directory: data/raw
   features_directory: data/features
-quality:
-  max_missing_required_features: 0.05
-  min_positive_samples: 50
-lead_lag:
-  candidate_lags_bars: [0, 1]
-  min_observations: 240
-  lookback_bars: 240
+quality: {max_missing_required_features: 0.05, min_positive_samples: 50}
+lead_lag: {candidate_lags_bars: [0, 1], min_observations: 240, lookback_bars: 240}
 model:
   objective: binary
   n_estimators: 1000

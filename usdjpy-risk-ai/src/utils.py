@@ -28,6 +28,16 @@ def safe_log_return(price: pd.Series) -> pd.Series:
     return result.where(np.isfinite(result), np.nan)
 
 
+def safe_log_return_excluding_events(
+    price: pd.Series,
+    events: pd.Series,
+) -> pd.Series:
+    """Compute log returns while excluding known mechanical contract rolls."""
+    if not price.index.equals(events.index):
+        raise ValueError("price and events indexes must match")
+    return safe_log_return(price).mask(events.fillna(False).astype(bool))
+
+
 def rolling_zscore(value: pd.Series, window: int) -> pd.Series:
     """Compute trailing rolling z-score; no future observations are used."""
     mean = value.rolling(window=window, min_periods=window).mean()

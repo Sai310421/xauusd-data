@@ -8,7 +8,11 @@ import numpy as np
 import pandas as pd
 
 from .data_provider import REQUIRED_SYMBOLS
-from .utils import rolling_zscore, safe_log_return
+from .utils import (
+    rolling_zscore,
+    safe_log_return,
+    safe_log_return_excluding_events,
+)
 
 FEATURES = [
     "flow_6j_aligned",
@@ -112,7 +116,9 @@ def build_features(
     frame = _wide(raw).sort_values("datetime_utc").reset_index(drop=True)
     names = ("6j", "vx", "es", "nq", "zn")
     for name in names:
-        frame[f"r_{name}"] = safe_log_return(frame[f"close_{name}"])
+        frame[f"r_{name}"] = safe_log_return_excluding_events(
+            frame[f"close_{name}"], frame[f"roll_{name}"]
+        )
         frame[f"z_{name}"] = rolling_zscore(frame[f"r_{name}"], zscore_window)
         volume_z = rolling_zscore(np.log1p(frame[f"volume_{name}"]), zscore_window)
         frame[f"flow_{name}"] = _flow(frame[f"z_{name}"], volume_z)
@@ -148,13 +154,6 @@ def build_features(
     roll_columns = [column for column in frame if column.startswith("roll_")]
     rolls = frame[roll_columns].any(axis=1)
     frame["roll_event"] = rolls
-    future_roll = (
-        rolls.iloc[::-1]
-        .rolling(label_horizon + 1, min_periods=1)
-        .max()
-        .iloc[::-1]
-        .astype(bool)
-    )
     frame["future_return"] = np.log(
         frame["close_usdjpy"].shift(-label_horizon) / frame["close_usdjpy"]
     )
@@ -164,7 +163,7 @@ def build_features(
         (-0.020, "target_20"),
     ):
         frame[target] = (frame["future_return"] < threshold).astype("float64")
-        frame.loc[future_roll | frame["future_return"].isna(), target] = np.nan
+        frame.loc[frame["future_return"].isna(), target] = np.nan
     frame["feature_timestamp"] = frame["datetime_utc"]
     frame["max_feature_source_timestamp"] = frame["datetime_utc"]
     invalidated = [name for name in FEATURES if name != "best_lag_bars"]

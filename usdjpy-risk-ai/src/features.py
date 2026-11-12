@@ -116,7 +116,9 @@ def build_features(
     frame = _wide(raw).sort_values("datetime_utc").reset_index(drop=True)
     names = ("6j", "vx", "es", "nq", "zn")
     for name in names:
-        frame[f"r_{name}"] = safe_log_return_excluding_events(\n            frame[f"close_{name}"], frame[f"roll_{name}"]\n        )
+        frame[f"r_{name}"] = safe_log_return_excluding_events(
+            frame[f"close_{name}"], frame[f"roll_{name}"]
+        )
         frame[f"z_{name}"] = rolling_zscore(frame[f"r_{name}"], zscore_window)
         volume_z = rolling_zscore(np.log1p(frame[f"volume_{name}"]), zscore_window)
         frame[f"flow_{name}"] = _flow(frame[f"z_{name}"], volume_z)

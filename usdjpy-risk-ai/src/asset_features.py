@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .utils import rolling_zscore, safe_log_return
+from .utils import (\n    rolling_zscore,\n    safe_log_return_excluding_events,\n)
 
 FEATURES_GOLD = ["flow_gc", "flow_vx", "flow_zn", "flow_rty", "smallcap_stress", "breadth_div", "dxy_z", "us10y_z"]
 FEATURES_STOCK = ["flow_vx", "flow_rty", "smallcap_stress", "breadth_div", "dxy_z", "us10y_z", "risk_score"]
@@ -57,7 +57,7 @@ def build_asset_features(base_features: pd.DataFrame, multiasset_raw: pd.DataFra
     if frame[source_columns].isna().any().any():
         raise AssetFeatureError("MULTIASSET_H1_JOIN_INCOMPLETE")
     for asset in ("rty", "gc", "dxy", "us10y"):
-        frame[f"r_{asset}"] = safe_log_return(frame[f"close_{asset}"])
+        frame[f"r_{asset}"] = safe_log_return_excluding_events(\n            frame[f"close_{asset}"], frame[f"roll_{asset}"]\n        )
         frame[f"z_{asset}"] = rolling_zscore(frame[f"r_{asset}"], zscore_window)
         volume_z = rolling_zscore(np.log1p(frame[f"volume_{asset}"]), zscore_window)
         frame[f"flow_{asset}"] = _flow(frame[f"z_{asset}"], volume_z)

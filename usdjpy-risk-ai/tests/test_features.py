@@ -55,7 +55,7 @@ def test_future_price_change_does_not_alter_prior_feature_rows() -> None:
     pd.testing.assert_frame_equal(left, right)
 
 
-def test_future_roll_invalidates_labels() -> None:
+def test_futures_roll_is_excluded_from_features_not_oanda_labels() -> None:
     raw = normalize_raw(make_fixture())
     event_time = raw["datetime_utc"].iloc[-40]
     raw.loc[
@@ -63,11 +63,10 @@ def test_future_roll_invalidates_labels() -> None:
         "roll_event",
     ] = True
     frame = build_features(raw)
-    affected = frame.loc[
-        (frame["datetime_utc"] >= event_time - pd.Timedelta(hours=24))
-        & (frame["datetime_utc"] <= event_time)
-    ]
-    assert affected[["target_05", "target_10", "target_20"]].isna().all().all()
+    event_row = frame.loc[frame["datetime_utc"] == event_time].iloc[0]
+    assert pd.isna(event_row["r_es"])
+    assert pd.isna(event_row["flow_vx"])
+    assert event_row[["target_05", "target_10", "target_20"]].notna().all()
 
 
 def test_future_feature_timestamp_is_rejected() -> None:

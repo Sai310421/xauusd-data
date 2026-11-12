@@ -8,7 +8,11 @@ import numpy as np
 import pandas as pd
 
 from .data_provider import REQUIRED_SYMBOLS
-from .utils import (\n    rolling_zscore,\n    safe_log_return,\n    safe_log_return_excluding_events,\n)
+from .utils import (
+    rolling_zscore,
+    safe_log_return,
+    safe_log_return_excluding_events,
+)
 
 FEATURES = [
     "flow_6j_aligned",

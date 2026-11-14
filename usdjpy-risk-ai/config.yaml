@@ -35,6 +35,10 @@ multiasset:
     gc: {dataset: GLBX.MDP3, continuous_symbol: GC.v.0, schema: ohlcv-1h}
     dxy: {dataset: IFUS.IMPACT, continuous_symbol: DX.v.0, schema: ohlcv-1h}
     us10y: {dataset: GLBX.MDP3, continuous_symbol: 10Y.v.0, schema: ohlcv-1h}
+portfolio:
+  mode: advisory_only
+  target_mapping: {gold: target_gold_up_2, stock: target_spx_down_2}
+  default_allocation: {gold_weight: 0.70, stock_weight: 0.30, cash_weight: 0.00}
 oci:
   region: ap-tokyo-1
   bucket_env: OCI_OBJECT_STORAGE_BUCKET

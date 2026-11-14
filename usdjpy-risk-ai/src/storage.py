@@ -55,6 +55,9 @@ class ObjectStore(Protocol):
     def get_verified(self, name: str, expected_sha256: str) -> bytes:
         """Read exactly one object and validate its content hash."""
 
+    def list_names(self, prefix: str) -> list[str]:
+        """List relative immutable object names under a safe prefix."""
+
 
 def sha256_bytes(payload: bytes) -> str:
     """Return the lowercase SHA-256 digest of payload."""
@@ -105,6 +108,11 @@ class LocalObjectStore:
         if sha256_bytes(payload) != expected_sha256:
             raise ObjectIntegrityError("OBJECT_HASH_MISMATCH")
         return payload
+
+    def list_names(self, prefix: str) -> list[str]:
+        """List stored relative names for deterministic offline snapshots."""
+        safe_prefix = _safe_name(prefix)
+        return sorted(name for name in self.objects if name.startswith(safe_prefix))
 
 
 @dataclass
@@ -164,6 +172,11 @@ class OciObjectStore:
                 opc_meta={"sha256": digest},
             )
         except Exception as exc:
+            # A content-addressed object may already have been persisted by an
+            # earlier runner.  Conditional creation must remain idempotent;
+            # subsequent reads still verify its SHA-256 metadata and payload.
+            if getattr(exc, "status", None) == 412:
+                return digest
             raise StorageError("OCI_PUT_FAILED") from exc
         return digest
 
@@ -181,6 +194,31 @@ class OciObjectStore:
         if sha256_bytes(payload) != expected_sha256:
             raise ObjectIntegrityError("OBJECT_HASH_MISMATCH")
         return payload
+
+    def list_names(self, prefix: str) -> list[str]:
+        """List relative names under the project prefix, with pagination."""
+        names: list[str] = []
+        token: str | None = None
+        requested_prefix = self._object_name(prefix)
+        while True:
+            try:
+                response = self.client.list_objects(
+                    namespace_name=self.namespace,
+                    bucket_name=self.bucket,
+                    prefix=requested_prefix,
+                    page=token,
+                )
+            except Exception as exc:
+                raise StorageError("OCI_LIST_FAILED") from exc
+            for item in response.data.objects:
+                name = str(item.name)
+                project_prefix = f"{self.prefix}/"
+                if not name.startswith(project_prefix):
+                    raise StorageError("OCI_LIST_PREFIX_INVALID")
+                names.append(name.removeprefix(project_prefix))
+            token = getattr(response.data, "next_start_with", None)
+            if not token:
+                return sorted(names)
 
 
 def publish_candidate_bundle(

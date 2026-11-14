@@ -19,11 +19,19 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+    working_directory = Path.cwd()
     files = {
-        path.relative_to(args.repository_root).as_posix()
-        for path in args.repository_root.rglob("*")
+        path.relative_to(working_directory).as_posix()
+        for path in working_directory.rglob("*")
         if path.is_file() and ".git" not in path.parts
     }
+    workflow_directory = args.repository_root / ".github" / "workflows"
+    if workflow_directory.is_dir():
+        files.update(
+            path.relative_to(args.repository_root).as_posix()
+            for path in workflow_directory.rglob("*")
+            if path.is_file()
+        )
     environment = {name: os.environ.get(name, "") for name in (
         "DATABENTO_API_KEY", "OANDA_API_TOKEN", "OCI_OBJECT_STORAGE_BUCKET", "DISCORD_WEBHOOK_URL"
     )}

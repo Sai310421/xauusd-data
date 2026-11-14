@@ -62,7 +62,15 @@ def _flow(z_price: pd.Series, z_volume: pd.Series) -> pd.Series:
     return np.sign(z_price) * np.abs(z_price) * np.log1p(np.abs(z_volume))
 
 
-def _lead_lag(frame: pd.DataFrame, lookback: int, minimum: int) -> pd.DataFrame:
+def _lead_lag(
+    frame: pd.DataFrame,
+    lookback: int,
+    minimum: int,
+    roll_tolerance_bars: int = 1,
+) -> pd.DataFrame:
+    if not 0 <= roll_tolerance_bars < minimum:
+        raise FeatureQualityError("invalid lead-lag roll tolerance")
+    effective_minimum = minimum - roll_tolerance_bars
     best: list[int] = []
     corr: list[float] = []
     available: list[int] = []
@@ -80,7 +88,7 @@ def _lead_lag(frame: pd.DataFrame, lookback: int, minimum: int) -> pd.DataFrame:
         for lag in (0, 1):
             paired = pd.concat([x.shift(lag), y], axis=1).dropna()
             if (
-                len(paired) < minimum
+                len(paired) < effective_minimum
                 or paired.iloc[:, 0].std() == 0
                 or paired.iloc[:, 1].std() == 0
             ):
@@ -111,6 +119,7 @@ def build_features(
     label_horizon: int = 24,
     leadlag_lookback: int = 240,
     leadlag_minimum: int = 240,
+    roll_tolerance_bars: int = 1,
 ) -> pd.DataFrame:
     """Build H1 features using only data available at each bar end."""
     frame = _wide(raw).sort_values("datetime_utc").reset_index(drop=True)
@@ -119,13 +128,25 @@ def build_features(
         frame[f"r_{name}"] = safe_log_return_excluding_events(
             frame[f"close_{name}"], frame[f"roll_{name}"]
         )
-        frame[f"z_{name}"] = rolling_zscore(frame[f"r_{name}"], zscore_window)
+        frame[f"z_{name}"] = rolling_zscore(
+            frame[f"r_{name}"],
+            zscore_window,
+            min_periods=zscore_window - 1,
+        )
         volume_z = rolling_zscore(np.log1p(frame[f"volume_{name}"]), zscore_window)
         frame[f"flow_{name}"] = _flow(frame[f"z_{name}"], volume_z)
     frame["r_fx"] = -safe_log_return(frame["close_usdjpy"])
     frame["z_fx"] = rolling_zscore(frame["r_fx"], zscore_window)
     frame = pd.concat(
-        [frame, _lead_lag(frame, leadlag_lookback, leadlag_minimum)],
+        [
+            frame,
+            _lead_lag(
+                frame,
+                leadlag_lookback,
+                leadlag_minimum,
+                roll_tolerance_bars,
+            ),
+        ],
         axis=1,
     )
     for source, aligned in (

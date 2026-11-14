@@ -38,10 +38,17 @@ def safe_log_return_excluding_events(
     return safe_log_return(price).mask(events.fillna(False).astype(bool))
 
 
-def rolling_zscore(value: pd.Series, window: int) -> pd.Series:
-    """Compute trailing rolling z-score; no future observations are used."""
-    mean = value.rolling(window=window, min_periods=window).mean()
-    std = value.rolling(window=window, min_periods=window).std(ddof=0)
+def rolling_zscore(
+    value: pd.Series,
+    window: int,
+    min_periods: int | None = None,
+) -> pd.Series:
+    """Compute a trailing rolling z-score; no future observations are used."""
+    required = window if min_periods is None else min_periods
+    if not 2 <= required <= window:
+        raise ValueError("rolling z-score min_periods must be within [2, window]")
+    mean = value.rolling(window=window, min_periods=required).mean()
+    std = value.rolling(window=window, min_periods=required).std(ddof=0)
     return safe_div(value - mean, std)
 
 

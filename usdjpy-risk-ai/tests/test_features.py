@@ -76,3 +76,16 @@ def test_future_feature_timestamp_is_rejected() -> None:
     )
     with pytest.raises(FeatureQualityError, match="FEATURE_INTEGRITY_FAILURE"):
         validate_feature_integrity(frame)
+
+def test_roll_does_not_create_a_post_roll_feature_outage() -> None:
+    raw = normalize_raw(make_fixture())
+    event_time = raw["datetime_utc"].iloc[-40]
+    raw.loc[
+        (raw["symbol"] == "ES") & (raw["datetime_utc"] == event_time),
+        "roll_event",
+    ] = True
+    frame = build_features(raw)
+    next_row = frame.loc[
+        frame["datetime_utc"] == event_time + pd.Timedelta(hours=1)
+    ].iloc[0]
+    assert pd.notna(next_row["z_es"])

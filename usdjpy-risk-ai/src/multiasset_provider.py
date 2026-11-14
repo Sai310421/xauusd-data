@@ -86,6 +86,17 @@ def write_monthly_multiasset(frame: pd.DataFrame, directory: Path) -> list[Path]
     paths: list[Path] = []
     for period, group in result.groupby(result["source_bar_start_utc"].dt.to_period("M")):
         path = directory / f"multiasset_{period.year:04d}_{period.month:02d}.parquet"
-        group.sort_values(["asset", "source_bar_start_utc"]).to_parquet(path, index=False)
+        combined = pd.concat(
+            [pd.read_parquet(path), group] if path.exists() else [group],
+            ignore_index=True,
+        ).sort_values(["asset", "source_bar_start_utc"])
+        keys = ["asset", "source_bar_start_utc"]
+        compared = ["close", "volume", "provider", "dataset", "continuous_symbol", "instrument_id"]
+        duplicates = combined.loc[combined.duplicated(keys, keep=False)]
+        if not duplicates.empty and (
+            duplicates.groupby(keys)[compared].nunique(dropna=False) > 1
+        ).any().any():
+            raise DataQualityError("MULTIASSET_HISTORICAL_BAR_CONFLICT")
+        combined.drop_duplicates(keys, keep="last").to_parquet(path, index=False)
         paths.append(path)
     return paths

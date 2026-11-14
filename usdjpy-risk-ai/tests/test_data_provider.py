@@ -26,3 +26,14 @@ def test_duplicate_is_rejected() -> None:
     duplicate = pd.concat([raw, raw.iloc[[0]]], ignore_index=True)
     with pytest.raises(DataQualityError, match="duplicate"):
         normalize_raw(duplicate)
+
+def test_monthly_writer_merges_incremental_windows(tmp_path: Path) -> None:
+    from src.data_provider import write_monthly_raw
+
+    full = normalize_raw(make_fixture(periods=7))
+    initial = full.loc[full["datetime_utc"] <= full["datetime_utc"].iloc[4]].copy()
+    later = full.loc[full["datetime_utc"] >= full["datetime_utc"].iloc[3]].copy()
+    write_monthly_raw(initial, tmp_path)
+    paths = write_monthly_raw(later, tmp_path)
+    stored = pd.read_parquet(paths[0])
+    assert len(stored) == len(full)

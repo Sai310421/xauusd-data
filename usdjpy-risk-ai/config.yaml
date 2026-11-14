@@ -50,7 +50,7 @@ feature_store:
   raw_directory: data/raw
   features_directory: data/features
 quality: {max_missing_required_features: 0.05, min_positive_samples: 50}
-lead_lag: {candidate_lags_bars: [0, 1], min_observations: 240, lookback_bars: 240}
+lead_lag: {candidate_lags_bars: [0, 1], min_observations: 240, lookback_bars: 240, roll_tolerance_bars: 1}
 model:
   objective: binary
   n_estimators: 1000

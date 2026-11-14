@@ -131,13 +131,17 @@ class DatabentoProvider:
         timestamp = next((name for name in ("ts_event", "timestamp", "datetime") if name in source.columns), None)
         if timestamp is None or "close" not in source.columns or "volume" not in source.columns:
             raise ProviderResponseError("Databento OHLCV response missing timestamp, close, or volume")
-        actual = source["symbol"] if "symbol" in source.columns else source.get("instrument_id", self.symbols[symbol])
+        identity = (
+            source["instrument_id"].astype(str)
+            if "instrument_id" in source
+            else source.get("symbol", pd.Series(self.symbols[symbol], index=source.index)).astype(str)
+        )
         frame = pd.DataFrame({
             "symbol": symbol,
             "source_bar_start_utc": pd.to_datetime(source[timestamp], utc=True),
             "close": source["close"], "volume": source["volume"], "provider": "DATABENTO",
-            "dataset": self.datasets[symbol], "actual_contract": actual.astype(str) if hasattr(actual, "astype") else str(actual),
-            "instrument_id": source.get("instrument_id", "").astype(str) if "instrument_id" in source else "",
+            "dataset": self.datasets[symbol], "actual_contract": identity,
+            "instrument_id": identity,
         })
         previous_contract = frame["actual_contract"].shift()
         frame["roll_event"] = previous_contract.notna() & frame["actual_contract"].ne(previous_contract)
@@ -239,6 +243,21 @@ def write_monthly_raw(frame: pd.DataFrame, directory: Path) -> list[Path]:
     paths: list[Path] = []
     for period, group in frame.groupby(frame["datetime_utc"].dt.to_period("M")):
         path = directory / f"raw_{period.year:04d}_{period.month:02d}.parquet"
-        group.sort_values(["datetime_utc", "symbol"]).to_parquet(path, index=False)
+        combined = pd.concat(
+            [pd.read_parquet(path), group] if path.exists() else [group],
+            ignore_index=True,
+        ).sort_values(["datetime_utc", "symbol"])
+        keys = ["datetime_utc", "symbol"]
+        compared = ["close", "volume", "provider", "dataset", "actual_contract", "instrument_id"]
+        duplicates = combined.loc[combined.duplicated(keys, keep=False)]
+        if not duplicates.empty and (
+            duplicates.groupby(keys)[compared].nunique(dropna=False) > 1
+        ).any().any():
+            raise DataQualityError("HISTORICAL_BAR_CONFLICT")
+        combined = combined.drop_duplicates(keys, keep="last").reset_index(drop=True)
+        combined["checksum"] = frame_checksum(
+            combined[["symbol", "datetime_utc", "close", "volume", "roll_event"]]
+        )
+        combined.to_parquet(path, index=False)
         paths.append(path)
     return paths

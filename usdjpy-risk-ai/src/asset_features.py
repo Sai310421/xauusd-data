@@ -1,6 +1,7 @@
 """Causal H1 feature and label generation for Gold and US-stock models."""
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -113,3 +114,32 @@ def write_monthly_asset_features(frame: pd.DataFrame, directory: Path) -> list[P
         group.to_parquet(path, index=False)
         paths.append(path)
     return paths
+
+def _read_parquet_input(path: Path, pattern: str) -> pd.DataFrame:
+    """Read a file or every bounded partition matching one expected pattern."""
+    paths = sorted(path.glob(pattern)) if path.is_dir() else [path]
+    if not paths:
+        raise AssetFeatureError("ASSET_FEATURE_INPUT_MISSING")
+    return pd.concat([pd.read_parquet(item) for item in paths], ignore_index=True)
+
+
+def main() -> None:
+    """Build monthly Gold/Stock features from persisted H1 inputs."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base", required=True, type=Path)
+    parser.add_argument("--multiasset", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--zscore-window", type=int, default=480)
+    parser.add_argument("--label-horizon", type=int, default=24)
+    args = parser.parse_args()
+    frame = build_asset_features(
+        _read_parquet_input(args.base, "features_*.parquet"),
+        _read_parquet_input(args.multiasset, "multiasset_*.parquet"),
+        zscore_window=args.zscore_window,
+        label_horizon=args.label_horizon,
+    )
+    print("\n".join(str(path) for path in write_monthly_asset_features(frame, args.output)))
+
+
+if __name__ == "__main__":
+    main()

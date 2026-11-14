@@ -1,0 +1,47 @@
+name: USDJPY Risk AI Predict
+
+on:
+  schedule:
+    - cron: "12 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  predict:
+    if: github.event_name == 'workflow_dispatch' || vars.USDJPY_PRODUCTION_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: usdjpy-risk-ai
+    env:
+      DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
+      OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+      OCI_OBJECT_STORAGE_BUCKET: ${{ secrets.OCI_OBJECT_STORAGE_BUCKET }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: usdjpy-risk-ai/requirements.txt
+      - name: Validate production secrets
+        run: |
+          for name in DATABENTO_API_KEY OANDA_API_TOKEN OCI_OBJECT_STORAGE_BUCKET DISCORD_WEBHOOK_URL; do
+            test -n "${!name}" || { echo "::error title=Missing production secret::$name"; exit 2; }
+          done
+      - run: python -m pip install -r requirements.txt
+      - name: Restore immutable production state
+        run: |
+          python -m src.feature_store hydrate --category features --directory data/features
+          python -m src.feature_store hydrate --category production_models --directory models/production
+      - name: Run production readiness gate
+        run: python -m src.production_gate --output reports/production_readiness.json
+      - name: Predict advisory-only risk report
+        run: |
+          python -m src.predict --features data/features --models models/production --output reports/prediction.json
+          python -m src.report --prediction reports/prediction.json --output reports/report.html
+      - name: Persist report audit state
+        run: python -m src.feature_store publish --category reports --directory reports

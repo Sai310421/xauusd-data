@@ -22,7 +22,7 @@ def integration_readiness(config: Mapping[str, Any], files: set[str], environmen
     items: list[ReadinessItem] = []
     for secret in ("DATABENTO_API_KEY", "OANDA_API_TOKEN", "OCI_OBJECT_STORAGE_BUCKET", "DISCORD_WEBHOOK_URL"):
         items.append(ReadinessItem(secret, "PASS" if environment.get(secret) else "BLOCKED", "configured" if environment.get(secret) else "missing"))
-    symbols = config.get("multiasset", {}).get("symbols", {})
+    symbols = config.get("multiasset", {}).get("assets", {})
     for source in ("RTY", "GC", "DXY", "US10Y"):
         status = "PASS" if source.lower() in symbols else "BLOCKED"
         items.append(ReadinessItem(f"DATA_SOURCE_{source}", status, "configured" if status == "PASS" else "not configured"))
@@ -31,6 +31,8 @@ def integration_readiness(config: Mapping[str, Any], files: set[str], environmen
         ("src/report.py", "report entry point absent"),
         ("src/discord.py", "Discord notifier absent"),
         ("src/shap_analysis.py", "SHAP analyzer absent"),
+        ("src/portfolio_engine.py", "portfolio hedge bridge absent"),
+        ("src/portfolio_predict.py", "portfolio advisory entry point absent"),
         (".github/workflows/usdjpy-risk-ai-train.yml", "training workflow absent"),
         (".github/workflows/usdjpy-risk-ai-predict.yml", "prediction workflow absent"),
     ):

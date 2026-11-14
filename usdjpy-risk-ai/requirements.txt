@@ -8,4 +8,4 @@ requests>=2.32,<3
 databento>=0.50,<1
 oci>=2.190,<3
 pytest>=8.0,<9
-ruff>=0.8,<1
+ruff>=0.8,<1shap>=0.46,<1\n
